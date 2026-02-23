@@ -135,10 +135,16 @@
 {% block extra_js %}
 <script>
 $(document).ready(function() {
+    {% if vehicles %}
     $('#vehiclesTable').DataTable({
         order: [[0, 'asc']],
-        pageLength: 25
+        pageLength: 25,
+        language: {
+            search: "_INPUT_",
+            searchPlaceholder: "Search vehicles..."
+        }
     });
+    {% endif %}
 });
 </script>
 {% endblock %}
