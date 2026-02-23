@@ -88,13 +88,12 @@ REMOTE=$(git rev-parse @{u})
 
 if [ "$LOCAL" = "$REMOTE" ]; then
     log_success "Already up to date!"
-    log_info "Will still restart services to ensure fresh Python imports..."
-    # Don't exit - continue to restart services to clear any cached imports
+    log_info "Will still restart service to ensure fresh Python imports..."
+else
+    log_info "Updates available!"
+    log_info "Local:  $LOCAL"
+    log_info "Remote: $REMOTE"
 fi
-
-log_info "Updates available!"
-log_info "Local:  $LOCAL"
-log_info "Remote: $REMOTE"
 
 # Step 4: Stash any local changes
 log_info "Step 3/8: Checking for local changes..."
@@ -104,13 +103,14 @@ if ! git diff-index --quiet HEAD --; then
     log_success "Local changes stashed"
 fi
 
-# Step 5: Pull latest code
+# Step 5: Pull latest code (use reset --hard to handle force-push scenarios)
 log_info "Step 4/8: Pulling latest code..."
-git pull origin main
+git fetch origin main
+git reset --hard origin/main
 if [ $? -eq 0 ]; then
     log_success "Code updated successfully"
 else
-    log_error "Failed to pull latest code"
+    log_error "Failed to update code"
     exit 1
 fi
 
@@ -161,7 +161,7 @@ log_info "Step 8/8: Restarting services with full cleanup..."
 
 # Detect which gunicorn service exists
 GUNICORN_SERVICE=""
-for service in clientst0r-gunicorn.service clientst0r-gunicorn.service itdocs-gunicorn.service; do
+for service in huduglue-gunicorn.service clientst0r-gunicorn.service itdocs-gunicorn.service; do
     if systemctl list-unit-files | grep -q "^$service"; then
         GUNICORN_SERVICE="$service"
         break

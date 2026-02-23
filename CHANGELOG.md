@@ -5,6 +5,41 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.3] - 2026-02-23
+
+### 🔧 Fixes
+
+**Update System (Version Revert Fix):**
+- Fixed service detection in `auto_update.sh` - `huduglue-gunicorn.service` was missing from the detection list (was listed as `clientst0r-gunicorn.service` twice), causing the auto-update to exit without restarting the service on many installations
+- Changed `git pull` to `git fetch && git reset --hard origin/main` in `auto_update.sh` to reliably handle force-push scenarios
+- Fixed same service detection bug in `force_restart_services` view and `auto_heal_version` management command
+- Added `huduglue-gunicorn.service` to `update.sh` CLI service detection (was using wrong service name in all branches)
+- Updated `setup_gui_updates.sh` sudoers to include `huduglue-gunicorn.service` permissions
+- Added CHANGELOG entries for 3.12.x releases (was causing WARNING log every 5 minutes)
+
+## [3.12.2] - 2026-02-23
+
+### 🔧 Fixes
+
+**DataTables:**
+- Fixed error on empty vehicles list when DataTables server-side processing is enabled
+
+## [3.12.1] - 2026-02-23
+
+### 🔧 Fixes
+
+**GUI Updater:**
+- Auto-detect gunicorn service name (huduglue-gunicorn, clientst0r-gunicorn, itdocs-gunicorn)
+- Fixes version revert issue when remote server uses a different service name than hard-coded default
+
+## [3.12.0] - 2026-02-23
+
+### ✨ New Features
+
+**Password List:**
+- DataTables server-side processing for large password lists
+- Improved performance and filtering for organizations with many credentials
+
 ## [2.76.2] - 2026-02-09
 
 ### 🔧 Fixes

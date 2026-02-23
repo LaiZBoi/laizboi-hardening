@@ -404,17 +404,18 @@ echo "-----------------------------------"
 if [ "$RESTART_SERVICE" = true ]; then
     info "Detecting Gunicorn service name..."
 
-    # Auto-detect service name (supports both clientst0r-gunicorn and clientst0r-gunicorn)
+    # Auto-detect service name
     SERVICE_NAME=""
-    if systemctl list-units --type=service --all | grep -q "clientst0r-gunicorn.service"; then
-        SERVICE_NAME="clientst0r-gunicorn.service"
-        info "Found service: clientst0r-gunicorn.service"
-    elif systemctl list-units --type=service --all | grep -q "clientst0r-gunicorn.service"; then
-        SERVICE_NAME="clientst0r-gunicorn.service"
-        info "Found service: clientst0r-gunicorn.service"
-    else
-        warning "Could not find gunicorn service. Trying clientst0r-gunicorn.service..."
-        SERVICE_NAME="clientst0r-gunicorn.service"
+    for svc in huduglue-gunicorn.service clientst0r-gunicorn.service itdocs-gunicorn.service; do
+        if systemctl list-units --type=service --all | grep -q "$svc"; then
+            SERVICE_NAME="$svc"
+            info "Found service: $svc"
+            break
+        fi
+    done
+    if [ -z "$SERVICE_NAME" ]; then
+        warning "Could not find gunicorn service. Trying huduglue-gunicorn.service..."
+        SERVICE_NAME="huduglue-gunicorn.service"
     fi
 
     info "Restarting $SERVICE_NAME..."

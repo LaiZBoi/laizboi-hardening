@@ -35,6 +35,10 @@ $USERNAME ALL=(ALL) NOPASSWD: /usr/bin/git rev-parse *
 $USERNAME ALL=(ALL) NOPASSWD: /usr/bin/git merge-base *
 
 # Service management
+$USERNAME ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart huduglue-gunicorn.service
+$USERNAME ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop huduglue-gunicorn.service
+$USERNAME ALL=(ALL) NOPASSWD: /usr/bin/systemctl start huduglue-gunicorn.service
+$USERNAME ALL=(ALL) NOPASSWD: /usr/bin/systemctl status huduglue-gunicorn.service
 $USERNAME ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart clientst0r-gunicorn.service
 $USERNAME ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload clientst0r-gunicorn.service
 $USERNAME ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart clientst0r-gunicorn
