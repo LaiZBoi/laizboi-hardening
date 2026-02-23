@@ -31,6 +31,13 @@ class UpdateService:
         self.base_dir = self._detect_installation_directory()
         logger.info(f"UpdateService initialized with base_dir: {self.base_dir}")
 
+        # Auto-detect gunicorn service name
+        self.service_name = self._detect_gunicorn_service_name()
+        if self.service_name:
+            logger.info(f"Detected service name: {self.service_name}")
+        else:
+            logger.info("No systemd service detected - will use pkill for restarts")
+
     def get_current_version(self):
         """Get current installed version."""
         try:
@@ -112,6 +119,41 @@ class UpdateService:
         error_msg += "\nPlease ensure your virtual environment is properly installed."
         logger.error(error_msg)
         raise Exception(error_msg)
+
+    def _detect_gunicorn_service_name(self):
+        """
+        Auto-detect the systemd gunicorn service name.
+
+        Checks for common service names:
+        - clientst0r-gunicorn.service
+        - huduglue-gunicorn.service
+        - itdocs-gunicorn.service
+
+        Returns:
+            str: Service name if found, None if not running under systemd
+        """
+        possible_names = [
+            'clientst0r-gunicorn.service',
+            'huduglue-gunicorn.service',
+            'itdocs-gunicorn.service',
+        ]
+
+        for service_name in possible_names:
+            try:
+                result = subprocess.run(
+                    ['/usr/bin/systemctl', 'is-active', service_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    logger.info(f"Detected gunicorn service: {service_name}")
+                    return service_name
+            except Exception:
+                continue
+
+        logger.warning("No gunicorn systemd service detected")
+        return None
 
     def _get_github_headers(self):
         """Get headers for GitHub API requests with authentication if available."""
@@ -292,15 +334,16 @@ class UpdateService:
             # Pre-check: Verify passwordless sudo is configured (if running under systemd)
             if self._is_systemd_service():
                 if not self._check_passwordless_sudo():
+                    service_name = self.service_name or 'clientst0r-gunicorn.service'
                     raise Exception(
                         "Passwordless sudo is not configured for auto-updates. "
                         "Please configure it by running these commands:\n\n"
                         "sudo tee /etc/sudoers.d/clientst0r-auto-update > /dev/null <<SUDOERS\n"
-                        f"$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart clientst0r-gunicorn.service, "
-                        "/usr/bin/systemctl stop clientst0r-gunicorn.service, /usr/bin/systemctl start clientst0r-gunicorn.service, "
-                        "/usr/bin/systemctl status clientst0r-gunicorn.service, /usr/bin/systemctl daemon-reload, "
+                        f"$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart {service_name}, "
+                        f"/usr/bin/systemctl stop {service_name}, /usr/bin/systemctl start {service_name}, "
+                        f"/usr/bin/systemctl status {service_name}, /usr/bin/systemctl daemon-reload, "
                         "/usr/bin/systemd-run, /usr/bin/pkill, "
-                        "/usr/bin/tee /etc/systemd/system/clientst0r-gunicorn.service, "
+                        f"/usr/bin/tee /etc/systemd/system/{service_name}, "
                         "/usr/bin/cp, /usr/bin/chmod\n"
                         "SUDOERS\n\n"
                         "sudo chmod 0440 /etc/sudoers.d/clientst0r-auto-update\n\n"
@@ -832,12 +875,13 @@ class UpdateService:
             result['output'].append("=" * 50)
             result['output'].append("✓ CODE UPDATE COMPLETE!")
             result['output'].append("=" * 50)
+            service_name = self.service_name or 'clientst0r-gunicorn.service'
             result['output'].append("")
             result['output'].append("⚠️  SERVICES NEED MANUAL RESTART")
             result['output'].append("")
             result['output'].append("Choose ONE method:")
             result['output'].append("1. Click 'Force Restart Services' button below")
-            result['output'].append("2. SSH: sudo systemctl restart clientst0r-gunicorn.service")
+            result['output'].append(f"2. SSH: sudo systemctl restart {service_name}")
             result['output'].append("3. Run: python manage.py auto_heal_version")
             result['steps_completed'].append('restart_service')
 
@@ -860,23 +904,19 @@ class UpdateService:
                     logger.info("Scheduling delayed service restart to avoid suicide problem")
 
                     try:
-                        # Check if systemd service exists first
-                        service_check = subprocess.run(
-                            ['/usr/bin/systemctl', 'is-active', 'clientst0r-gunicorn.service'],
-                            capture_output=True,
-                            text=True,
-                            timeout=5
-                        )
-                        service_exists = service_check.returncode == 0 or 'inactive' in service_check.stdout
+                        # Use auto-detected service name or fallback to detecting it now
+                        service_name = self.service_name
+                        if not service_name:
+                            service_name = self._detect_gunicorn_service_name()
 
-                        if service_exists:
+                        if service_name:
                             # Schedule restart in 5 seconds - gives time for response to complete
                             restart_output = self._run_command([
                                 '/usr/bin/sudo', '/usr/bin/systemd-run',
                                 '--on-active=5',  # Wait 5 seconds for response to complete
-                                '/usr/bin/systemctl', 'restart', 'clientst0r-gunicorn.service'
+                                '/usr/bin/systemctl', 'restart', service_name
                             ])
-                            logger.info(f"Systemd service restart scheduled: {restart_output}")
+                            logger.info(f"Systemd service {service_name} restart scheduled: {restart_output}")
 
                             result['steps_completed'].append('restart_service')
                             result['output'].append(f"✓ Service restart scheduled (5 second delay)")
@@ -1106,17 +1146,8 @@ class UpdateService:
 
     def _is_systemd_service(self):
         """Check if running as a systemd service."""
-        try:
-            result = subprocess.run(
-                ['/usr/bin/systemctl', 'is-active', 'clientst0r-gunicorn.service'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            return result.returncode == 0
-        except Exception as e:
-            logger.warning(f"Failed to check systemd service status: {e}")
-            return False
+        # Return True if we detected a service name during init
+        return self.service_name is not None
 
     def _check_passwordless_sudo(self):
         """
@@ -1126,9 +1157,12 @@ class UpdateService:
             bool: True if passwordless sudo works, False otherwise
         """
         try:
+            # Use auto-detected service name or fallback
+            service_name = self.service_name or 'clientst0r-gunicorn.service'
+
             # Test if we can run sudo without password using -n (non-interactive)
             result = subprocess.run(
-                ['/usr/bin/sudo', '-n', '/usr/bin/systemctl', 'status', 'clientst0r-gunicorn.service'],
+                ['/usr/bin/sudo', '-n', '/usr/bin/systemctl', 'status', service_name],
                 capture_output=True,
                 text=True,
                 timeout=5
