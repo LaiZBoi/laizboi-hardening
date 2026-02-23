@@ -8,6 +8,7 @@ app_name = 'vault'
 
 urlpatterns = [
     path('', views.password_list, name='password_list'),
+    path('datatables/', views.password_list_datatables, name='password_list_datatables'),
     path('create/', views.password_create, name='password_create'),
     path('<int:pk>/', views.password_detail, name='password_detail'),
     path('<int:pk>/edit/', views.password_edit, name='password_edit'),

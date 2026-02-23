@@ -27,6 +27,7 @@ def password_list(request):
     """
     List all passwords in current organization, or all passwords if in global view mode.
     Rate limited to 100 requests per hour per user.
+    Uses server-side DataTables processing for performance with large datasets.
     """
     org = get_request_organization(request)
 
@@ -34,16 +35,115 @@ def password_list(request):
     is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
     in_global_view = not org and (request.user.is_superuser or is_staff)
 
+    # Don't load passwords here - DataTables will fetch via AJAX
+    return render(request, 'vault/password_list.html', {
+        'in_global_view': in_global_view,
+    })
+
+
+@login_required
+@ratelimit(key='user', rate='500/h', method='GET', block=False)
+def password_list_datatables(request):
+    """
+    DataTables server-side processing endpoint for password list.
+    Returns paginated JSON data for efficient handling of large datasets.
+    Rate limited to 500 requests per hour per user.
+    """
+    org = get_request_organization(request)
+
+    # Check if user is in global view mode
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+
+    # Get DataTables parameters
+    draw = int(request.GET.get('draw', 1))
+    start = int(request.GET.get('start', 0))
+    length = int(request.GET.get('length', 25))
+    search_value = request.GET.get('search[value]', '').strip()
+    order_column_index = int(request.GET.get('order[0][column]', 0))
+    order_direction = request.GET.get('order[0][dir]', 'asc')
+
+    # Column mapping (must match template column order)
+    columns = ['title', 'username', 'url', 'password_type', 'password_status', 'tags', 'id']
+    order_column = columns[order_column_index] if order_column_index < len(columns) else 'title'
+
+    # Base queryset
     if in_global_view:
-        # Global view: show all passwords across all organizations
         passwords = Password.objects.all().select_related('organization').prefetch_related('tags')
     else:
-        # Organization view: show only passwords for current org
         passwords = Password.objects.for_organization(org).prefetch_related('tags')
 
-    return render(request, 'vault/password_list.html', {
-        'passwords': passwords,
-        'in_global_view': in_global_view,
+    # Apply search filter
+    if search_value:
+        from django.db.models import Q
+        passwords = passwords.filter(
+            Q(title__icontains=search_value) |
+            Q(username__icontains=search_value) |
+            Q(url__icontains=search_value) |
+            Q(notes__icontains=search_value)
+        )
+
+    # Get total count (before pagination)
+    filtered_count = passwords.count()
+
+    # Apply ordering
+    if order_direction == 'desc':
+        order_column = f'-{order_column}'
+    passwords = passwords.order_by(order_column)
+
+    # Apply pagination
+    passwords = passwords[start:start + length]
+
+    # Build data array
+    data = []
+    for password in passwords:
+        # Get tags HTML
+        tags_html = ''.join([
+            f'<span class="badge" style="background-color: {tag.color}">{tag.name}</span> '
+            for tag in password.tags.all()
+        ])
+
+        # Security badge
+        if password.password_status == 'breached':
+            security_badge = '<span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> Breached</span>'
+        elif password.password_status == 'weak':
+            security_badge = '<span class="badge bg-warning"><i class="fas fa-exclamation-circle"></i> Weak</span>'
+        else:
+            security_badge = '<span class="badge bg-success"><i class="fas fa-check-circle"></i> Safe</span>'
+
+        # URL icon
+        url_html = f'<a href="{password.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i></a>' if password.url else '—'
+
+        # Actions
+        actions_html = f'''
+        <div class="btn-group btn-group-sm">
+            <a href="/vault/passwords/{password.pk}/" class="btn btn-outline-primary" title="View"><i class="fas fa-eye"></i></a>
+            <a href="/vault/passwords/{password.pk}/edit/" class="btn btn-outline-secondary" title="Edit"><i class="fas fa-edit"></i></a>
+        </div>
+        '''
+
+        data.append([
+            f'<a href="/vault/passwords/{password.pk}/">{password.title}</a>',
+            password.username or '—',
+            url_html,
+            f'<span class="badge bg-primary">{password.get_password_type_display()}</span>',
+            security_badge,
+            tags_html or '—',
+            actions_html
+        ])
+
+    # Get total records count (without filters)
+    if in_global_view:
+        total_count = Password.objects.all().count()
+    else:
+        total_count = Password.objects.for_organization(org).count()
+
+    # Return DataTables JSON response
+    return JsonResponse({
+        'draw': draw,
+        'recordsTotal': total_count,
+        'recordsFiltered': filtered_count,
+        'data': data
     })
 
 
