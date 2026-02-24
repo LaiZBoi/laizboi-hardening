@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.4] - 2026-02-24
+
+### 🔧 Fixes
+
+**Service Worker Cache Fix (Version Display Revert Fix):**
+- Fixed service worker (`sw.js`) incorrectly caching server-rendered HTML pages including the system updates page
+- When gunicorn briefly restarts during an update, the browser's service worker was serving the stale cached HTML (showing the old version) instead of fetching fresh from the newly-started server
+- Changed `sw.js` to only cache static assets (CSS/JS/images), never server-rendered pages or API responses
+- Bumped service worker cache version from `clientst0r-v1` to `clientst0r-v2` to immediately bust all stale cached page content in existing browser installations
+
 ## [3.12.3] - 2026-02-23
 
 ### 🔧 Fixes

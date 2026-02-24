@@ -1,7 +1,7 @@
 // Client St0r Service Worker
 // Provides offline support and caching for PWA
 
-const CACHE_NAME = 'clientst0r-v1';
+const CACHE_NAME = 'clientst0r-v2';
 const OFFLINE_URL = '/offline/';
 
 // Assets to cache immediately on install
@@ -65,13 +65,21 @@ self.addEventListener('fetch', (event) => {
                     return response;
                 }
 
-                // Clone the response
-                const responseToCache = response.clone();
+                // Only cache static assets - never cache server-rendered HTML pages
+                // or API endpoints, as they contain dynamic version/session data
+                const url = event.request.url;
+                const isStaticAsset = url.includes('/static/') &&
+                    !url.includes('/static/manifest.json');
+                const isHtmlNavigation = event.request.mode === 'navigate' ||
+                    event.request.headers.get('accept').includes('text/html');
 
-                // Cache the fetched response
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(event.request, responseToCache);
-                });
+                if (isStaticAsset && !isHtmlNavigation) {
+                    // Clone the response and cache only static assets
+                    const responseToCache = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, responseToCache);
+                    });
+                }
 
                 return response;
             })
