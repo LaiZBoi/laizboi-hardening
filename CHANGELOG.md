@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.10] - 2026-02-24
+
+### Bug Fixes
+
+**Update script fails when gunicorn has a restricted PATH:**
+- Added `export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"` near the top of `deploy/update_instructions.sh`
+- Gunicorn service files often set `Environment="PATH=/path/to/venv/bin"` which strips all standard system utilities from the subprocess environment — `date` (used in the `log()` function) and `git` both failed to resolve, causing an immediate exit with code 1
+- PATH is now explicitly set before any utility is invoked, ensuring the script works regardless of the calling process's environment
+
 ## [3.12.9] - 2026-02-24
 
 ### Bug Fixes

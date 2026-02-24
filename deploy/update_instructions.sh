@@ -8,6 +8,10 @@
 
 set -euo pipefail
 
+# Ensure standard system utilities are available regardless of the calling
+# process's PATH (gunicorn restricts PATH to venv/bin via EnvironmentFile)
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 BASE_DIR="${CLIENTST0R_BASE_DIR:-$(dirname "$(realpath "$0")")/..}"
 SERVICE="${CLIENTST0R_SERVICE_NAME:-}"
 
