@@ -797,25 +797,29 @@ class RMMSync:
         if device.linked_asset:
             return
 
+        # Use the device's actual organization (not the connection default org),
+        # so assets are scoped to the correct client when import_organizations=True.
+        device_org = device.organization or self.organization
+
         # Try to find existing asset by serial number
         asset = None
         if device.serial_number:
             asset = Asset.objects.filter(
-                organization=self.organization,
+                organization=device_org,
                 serial_number=device.serial_number
             ).first()
 
         # Try hostname if serial not found
         if not asset and device.hostname:
             asset = Asset.objects.filter(
-                organization=self.organization,
+                organization=device_org,
                 hostname__iexact=device.hostname
             ).first()
 
         # Try IP address if still not found
         if not asset and device.ip_address:
             asset = Asset.objects.filter(
-                organization=self.organization,
+                organization=device_org,
                 ip_address=device.ip_address
             ).first()
 
@@ -834,7 +838,7 @@ class RMMSync:
             asset_type = asset_type_map.get(device.device_type, 'other')
 
             asset = Asset.objects.create(
-                organization=self.organization,
+                organization=device_org,
                 name=device.device_name,
                 asset_type=asset_type,
                 serial_number=device.serial_number or '',
