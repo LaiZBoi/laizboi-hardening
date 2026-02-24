@@ -629,14 +629,23 @@
 
         // Live clock in navbar
         (function() {
+            var clockFormat = '{{ user_time_format }}';
             function updateClock() {
                 var el = document.getElementById('nav-clock');
                 if (!el) return;
                 var now = new Date();
-                var h = now.getHours().toString().padStart(2, '0');
                 var m = now.getMinutes().toString().padStart(2, '0');
                 var s = now.getSeconds().toString().padStart(2, '0');
-                el.textContent = h + ':' + m + ':' + s;
+                var timeStr;
+                if (clockFormat === '12') {
+                    var raw = now.getHours();
+                    var period = raw >= 12 ? 'PM' : 'AM';
+                    var h = raw % 12 || 12;
+                    timeStr = h + ':' + m + ':' + s + ' ' + period;
+                } else {
+                    timeStr = now.getHours().toString().padStart(2, '0') + ':' + m + ':' + s;
+                }
+                el.textContent = timeStr;
                 el.title = now.toLocaleDateString(undefined, {weekday:'short', year:'numeric', month:'short', day:'numeric'});
             }
             updateClock();

@@ -191,6 +191,10 @@ class UserProfile(BaseModel):
     
     # Preferences
     timezone = models.CharField(max_length=50, default='UTC')
+    time_format = models.CharField(max_length=2, default='24', choices=[
+        ('12', '12-hour (AM/PM)'),
+        ('24', '24-hour'),
+    ])
     locale = models.CharField(max_length=10, default='en', choices=[
         ('en', 'English'),
         ('fr', 'French'),

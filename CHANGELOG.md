@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.11] - 2026-02-24
+
+### New Features
+
+**12/24-hour clock format setting:**
+- Added `time_format` preference to user profile (12-hour AM/PM or 24-hour, default 24-hour)
+- Navbar clock respects the selected format — 12-hour shows `h:mm:ss AM/PM`, 24-hour shows `HH:mm:ss`
+- Setting is in Profile > Preferences > Time Format alongside Timezone
+
 ## [3.12.10] - 2026-02-24
 
 ### Bug Fixes

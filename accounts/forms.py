@@ -167,7 +167,7 @@ class UserProfileForm(forms.ModelForm):
     
     class Meta:
         model = UserProfile
-        fields = ['phone', 'title', 'department', 'timezone', 'locale', 'theme', 'background_mode', 'background_color', 'preset_background', 'background_image', 'email_notifications', 'notification_frequency', 'tooltips_enabled']
+        fields = ['phone', 'title', 'department', 'timezone', 'time_format', 'locale', 'theme', 'background_mode', 'background_color', 'preset_background', 'background_image', 'email_notifications', 'notification_frequency', 'tooltips_enabled']
         widgets = {
             'phone': forms.TextInput(attrs={
                 'class': 'form-control',
@@ -185,6 +185,10 @@ class UserProfileForm(forms.ModelForm):
                 'autocomplete': 'off'
             }),
             'timezone': forms.Select(attrs={
+                'class': 'form-select',
+                'autocomplete': 'off'
+            }),
+            'time_format': forms.Select(attrs={
                 'class': 'form-select',
                 'autocomplete': 'off'
             }),

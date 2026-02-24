@@ -10,6 +10,7 @@ def user_theme(request):
     background_mode = 'none'
     background_url = None
     tooltips_enabled = True  # Default to enabled for non-authenticated users
+    time_format = '24'
 
     # Preset background mappings - High quality abstract images
     PRESET_BACKGROUNDS = {
@@ -34,6 +35,7 @@ def user_theme(request):
         theme = profile.theme
         background_mode = profile.background_mode
         tooltips_enabled = getattr(profile, 'tooltips_enabled', True)
+        time_format = getattr(profile, 'time_format', '24')
 
         # Handle background image based on mode
         if background_mode == 'custom' and profile.background_image:
@@ -64,4 +66,5 @@ def user_theme(request):
         'user_background_url': background_url,
         'user_background_color': background_color,
         'tooltips_enabled': tooltips_enabled,
+        'user_time_format': time_format,
     }
