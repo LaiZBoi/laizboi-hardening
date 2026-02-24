@@ -386,6 +386,13 @@ class UpdateService:
             if progress_tracker:
                 progress_tracker.step_start('Execute Update')
 
+            # Clear cache NOW — before the subprocess runs and restarts the service.
+            # The service restart (scheduled inside the script) kills this process,
+            # so any cache.delete placed after process.wait() would never run.
+            from django.core.cache import cache
+            cache.delete('system_update_check')
+            logger.info("Cleared system_update_check cache (pre-execution)")
+
             env = os.environ.copy()
             env['CLIENTST0R_BASE_DIR'] = str(self.base_dir)
             env['CLIENTST0R_SERVICE_NAME'] = self.service_name or ''
@@ -454,10 +461,7 @@ class UpdateService:
                     logger.warning(f"Failed to clean up temp script: {cleanup_err}")
 
         if result['success']:
-            # Clear Django cache to ensure fresh version display
-            from django.core.cache import cache
-            cache.delete('system_update_check')
-            logger.info("Cleared system_update_check cache")
+            # Cache was already cleared before the subprocess ran (see above)
 
             # Force reload version module to display new version immediately
             try:

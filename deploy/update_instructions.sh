@@ -19,6 +19,14 @@ log "=================================================="
 log "Base directory: $BASE_DIR"
 log "Service: ${SERVICE:-<none detected>}"
 
+# --- Resolve git binary (path varies by OS / install method) ---
+GIT=$(command -v git 2>/dev/null || true)
+if [ -z "$GIT" ]; then
+    log "ERROR: git not found in PATH. Please install git."
+    exit 1
+fi
+log "Using git: $GIT"
+
 # --- Venv detection (mirrors Python _find_venv_python logic) ---
 VENV_DIR=""
 for candidate in \
@@ -57,8 +65,8 @@ fi
 # =====================================================================
 log ""
 log "Step 1/5: Fetching latest code from GitHub..."
-/usr/bin/git -C "$BASE_DIR" fetch origin main
-/usr/bin/git -C "$BASE_DIR" reset --hard origin/main
+$GIT -C "$BASE_DIR" fetch origin main
+$GIT -C "$BASE_DIR" reset --hard origin/main
 
 NEW_VERSION=$(grep "VERSION = " "$BASE_DIR/config/version.py" 2>/dev/null | cut -d"'" -f2 || echo "unknown")
 log "Step 1/5: Code updated. New version: $NEW_VERSION"
@@ -156,15 +164,24 @@ fi
 log ""
 log "Step 5/5: Scheduling service restart..."
 
-if [ -n "$SERVICE" ]; then
-    sudo /usr/bin/systemd-run --on-active=5 /usr/bin/systemctl restart "$SERVICE"
-    log "Step 5/5: Restart of '$SERVICE' scheduled (5-second delay)"
+SYSTEMD_RUN=$(command -v systemd-run 2>/dev/null || true)
+SYSTEMCTL=$(command -v systemctl 2>/dev/null || true)
+
+if [ -n "$SERVICE" ] && [ -n "$SYSTEMD_RUN" ] && [ -n "$SYSTEMCTL" ]; then
+    ( sudo "$SYSTEMD_RUN" --on-active=5 "$SYSTEMCTL" restart "$SERVICE" \
+        && log "Step 5/5: Restart of '$SERVICE' scheduled (5-second delay)" ) \
+        || log "[WARN] Scheduled restart failed — run: sudo systemctl restart $SERVICE"
+elif [ -n "$SERVICE" ] && [ -n "$SYSTEMCTL" ]; then
+    log "Step 5/5: systemd-run not found, restarting directly..."
+    ( sudo "$SYSTEMCTL" restart "$SERVICE" \
+        && log "Step 5/5: '$SERVICE' restarted directly" ) \
+        || log "[WARN] Direct restart failed — run: sudo systemctl restart $SERVICE"
 else
     # No systemd service — signal gunicorn directly
-    ( sudo /usr/bin/systemd-run --on-active=5 \
-        /usr/bin/pkill -USR2 -f "gunicorn.*config.wsgi:application" ) || true
-    ( sudo /usr/bin/systemd-run --on-active=7 \
-        /usr/bin/pkill -HUP -f "gunicorn" ) || true
+    ( sudo "$SYSTEMD_RUN" --on-active=5 \
+        /usr/bin/pkill -USR2 -f "gunicorn.*config.wsgi:application" ) 2>/dev/null || true
+    ( sudo "$SYSTEMD_RUN" --on-active=7 \
+        /usr/bin/pkill -HUP -f "gunicorn" ) 2>/dev/null || true
     log "Step 5/5: Gunicorn restart signals scheduled (USR2 + HUP)"
 fi
 

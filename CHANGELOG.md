@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.7] - 2026-02-24
+
+### Bug Fixes
+
+**Update script portability (exit code 127 on some servers):**
+- `deploy/update_instructions.sh` now resolves git via `command -v git` instead of hardcoding `/usr/bin/git` — git location varies by OS and install method
+- Service restart step wrapped in guarded subshells with `|| log` fallbacks; missing `systemd-run` or `systemctl` no longer hard-exits the script
+
+**Version revert after GUI update:**
+- `cache.delete('system_update_check')` moved to *before* the update subprocess is launched rather than after — the service restart (scheduled inside the script) kills the gunicorn process before the post-run code could execute, leaving a stale `current_version: old` entry in cache for up to 5 minutes
+
+**Fresh install migration failure (issue #90):**
+- Migration `0009_convert_to_generic_connection` used `ContentType.objects.get()` which raises `DoesNotExist` on fresh installs where `psaconnection` content type was never created; changed to `filter().first()` with an early-return guard so the migration is safely skipped when there is no data to migrate
+
 ## [3.12.6] - 2026-02-24
 
 ### Architecture

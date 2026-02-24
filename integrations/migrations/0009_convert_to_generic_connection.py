@@ -7,15 +7,23 @@ import django.db.models.deletion
 def migrate_connection_to_generic(apps, schema_editor):
     """
     Migrate data from old connection ForeignKey to new GenericForeignKey.
+    Safe on fresh installs: returns early if there are no existing records.
     """
     ExternalObjectMap = apps.get_model('integrations', 'ExternalObjectMap')
     ContentType = apps.get_model('contenttypes', 'ContentType')
 
-    # Get ContentType for PSAConnection
-    psa_connection_ct = ContentType.objects.get(
+    # Fresh installs have no data to migrate — skip entirely
+    if not ExternalObjectMap.objects.filter(connection_old_id__isnull=False).exists():
+        return
+
+    # Get ContentType for PSAConnection (may not exist on fresh installs)
+    psa_connection_ct = ContentType.objects.filter(
         app_label='integrations',
         model='psaconnection'
-    )
+    ).first()
+
+    if psa_connection_ct is None:
+        return
 
     # Update all existing records to use the GenericForeignKey
     for obj in ExternalObjectMap.objects.all():
