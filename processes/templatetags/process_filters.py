@@ -3,6 +3,7 @@ Template filters for processes app
 """
 from django import template
 from django.utils.safestring import mark_safe
+from django.utils.html import format_html, conditional_escape
 from datetime import datetime
 import json
 
@@ -24,37 +25,38 @@ def format_audit_value(value):
         try:
             value = json.loads(value)
         except (json.JSONDecodeError, ValueError):
-            return value
+            return conditional_escape(value)
 
     # If it's not a dict at this point, just return it
     if not isinstance(value, dict):
-        return str(value)
+        return conditional_escape(str(value))
 
     # Format the dictionary nicely
     output = []
     for key, val in value.items():
-        # Format the key
-        formatted_key = key.replace('_', ' ').title()
+        # Format the key (safe: derived from dict keys, but escape anyway)
+        formatted_key = conditional_escape(key.replace('_', ' ').title())
 
         # Format the value
         if isinstance(val, bool):
-            formatted_val = '✓ Yes' if val else '✗ No'
+            # Boolean indicators are static strings — safe
+            formatted_val = mark_safe('✓ Yes' if val else '✗ No')
         elif val is None:
-            formatted_val = '<span class="text-muted">None</span>'
+            formatted_val = mark_safe('<span class="text-muted">None</span>')
         elif isinstance(val, str):
             # Check if it's a datetime string
             if 'T' in val or '+' in val or val.count('-') == 2 and val.count(':') == 2:
                 try:
                     # Try to parse and format datetime
                     dt = datetime.fromisoformat(val.replace('Z', '+00:00'))
-                    formatted_val = dt.strftime('%Y-%m-%d %H:%M:%S')
+                    formatted_val = conditional_escape(dt.strftime('%Y-%m-%d %H:%M:%S'))
                 except (ValueError, AttributeError):
-                    formatted_val = val
+                    formatted_val = conditional_escape(val)
             else:
-                formatted_val = val
+                formatted_val = conditional_escape(val)
         else:
-            formatted_val = str(val)
+            formatted_val = conditional_escape(str(val))
 
-        output.append(f'<strong>{formatted_key}:</strong> {formatted_val}')
+        output.append(format_html('<strong>{}:</strong> {}', formatted_key, formatted_val))
 
-    return mark_safe('<br>'.join(output))
+    return mark_safe('<br>'.join(str(item) for item in output))

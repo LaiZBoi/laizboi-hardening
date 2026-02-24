@@ -35,20 +35,23 @@ class AssetSummaryReport(ReportGenerator):
             count=Count('id')
         ).order_by('-count')
 
-        # Asset counts by status
-        active_count = assets.filter(is_active=True).count()
-        inactive_count = assets.filter(is_active=False).count()
-
         # Recently added
         days = self.parameters.get('recent_days', 30)
         recent_date = timezone.now() - timedelta(days=days)
-        recent_assets = assets.filter(created_at__gte=recent_date).count()
+
+        # Consolidated count query instead of 3 separate .count() calls
+        counts = assets.aggregate(
+            total=Count('id'),
+            active=Count('id', filter=Q(is_active=True)),
+            inactive=Count('id', filter=Q(is_active=False)),
+            recent=Count('id', filter=Q(created_at__gte=recent_date)),
+        )
 
         return {
-            'total_assets': assets.count(),
-            'active_assets': active_count,
-            'inactive_assets': inactive_count,
-            'recent_assets': recent_assets,
+            'total_assets': counts['total'],
+            'active_assets': counts['active'],
+            'inactive_assets': counts['inactive'],
+            'recent_assets': counts['recent'],
             'by_type': list(by_type),
             'generated_at': datetime.now().isoformat(),
         }

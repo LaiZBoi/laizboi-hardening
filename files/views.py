@@ -46,6 +46,9 @@ def serve_attachment(request, pk):
 
     # Use X-Accel-Redirect if not in debug mode
     if not settings.DEBUG:
+        from django.core.exceptions import SuspiciousFileOperation
+        if '..' in attachment.file.name or attachment.file.name.startswith('/'):
+            raise SuspiciousFileOperation("Invalid file path")
         # Nginx internal location: /internal_uploads/
         internal_path = f"/internal_uploads/{attachment.file.name}"
         response = HttpResponse()
@@ -127,13 +130,13 @@ def upload_attachment(request):
     file_ext = filename.rsplit('.', 1)[-1] if '.' in filename else ''
 
     if not file_ext or file_ext not in ALLOWED_EXTENSIONS:
-        return HttpResponse(f"File type not allowed: .{file_ext}. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}", status=400)
+        return HttpResponse("File type not allowed", status=400)
 
     # Security: Block dangerous filenames
     DANGEROUS_PATTERNS = ['.exe', '.bat', '.cmd', '.sh', '.php', '.jsp', '.asp', '.aspx', '.js', '.vbs', '.scr']
     for pattern in DANGEROUS_PATTERNS:
         if pattern in filename:
-            return HttpResponse(f"Dangerous file type detected: {pattern}", status=400)
+            return HttpResponse("File type not allowed", status=400)
 
     # Security: Validate file content matches extension (magic bytes verification)
     uploaded_file.seek(0)  # Reset file pointer
@@ -165,10 +168,7 @@ def upload_attachment(request):
                 break
 
         if not valid_magic:
-            return HttpResponse(
-                f"File content does not match extension .{file_ext}. Possible file type mismatch or malicious upload attempt.",
-                status=400
-            )
+            return HttpResponse("Invalid file", status=400)
 
     # Optimize images
     IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'}

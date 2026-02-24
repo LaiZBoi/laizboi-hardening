@@ -116,44 +116,40 @@ class Document(BaseModel):
 
         # Sanitize HTML for security
         # Allow Bootstrap 5 styling components and Font Awesome icons
+        # Removed interactive/form elements: button, form, input, select, textarea
         allowed_tags = list(bleach.sanitizer.ALLOWED_TAGS) + [
             'p', 'br', 'pre', 'code', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
             'strong', 'em', 'ul', 'ol', 'li', 'blockquote', 'hr', 'table',
             'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span', 'img', 'a',
             'i', 'b', 'u', 's', 'small', 'mark', 'del', 'ins', 'sub', 'sup',
-            'button', 'kbd', 'samp', 'var', 'abbr', 'address', 'cite', 'q',
+            'kbd', 'samp', 'var', 'abbr', 'address', 'cite', 'q',
             'section', 'article', 'header', 'footer', 'nav', 'aside', 'main',
             'figure', 'figcaption', 'details', 'summary', 'time', 'dl', 'dt', 'dd'
         ]
-        allowed_attrs = {
-            **bleach.sanitizer.ALLOWED_ATTRIBUTES,
-            '*': ['class', 'id', 'style'],  # Allow class/id/style on all tags for Bootstrap
-            'img': ['src', 'alt', 'title', 'width', 'height', 'class', 'style', 'loading'],
-            'a': ['href', 'title', 'target', 'rel', 'class', 'style'],
-            'button': ['type', 'class', 'style', 'disabled', 'data-*'],
-            'div': ['class', 'id', 'style', 'role', 'aria-*', 'data-*'],
-            'span': ['class', 'id', 'style', 'role', 'aria-*', 'data-*'],
-            'i': ['class', 'style', 'aria-*'],  # Font Awesome icons
-            'table': ['class', 'style', 'border', 'cellpadding', 'cellspacing'],
-            'td': ['colspan', 'rowspan', 'style', 'class'],
-            'th': ['colspan', 'rowspan', 'style', 'class', 'scope'],
-            'ul': ['class', 'style'],
-            'ol': ['class', 'style', 'start', 'type'],
-            'li': ['class', 'style'],
-            'code': ['class', 'style'],
-            'pre': ['class', 'style'],
-            'p': ['class', 'style'],
-            'h1': ['class', 'id', 'style'],
-            'h2': ['class', 'id', 'style'],
-            'h3': ['class', 'id', 'style'],
-            'h4': ['class', 'id', 'style'],
-            'h5': ['class', 'id', 'style'],
-            'h6': ['class', 'id', 'style'],
-            'section': ['class', 'id', 'style'],
-            'article': ['class', 'id', 'style'],
-            'blockquote': ['class', 'style', 'cite'],
-        }
-        return bleach.clean(html, tags=allowed_tags, attributes=allowed_attrs, strip=False)
+
+        SAFE_HREF_PROTOCOLS = ('http://', 'https://', 'mailto:', '#')
+
+        def allowed_attrs_fn(tag, name, value):
+            if name == 'href':
+                return any(value.startswith(p) for p in SAFE_HREF_PROTOCOLS)
+            if name == 'style':
+                return False  # Remove style from all tags to prevent CSS injection
+            # Allow class, id, data-* on allowed tags
+            allowed = {
+                '*': ['class', 'id'],
+                'img': ['src', 'alt', 'width', 'height', 'loading'],
+                'a': ['href', 'title', 'target', 'rel'],
+                'td': ['colspan', 'rowspan'],
+                'th': ['colspan', 'rowspan', 'scope'],
+                'ol': ['start', 'type'],
+                'code': ['class'],
+                'pre': ['class'],
+            }
+            global_allowed = allowed.get('*', [])
+            tag_allowed = allowed.get(tag, [])
+            return name in global_allowed or name in tag_allowed
+
+        return bleach.clean(html, tags=allowed_tags, attributes=allowed_attrs_fn, strip=False)
 
     # Backward compatibility
     def render_markdown(self):

@@ -34,7 +34,14 @@ class OrganizationType(DjangoObjectType):
 
     class Meta:
         model = Organization
-        fields = '__all__'
+        fields = (
+            'id', 'name', 'slug', 'organization_type', 'description',
+            'street_address', 'street_address_2', 'city', 'state',
+            'postal_code', 'country', 'phone', 'email', 'website',
+            'primary_contact_name', 'primary_contact_title',
+            'primary_contact_email', 'primary_contact_phone',
+            'created_at', 'updated_at', 'is_active',
+        )
 
     def resolve_asset_count(self, info):
         return self.asset_set.count() if hasattr(self, 'asset_set') else 0
@@ -46,13 +53,22 @@ class OrganizationType(DjangoObjectType):
 class AssetTypeType(DjangoObjectType):
     class Meta:
         model = AssetType
-        fields = '__all__'
+        fields = (
+            'id', 'name', 'slug', 'description', 'icon', 'color',
+            'is_active', 'show_in_menu', 'created_at', 'updated_at',
+        )
 
 
 class AssetObjectType(DjangoObjectType):
     class Meta:
         model = Asset
-        fields = '__all__'
+        fields = (
+            'id', 'name', 'asset_type', 'asset_tag', 'serial_number',
+            'manufacturer', 'model', 'hostname', 'ip_address', 'mac_address',
+            'is_rackmount', 'rack_units', 'port_count', 'custom_fields',
+            'purchase_date', 'lifespan_years', 'notes',
+            'created_at', 'updated_at', 'organization',
+        )
 
 
 class PasswordType(DjangoObjectType):
@@ -65,25 +81,46 @@ class PasswordType(DjangoObjectType):
 class DocumentType(DjangoObjectType):
     class Meta:
         model = Document
-        fields = '__all__'
+        fields = (
+            'id', 'title', 'slug', 'body', 'content_type', 'is_published',
+            'is_template', 'is_archived', 'is_global', 'organization',
+            'created_at', 'updated_at',
+        )
 
 
 class DiagramType(DjangoObjectType):
     class Meta:
         model = Diagram
-        fields = '__all__'
+        fields = (
+            'id', 'title', 'slug', 'description', 'diagram_xml',
+            'diagram_type', 'is_global', 'is_published', 'is_template',
+            'version_number', 'organization', 'created_at', 'updated_at',
+        )
 
 
 class LocationType(DjangoObjectType):
     class Meta:
         model = Location
-        fields = '__all__'
+        fields = (
+            'id', 'name', 'location_type', 'street_address', 'street_address_2',
+            'city', 'state', 'postal_code', 'country', 'latitude', 'longitude',
+            'building_sqft', 'floors_count', 'year_built', 'is_primary',
+            'status', 'notes', 'phone', 'email', 'website',
+            'organization', 'is_shared', 'created_at', 'updated_at',
+        )
 
 
 class WebsiteMonitorType(DjangoObjectType):
     class Meta:
         model = WebsiteMonitor
-        fields = '__all__'
+        fields = (
+            'id', 'name', 'url', 'check_interval_minutes', 'is_enabled',
+            'status', 'last_checked_at', 'last_status_code', 'last_response_time_ms',
+            'ssl_enabled', 'ssl_expires_at', 'ssl_warning_days',
+            'domain_expires_at', 'domain_warning_days',
+            'notify_on_down', 'notify_on_ssl_expiry', 'notify_on_domain_expiry',
+            'organization', 'created_at', 'updated_at',
+        )
 
 
 class ExpirationType(DjangoObjectType):
@@ -91,12 +128,17 @@ class ExpirationType(DjangoObjectType):
 
     class Meta:
         model = Expiration
-        fields = '__all__'
+        fields = (
+            'id', 'name', 'expiration_type', 'expires_at', 'warning_days',
+            'related_url', 'notes', 'auto_renew', 'notification_sent',
+            'organization', 'created_at', 'updated_at',
+        )
 
     def resolve_days_until_expiry(self, info):
         from datetime import date
-        if self.expiration_date:
-            delta = self.expiration_date - date.today()
+        from django.utils import timezone
+        if self.expires_at:
+            delta = self.expires_at.date() - date.today()
             return delta.days
         return None
 

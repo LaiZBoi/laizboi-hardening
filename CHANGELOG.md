@@ -5,6 +5,73 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0] - 2026-02-24
+
+### Security & Performance Hardening Release
+
+This release addresses findings from a full internal security and performance audit across the entire codebase. No functional changes — all existing behaviour is preserved.
+
+#### Security Fixes
+
+**GraphQL: explicit field whitelists on all types** (`api/graphql/schema.py`)
+- Replaced `fields = '__all__'` on every `DjangoObjectType` with explicit safe field lists
+- Sensitive fields (internal flags, file paths, cost data, raw error strings, SSL serial numbers, `created_by`, `last_modified_by`) are no longer queryable via the API
+- Also fixed a resolver that was referencing the wrong field name (`expiration_date` → `expires_at`)
+
+**GraphQL playground disabled in production** (`api/urls_graphql.py`)
+- `graphiql` interface now only enabled when `DEBUG=True`
+- Playground URL route only registered in debug mode — schema exploration is not accessible on production deployments
+
+**subprocess input validation — ping target** (`locations/models.py`)
+- `WAN.check_status()` now validates `monitor_target` against `^[a-zA-Z0-9.\-]+$` before passing it to `subprocess.run(['ping', ...])`
+- Rejects any value containing shell metacharacters or unexpected characters
+
+**XSS: process template filters use proper escaping** (`processes/templatetags/process_filters.py`)
+- All user-controlled dict keys and values now pass through `conditional_escape()` before being rendered
+- HTML assembly uses `format_html()` instead of bare f-strings — user data can no longer inject arbitrary HTML
+
+**Path traversal: X-Accel-Redirect validation** (`files/views.py`)
+- File download view now raises `SuspiciousFileOperation` if `attachment.file.name` contains `..` or starts with `/` before setting the nginx `X-Accel-Redirect` header
+
+**Bleach HTML sanitization tightened** (`docs/models.py`)
+- Removed `<button>` from allowed tags (interactive element, potential JS vector)
+- Replaced dict-based `allowed_attrs` with a callable that enforces safe `href` protocols (`http://`, `https://`, `mailto:`, `#`) — blocks `javascript:` and protocol-relative `//attacker.com` URLs
+- Removed `style` attribute from all tags globally (CSS injection vector)
+
+**Generic file upload error messages** (`files/views.py`)
+- Error responses no longer enumerate allowed file extensions or reveal specific file type details
+- All three verbose error messages replaced with `"File type not allowed"` / `"Invalid file"`
+
+**CSRF: JSON content-type enforcement on exempt API endpoints** (`monitoring/api_views.py`)
+- Six `@csrf_exempt` state-changing endpoints now reject requests where `Content-Type` is not `application/json`
+- Browsers cannot submit cross-site form POSTs with `application/json` content type, providing equivalent CSRF protection without requiring cookie-based tokens on these AJAX-only endpoints
+
+#### Performance Fixes
+
+**Dashboard: 3 monitor status queries → 1** (`core/dashboard_views.py`)
+- Replaced three separate `WebsiteMonitor.objects.filter(status=X).count()` calls with a single `.aggregate(Count('id', filter=Q(status=X)))` query
+
+**Dashboard: activity feed skips loading large JSONField** (`core/dashboard_views.py`)
+- Added `.only(...)` to the audit log activity feed query — `extra_data` JSONField no longer loaded for display-only rows
+
+**Asset filter extraction: no longer loads full ORM objects** (`assets/views.py`)
+- Custom field filter options (statuses, locations) now extracted via `.values_list('custom_fields', flat=True)` instead of iterating full model instances
+
+**Network scan device matching: batch fetch instead of N+1** (`assets/views.py`)
+- All org assets are now fetched once before the scan matching loop with `select_related('asset_type')`
+- `match_device_to_asset()` accepts an `assets_cache` parameter and does all matching in Python when provided — eliminates 2 DB queries per scanned device
+
+**Asset images: bounded query** (`assets/views.py`)
+- `asset_detail` image attachment query now limited to 50 results
+
+**Report generator: 4 COUNT queries → 1** (`reports/generators.py`)
+- Asset summary report replaced four separate `.filter().count()` calls with a single `.aggregate()` covering total, active, inactive, and recent counts
+
+#### Verification
+- `manage.py check`: clean (1 pre-existing axes deprecation warning, unrelated)
+- All 10 pre-existing test failures unchanged (setUp profile issue in tenant isolation tests, pre-dates this release)
+- All 10 modified files passed syntax check
+
 ## [3.12.14] - 2026-02-24
 
 ### Changes

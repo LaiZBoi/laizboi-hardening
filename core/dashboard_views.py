@@ -115,15 +115,23 @@ def dashboard(request):
         ssl_expires_at__lte=thirty_days
     ).order_by('ssl_expires_at')[:5]
 
-    # Website monitor status summary
-    monitors_down = WebsiteMonitor.objects.filter(organization=org, status='down').count()
-    monitors_warning = WebsiteMonitor.objects.filter(organization=org, status='warning').count()
-    monitors_active = WebsiteMonitor.objects.filter(organization=org, status='active').count()
+    # Website monitor status summary (single aggregated query)
+    monitor_counts = WebsiteMonitor.objects.filter(organization=org).aggregate(
+        monitors_down=Count('id', filter=Q(status='down')),
+        monitors_warning=Count('id', filter=Q(status='warning')),
+        monitors_active=Count('id', filter=Q(status='active')),
+    )
+    monitors_down = monitor_counts['monitors_down']
+    monitors_warning = monitor_counts['monitors_warning']
+    monitors_active = monitor_counts['monitors_active']
 
     # Recent activity feed (last 15 actions)
     activity_feed = AuditLog.objects.filter(
         organization=org
-    ).select_related('user').order_by('-timestamp')[:15]
+    ).select_related('user').only(
+        'id', 'user_id', 'action', 'description', 'timestamp',
+        'object_type', 'object_id', 'organization_id'
+    ).order_by('-timestamp')[:15]
 
     # Check if user has 2FA enabled or authenticated via Azure AD SSO
     has_2fa = False

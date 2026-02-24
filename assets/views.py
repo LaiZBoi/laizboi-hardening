@@ -58,13 +58,15 @@ def asset_list(request):
     asset_types = Asset.ASSET_TYPES
 
     # Get unique statuses and locations from custom_fields
+    # Use values_list to avoid loading full model objects
     statuses = set()
     locations = set()
-    for asset in all_assets:
-        if asset.custom_fields.get('status'):
-            statuses.add(asset.custom_fields['status'])
-        if asset.custom_fields.get('location'):
-            locations.add(asset.custom_fields['location'])
+    custom_fields_list = all_assets.values_list('custom_fields', flat=True)
+    for cf in custom_fields_list:
+        if cf and cf.get('status'):
+            statuses.add(cf['status'])
+        if cf and cf.get('location'):
+            locations.add(cf['location'])
 
     return render(request, 'assets/asset_list.html', {
         'assets': assets,
@@ -115,7 +117,7 @@ def asset_detail(request, pk):
         entity_type='asset',
         entity_id=asset.id,
         content_type__startswith='image/'
-    ).order_by('-created_at')
+    ).order_by('-created_at')[:50]
 
     return render(request, 'assets/asset_detail.html', {
         'asset': asset,
@@ -654,10 +656,13 @@ def network_scan_upload(request):
 
         devices = scan_data['devices']
 
+        # Batch-fetch all org assets once before the matching loop
+        org_assets_cache = list(Asset.objects.for_organization(org).select_related('asset_type'))
+
         # Match devices against existing assets
         matched_devices = []
         for device in devices:
-            match_info = match_device_to_asset(device, org)
+            match_info = match_device_to_asset(device, org, assets_cache=org_assets_cache)
             matched_devices.append({
                 'device': device,
                 'match': match_info,
@@ -778,23 +783,29 @@ def network_scan_apply(request):
         return redirect('assets:network_scan_preview')
 
 
-def match_device_to_asset(device, org):
+def match_device_to_asset(device, org, assets_cache=None):
     """
     Match scanned device to existing asset.
 
     Returns:
         dict with keys: status, asset, match_reason
         status: 'new', 'update', 'duplicate'
+
+    When assets_cache is provided (a pre-fetched list of Asset objects),
+    matching is done in Python to avoid per-device DB queries.
     """
     mac = device.get('mac_address', '').upper()
     ip = device.get('ip')
 
-    # Try matching by MAC address (most reliable)
-    if mac:
-        existing = Asset.objects.filter(
-            organization=org,
-            mac_address__iexact=mac
-        ).first()
+    if assets_cache is not None:
+        # Filter in Python using pre-fetched cache
+        # Try matching by MAC address (most reliable)
+        existing = None
+        if mac:
+            for a in assets_cache:
+                if a.mac_address and a.mac_address.upper() == mac:
+                    existing = a
+                    break
 
         if existing:
             return {
@@ -809,15 +820,14 @@ def match_device_to_asset(device, org):
                 'match_reason': 'MAC address match',
             }
 
-    # Try matching by IP address (less reliable)
-    if ip:
-        existing = Asset.objects.filter(
-            organization=org,
-            ip_address=ip
-        ).first()
+        # Try matching by IP address (less reliable)
+        if ip:
+            for a in assets_cache:
+                if str(a.ip_address) == str(ip):
+                    existing = a
+                    break
 
         if existing:
-            # Check if MAC is different (possible duplicate/IP reassignment)
             if mac and existing.mac_address and existing.mac_address.upper() != mac:
                 return {
                     'status': 'duplicate',
@@ -842,6 +852,61 @@ def match_device_to_asset(device, org):
                 },
                 'match_reason': 'IP address match',
             }
+
+    else:
+        # Fallback: use DB queries when no cache provided
+        # Try matching by MAC address (most reliable)
+        if mac:
+            existing = Asset.objects.filter(
+                organization=org,
+                mac_address__iexact=mac
+            ).first()
+
+            if existing:
+                return {
+                    'status': 'update',
+                    'asset': {
+                        'id': existing.id,
+                        'name': existing.name,
+                        'asset_type': existing.asset_type,
+                        'mac_address': existing.mac_address,
+                        'ip_address': str(existing.ip_address) if existing.ip_address else None,
+                    },
+                    'match_reason': 'MAC address match',
+                }
+
+        # Try matching by IP address (less reliable)
+        if ip:
+            existing = Asset.objects.filter(
+                organization=org,
+                ip_address=ip
+            ).first()
+
+            if existing:
+                if mac and existing.mac_address and existing.mac_address.upper() != mac:
+                    return {
+                        'status': 'duplicate',
+                        'asset': {
+                            'id': existing.id,
+                            'name': existing.name,
+                            'asset_type': existing.asset_type,
+                            'mac_address': existing.mac_address,
+                            'ip_address': str(existing.ip_address) if existing.ip_address else None,
+                        },
+                        'match_reason': 'IP address match but different MAC (possible reassignment)',
+                    }
+
+                return {
+                    'status': 'update',
+                    'asset': {
+                        'id': existing.id,
+                        'name': existing.name,
+                        'asset_type': existing.asset_type,
+                        'mac_address': existing.mac_address,
+                        'ip_address': str(existing.ip_address) if existing.ip_address else None,
+                    },
+                    'match_reason': 'IP address match',
+                }
 
     # No match - new device
     return {

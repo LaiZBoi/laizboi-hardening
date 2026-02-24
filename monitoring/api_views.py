@@ -75,6 +75,8 @@ def update_rack_device_position(request, pk):
     Update device position and/or size.
     Request body: {"start_unit": 15, "units": 2}
     """
+    if request.content_type != 'application/json':
+        return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
     device = get_object_or_404(RackDevice, pk=pk, rack__organization=org)
 
@@ -216,6 +218,8 @@ def create_rack_device(request, pk):
     Create device from drag-and-drop.
     Request body: {"asset_id": 123, "start_unit": 10, "units": 1}
     """
+    if request.content_type != 'application/json':
+        return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
     rack = get_object_or_404(Rack, pk=pk, organization=org)
 
@@ -368,6 +372,8 @@ def patch_panel_port_connect(request, pk, port_num):
     Connect a port to another location.
     Request body: {"connected_to": "Room 101", "cable_color": "#ff0000", "label": "Server A"}
     """
+    if request.content_type != 'application/json':
+        return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
     patch_panel = get_object_or_404(
         RackResource,
@@ -444,6 +450,8 @@ def patch_panel_port_disconnect(request, pk, port_num):
     POST /api/patch-panels/<id>/ports/<port_num>/disconnect/
     Disconnect a port.
     """
+    if request.content_type != 'application/json':
+        return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
     patch_panel = get_object_or_404(
         RackResource,
@@ -599,6 +607,8 @@ def update_device_board_position(request, pk):
     Update device position on wall-mounted board.
     Request body: {"x": 100, "y": 200, "width": 300, "height": 150}
     """
+    if request.content_type != 'application/json':
+        return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
     device = get_object_or_404(RackDevice, pk=pk, rack__organization=org)
 
@@ -662,6 +672,8 @@ def update_resource_board_position(request, pk):
     Update resource position on wall-mounted board.
     Request body: {"x": 100, "y": 200, "width": 300, "height": 150}
     """
+    if request.content_type != 'application/json':
+        return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
     resource = get_object_or_404(RackResource, pk=pk, rack__organization=org)
 
