@@ -66,19 +66,51 @@ class UpdateProgress:
         self.set_progress(progress)
 
     def step_start(self, step_name):
-        """Mark a step as starting."""
+        """Mark a step as starting (single file write)."""
         progress = self.get_progress()
         progress['current_step'] = step_name
+        progress['logs'].append({
+            'message': f'Starting: {step_name}',
+            'level': 'info',
+            'timestamp': time.time()
+        })
         self.set_progress(progress)
-        self.add_log(f"Starting: {step_name}", 'info')
 
     def step_complete(self, step_name):
-        """Mark a step as complete."""
+        """Mark a step as complete (single file write)."""
         progress = self.get_progress()
-        progress['steps_completed'].append(step_name)
+        if step_name not in progress.get('steps_completed', []):
+            progress['steps_completed'].append(step_name)
         progress['current_step'] = ''
+        progress['logs'].append({
+            'message': f'Completed: {step_name}',
+            'level': 'success',
+            'timestamp': time.time()
+        })
         self.set_progress(progress)
-        self.add_log(f"Completed: {step_name}", 'success')
+
+    def process_log_line(self, message, step_triggers=None):
+        """Add a log line and optionally update step state in a single file write.
+
+        step_triggers: list of (marker_substring, 'start'|'complete', step_name)
+        """
+        progress = self.get_progress()
+        progress['logs'].append({
+            'message': message,
+            'level': 'info',
+            'timestamp': time.time()
+        })
+        if step_triggers:
+            for marker, action, step_name in step_triggers:
+                if marker in message:
+                    if action == 'start':
+                        progress['current_step'] = step_name
+                    else:
+                        if step_name not in progress.get('steps_completed', []):
+                            progress.setdefault('steps_completed', []).append(step_name)
+                        progress['current_step'] = ''
+                    break
+        self.set_progress(progress)
 
     def finish(self, success=True, error=None):
         """Mark update as finished."""

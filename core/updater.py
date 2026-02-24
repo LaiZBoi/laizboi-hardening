@@ -413,20 +413,15 @@ class UpdateService:
             process = subprocess.Popen(
                 ['/bin/bash', script_path],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, env=env, cwd=str(self.base_dir)
+                text=True, bufsize=1,  # line-buffered: emit each line as it arrives
+                env=env, cwd=str(self.base_dir)
             )
             for line in iter(process.stdout.readline, ''):
                 stripped = line.rstrip()
                 if stripped:
                     if progress_tracker:
-                        progress_tracker.add_log(stripped)
-                        for marker, action, step_name in step_triggers:
-                            if marker in stripped:
-                                if action == 'start':
-                                    progress_tracker.step_start(step_name)
-                                else:
-                                    progress_tracker.step_complete(step_name)
-                                break
+                        # Single read+write per line: log + step change atomically
+                        progress_tracker.process_log_line(stripped, step_triggers)
                     result['output'].append(stripped)
             process.wait()
 

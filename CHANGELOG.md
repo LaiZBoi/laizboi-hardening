@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.13] - 2026-02-24
+
+### Bug Fixes
+
+**Update progress bar: real-time streaming fixed:**
+- Root cause was Python's default 8KB block buffer on subprocess pipes — `readline()` blocked until the buffer filled or the script exited, so no lines streamed through in real-time
+- Fixed by adding `bufsize=1` to `subprocess.Popen` (line-buffered mode) so each bash `echo` from the update script is delivered to Python immediately as it's written
+- Reduced file I/O from 3 reads + 3 writes per log line down to 1 read + 1 write by adding a `process_log_line()` method to `UpdateProgress` that atomically writes the log entry and step state change together
+- Also fixed `step_start`/`step_complete` to not double-write (previously called `add_log` as a separate write after already writing step state)
+
+**Favorites navbar item: icon-only to save space:**
+- Removed " Favorites" text label; link is now just the ★ icon with a "Favorites" tooltip on hover
+
+**Tooltips: fixed for dropdown items and clock:**
+- Added `container: 'body'` to tooltip options so tooltips on dropdown menu items render outside the menu element (fixes positioning/clipping inside hidden `.dropdown-menu`)
+- Changed `trigger` from `'hover'` to `'hover focus'` for better keyboard accessibility
+- Clock tooltip now uses `setAttribute('data-bs-original-title', ...)` instead of `el.title = ...` — Bootstrap 5 stores tooltip text in `data-bs-original-title` at init time and ignores subsequent `title` changes
+
+**Navbar logo padding:**
+- Added `!important` to `.navbar-container` padding so theme CSS resets cannot override it
+
 ## [3.12.12] - 2026-02-24
 
 ### Bug Fixes
