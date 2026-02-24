@@ -313,12 +313,10 @@ class UpdateService:
         """
         Perform full system update.
 
-        Steps:
-        1. Git pull from main branch
-        2. Install Python dependencies
-        3. Run database migrations
-        4. Collect static files
-        5. Restart service
+        Downloads update_instructions.sh from GitHub and executes it, streaming
+        output line-by-line.  If the script has a bug, push a fix to GitHub —
+        the next update attempt downloads the fixed script automatically without
+        needing a code-version bump.
 
         Returns:
             dict with 'success', 'steps_completed', 'output', 'error'
@@ -329,6 +327,8 @@ class UpdateService:
             'output': [],
             'error': None,
         }
+
+        script_path = None
 
         try:
             # Pre-check: Verify passwordless sudo is configured (if running under systemd)
@@ -351,670 +351,115 @@ class UpdateService:
                         "Or update manually via command line (see instructions below)."
                     )
 
-            # Step 1: Git fetch and intelligent update
+            # Step 1: Download update instructions from GitHub
             if progress_tracker:
-                progress_tracker.step_start('Git Pull')
-            logger.info("Starting update: Git fetch")
+                progress_tracker.step_start('Download Update Script')
 
-            # First, fetch from remote (self-healing: tries without sudo, uses sudo if needed)
-            fetch_output = self._run_command(['/usr/bin/git', 'fetch', 'origin'])
-            result['output'].append(f"Git fetch: {fetch_output}")
+            script_url = (
+                f'https://raw.githubusercontent.com/'
+                f'{self.repo_owner}/{self.repo_name}/main/deploy/update_instructions.sh'
+            )
+            logger.info(f"Downloading update instructions from: {script_url}")
+            result['output'].append(f"Downloading update instructions from GitHub...")
 
-            # Check if branches are divergent (happens after force push)
-            local_commit = self._run_command(['/usr/bin/git', 'rev-parse', 'HEAD']).strip()
-            remote_commit = self._run_command(['/usr/bin/git', 'rev-parse', 'origin/main']).strip()
+            response = requests.get(script_url, headers=self._get_github_headers(), timeout=30)
+            response.raise_for_status()
+            script_content = response.text
 
-            git_output = ""
-            if local_commit != remote_commit:
-                # Updates are available - use reset --hard for reliability
-                # This avoids git pull configuration issues and works in all scenarios
-                logger.info("Updates available - resetting to remote version")
-                result['output'].append("Updating to latest version...")
+            if not script_content.startswith('#!/'):
+                raise Exception('Downloaded content is not a valid shell script')
 
-                git_output = self._run_command(['/usr/bin/git', 'reset', '--hard', 'origin/main'])
-                result['output'].append(f"Git reset: {git_output}")
-
-                # Check if it was a force push (informational only)
-                try:
-                    self._run_command(['/usr/bin/git', 'merge-base', '--is-ancestor', f'{local_commit}', 'origin/main'])
-                    result['output'].append("✓ Fast-forward update applied")
-                except:
-                    result['output'].append("⚠️ Repository history changed (force push detected)")
-                    result['output'].append("✓ Reset to remote version successful")
-            else:
-                logger.info("Repository already up to date")
-                result['output'].append("Repository already up to date")
-                git_output = "Already up to date"
-
-            result['steps_completed'].append('git_pull')
-            if progress_tracker:
-                progress_tracker.step_complete('Git Pull')
-
-            # Check if there were any changes
-            if 'Already up to date' in git_output:
-                logger.info("No updates available in git repository")
-
-            # Step 2: Install requirements
-            if progress_tracker:
-                progress_tracker.step_start('Install Dependencies')
-            logger.info("Installing Python dependencies")
-
-            # Install main requirements using venv python -m pip to ensure venv is used even with sudo
-            # Search for venv in multiple common locations to handle different installation patterns
-            venv_python = self._find_venv_python()
-
-            pip_output = self._run_command([venv_python, '-m', 'pip', 'install', '-r',
-                os.path.join(self.base_dir, 'requirements.txt')
-                # Note: Removed --upgrade to avoid rebuilding compiled packages like python-ldap
-                # Git pull already brought new code, we only need to install missing packages
-            ])
-            result['steps_completed'].append('install_requirements')
-            result['output'].append(f"Pip install: {pip_output[:500]}")  # Truncate output
-
-            # Install optional dependencies if they exist
-            optional_requirements = [
-                'requirements-graphql.txt',
-                'requirements-optional.txt'
-            ]
-            for req_file in optional_requirements:
-                req_path = os.path.join(self.base_dir, req_file)
-                if os.path.exists(req_path):
-                    logger.info(f"Installing optional dependencies from {req_file}")
-                    try:
-                        optional_pip_output = self._run_command([venv_python, '-m', 'pip', 'install', '-r', req_path])
-                        result['output'].append(f"Optional dependencies ({req_file}): Installed")
-                        logger.info(f"Successfully installed {req_file}")
-                    except Exception as e:
-                        # Optional dependencies - log warning but continue
-                        logger.warning(f"Failed to install {req_file} (non-critical): {e}")
-                        result['output'].append(f"⚠️ Optional dependencies ({req_file}): Skipped - {str(e)}")
+            result['output'].append("Update instructions downloaded successfully")
+            result['steps_completed'].append('download_script')
 
             if progress_tracker:
-                progress_tracker.step_complete('Install Dependencies')
+                progress_tracker.step_complete('Download Update Script')
 
-            # Step 3: Run migrations
+            # Step 2: Write to temp file and make executable
+            script_path = f'/tmp/clientst0r_update_{os.getpid()}.sh'
+            with open(script_path, 'w') as f:
+                f.write(script_content)
+            os.chmod(script_path, 0o700)
+            logger.info(f"Update script written to: {script_path}")
+
+            # Step 3: Execute — pass context via environment variables
             if progress_tracker:
-                progress_tracker.step_start('Run Migrations')
-            logger.info("Running database migrations")
+                progress_tracker.step_start('Execute Update')
 
-            # Use venv python for migrations (already validated above during pip install)
-            # venv_python is already set from the pip install step above
+            env = os.environ.copy()
+            env['CLIENTST0R_BASE_DIR'] = str(self.base_dir)
+            env['CLIENTST0R_SERVICE_NAME'] = self.service_name or ''
 
-            migrate_output = self._run_command([venv_python,
-                os.path.join(self.base_dir, 'manage.py'),
-                'migrate', '--noinput'
-            ])
-            result['steps_completed'].append('migrate')
-            result['output'].append(f"Migrations: {migrate_output}")
-            if progress_tracker:
-                progress_tracker.step_complete('Run Migrations')
+            logger.info(
+                f"Executing update script with BASE_DIR={self.base_dir}, "
+                f"SERVICE={self.service_name}"
+            )
+            result['output'].append(f"Base directory: {self.base_dir}")
 
-            # Step 3.5: Apply Gunicorn environment fix (if script exists)
-            fix_script_path = os.path.join(self.base_dir, 'scripts', 'fix_gunicorn_env.sh')
-            if os.path.exists(fix_script_path):
-                if progress_tracker:
-                    progress_tracker.step_start('Apply Gunicorn Fix')
-                logger.info("Running Gunicorn environment fix script")
-                try:
-                    # Make script executable if it isn't already
-                    os.chmod(fix_script_path, 0o755)
+            process = subprocess.Popen(
+                ['/bin/bash', script_path],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, env=env, cwd=str(self.base_dir)
+            )
+            for line in iter(process.stdout.readline, ''):
+                stripped = line.rstrip()
+                if stripped and progress_tracker:
+                    progress_tracker.add_log(stripped)
+                result['output'].append(stripped)
+            process.wait()
 
-                    # Run the fix script (it has its own sudo commands inside)
-                    fix_output = self._run_command([fix_script_path])
-                    result['steps_completed'].append('gunicorn_fix')
-                    result['output'].append(f"Gunicorn fix: {fix_output}")
-                    logger.info("Gunicorn fix applied successfully")
-                except Exception as e:
-                    # Non-critical - log warning but continue
-                    logger.warning(f"Gunicorn fix failed (non-critical): {e}")
-                    result['output'].append(f"⚠️ Gunicorn fix skipped: {str(e)}")
-                if progress_tracker:
-                    progress_tracker.step_complete('Apply Gunicorn Fix')
-
-            # Step 3.6: Setup mobile app building (if script exists)
-            mobile_setup_script = os.path.join(self.base_dir, 'deploy', 'setup_mobile_build.sh')
-            if os.path.exists(mobile_setup_script):
-                if progress_tracker:
-                    progress_tracker.step_start('Setup Mobile Build')
-                logger.info("Configuring mobile app building")
-                try:
-                    os.chmod(mobile_setup_script, 0o755)
-                    mobile_setup_output = self._run_command([mobile_setup_script])
-                    result['steps_completed'].append('mobile_build_setup')
-                    result['output'].append(f"Mobile build setup: Complete")
-                    logger.info("Mobile app building configured")
-                except Exception as e:
-                    # Non-critical - log warning but continue
-                    logger.warning(f"Mobile build setup failed (non-critical): {e}")
-                    result['output'].append(f"⚠️ Mobile build setup skipped: {str(e)}")
-                if progress_tracker:
-                    progress_tracker.step_complete('Setup Mobile Build')
-            else:
-                logger.info("Mobile build setup script not found - skipping")
-
-            # Step 4: Collect static files
-            if progress_tracker:
-                progress_tracker.step_start('Collect Static Files')
-            logger.info("Collecting static files")
-            static_output = self._run_command([venv_python,
-                os.path.join(self.base_dir, 'manage.py'),
-                'collectstatic', '--noinput'
-            ])
-            result['steps_completed'].append('collectstatic')
-            result['output'].append(f"Static files: {static_output[:500]}")
-            if progress_tracker:
-                progress_tracker.step_complete('Collect Static Files')
-
-            # Step 5: Generate diagram previews for any diagrams without them
-            if progress_tracker:
-                progress_tracker.step_start('Generate Diagram Previews')
-            logger.info("Generating diagram previews...")
-            try:
-                preview_output = self._run_command([
-                    venv_python, 'manage.py', 'generate_diagram_previews', '--force'
-                ], timeout=60)
-                result['steps_completed'].append('generate_diagram_previews')
-                result['output'].append(f"✓ Diagram previews generated")
-                logger.info(f"Diagram preview generation: {preview_output[:200]}")
-            except Exception as e:
-                # Non-critical, continue with update
-                logger.warning(f"Diagram preview generation failed (non-critical): {e}")
-                result['output'].append(f"⚠ Diagram preview generation skipped: {str(e)[:100]}")
-            if progress_tracker:
-                progress_tracker.step_complete('Generate Diagram Previews')
-
-            # Step 6: Generate workflow diagrams for workflows without diagrams
-            if progress_tracker:
-                progress_tracker.step_start('Generate Workflow Diagrams')
-            logger.info("Generating workflow diagrams...")
-            try:
-                workflow_output = self._run_command([
-                    venv_python, 'manage.py', 'generate_workflow_diagrams'
-                ])
-                result['steps_completed'].append('generate_workflow_diagrams')
-                result['output'].append(f"✓ Workflow diagrams generated")
-                logger.info(f"Workflow diagram generation: {workflow_output[:200]}")
-            except Exception as e:
-                # Non-critical, continue with update
-                logger.warning(f"Workflow diagram generation failed (non-critical): {e}")
-                result['output'].append(f"⚠ Workflow diagram generation skipped: {str(e)[:100]}")
-            if progress_tracker:
-                progress_tracker.step_complete('Generate Workflow Diagrams')
-
-            # Step 7: Install fail2ban sudoers configuration (if needed)
-            if progress_tracker:
-                progress_tracker.step_start('Configure Fail2ban Integration')
-            logger.info("Checking fail2ban configuration...")
-            try:
-                # Check if fail2ban is installed
-                fail2ban_check = subprocess.run(
-                    ['/usr/bin/which', 'fail2ban-client'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
+            if process.returncode != 0:
+                raise Exception(
+                    f"Update script exited with code {process.returncode}"
                 )
 
-                if fail2ban_check.returncode == 0:
-                    # fail2ban is installed, check if sudoers is configured
-                    sudoers_path = '/etc/sudoers.d/clientst0r-fail2ban'
-                    if not os.path.exists(sudoers_path):
-                        logger.info("fail2ban installed but sudoers not configured - installing...")
-
-                        # Copy sudoers file from deploy directory
-                        source_path = os.path.join(self.base_dir, 'deploy', 'clientst0r-fail2ban-sudoers')
-                        if os.path.exists(source_path):
-                            # Install sudoers file
-                            copy_result = subprocess.run(
-                                ['/usr/bin/sudo', '/usr/bin/cp', source_path, sudoers_path],
-                                capture_output=True,
-                                text=True,
-                                timeout=10
-                            )
-
-                            if copy_result.returncode == 0:
-                                # Set correct permissions
-                                chmod_result = subprocess.run(
-                                    ['/usr/bin/sudo', '/usr/bin/chmod', '0440', sudoers_path],
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=10
-                                )
-
-                                if chmod_result.returncode == 0:
-                                    result['steps_completed'].append('fail2ban_sudoers')
-                                    result['output'].append("✓ Fail2ban sudoers configuration installed automatically")
-                                    logger.info("Fail2ban sudoers configuration installed successfully")
-                                else:
-                                    logger.warning(f"Failed to set sudoers permissions: {chmod_result.stderr}")
-                                    result['output'].append("⚠ Fail2ban sudoers installed but permissions not set - please run: sudo chmod 0440 /etc/sudoers.d/clientst0r-fail2ban")
-                            else:
-                                logger.warning(f"Failed to copy sudoers file: {copy_result.stderr}")
-                                result['output'].append(f"⚠ Fail2ban sudoers installation failed: {copy_result.stderr[:100]}")
-                        else:
-                            logger.warning("Fail2ban sudoers source file not found")
-                            result['output'].append("⚠ Fail2ban sudoers source file not found in deploy/ directory")
-                    else:
-                        logger.info("Fail2ban sudoers already configured")
-                        result['output'].append("✓ Fail2ban sudoers already configured")
-                else:
-                    logger.info("fail2ban not installed - skipping sudoers configuration")
-                    result['output'].append("• Fail2ban not installed - sudoers configuration skipped")
-
-            except Exception as e:
-                # Non-critical - log warning but continue
-                logger.warning(f"Fail2ban configuration check failed (non-critical): {e}")
-                result['output'].append(f"⚠ Fail2ban configuration check skipped: {str(e)[:100]}")
+            result['steps_completed'].append('execute_script')
 
             if progress_tracker:
-                progress_tracker.step_complete('Configure Fail2ban Integration')
-
-            # Step 7.5: Regenerate and install sudoers files with correct paths
-            if progress_tracker:
-                progress_tracker.step_start('Update Sudoers Configuration')
-            logger.info("Regenerating sudoers files with correct paths...")
-            try:
-                import getpass
-                current_user = getpass.getuser()
-                install_dir = str(self.base_dir)
-
-                # Create deploy directory if it doesn't exist
-                deploy_dir = os.path.join(install_dir, 'deploy')
-                os.makedirs(deploy_dir, exist_ok=True)
-
-                # Generate clientst0r-install-sudoers
-                install_sudoers_content = f"""# Sudoers configuration for Client St0r automatic fail2ban installation
-# Install: sudo cp {install_dir}/deploy/clientst0r-install-sudoers /etc/sudoers.d/clientst0r-install
-# Permissions: sudo chmod 0440 /etc/sudoers.d/clientst0r-install
-
-# Allow {current_user} user to install and configure fail2ban without password
-{current_user} ALL=(ALL) NOPASSWD: /usr/bin/apt-get update
-{current_user} ALL=(ALL) NOPASSWD: /usr/bin/apt-get install -y fail2ban
-{current_user} ALL=(ALL) NOPASSWD: /bin/systemctl enable fail2ban
-{current_user} ALL=(ALL) NOPASSWD: /bin/systemctl start fail2ban
-{current_user} ALL=(ALL) NOPASSWD: /bin/systemctl status fail2ban
-{current_user} ALL=(ALL) NOPASSWD: /bin/cp {install_dir}/deploy/clientst0r-fail2ban-sudoers /etc/sudoers.d/clientst0r-fail2ban
-{current_user} ALL=(ALL) NOPASSWD: /bin/chmod 0440 /etc/sudoers.d/clientst0r-fail2ban
-"""
-
-                # Generate clientst0r-fail2ban-sudoers
-                fb_sudoers_content = f"""# Sudoers configuration for Client St0r fail2ban integration
-# Install: sudo cp {install_dir}/deploy/clientst0r-fail2ban-sudoers /etc/sudoers.d/clientst0r-fail2ban
-# Permissions: sudo chmod 0440 /etc/sudoers.d/clientst0r-fail2ban
-
-# Allow {current_user} user to run fail2ban-client without password
-{current_user} ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client
-"""
-
-                # Write files
-                install_sudoers_path = os.path.join(deploy_dir, 'clientst0r-install-sudoers')
-                fb_sudoers_path = os.path.join(deploy_dir, 'clientst0r-fail2ban-sudoers')
-
-                with open(install_sudoers_path, 'w') as f:
-                    f.write(install_sudoers_content)
-                with open(fb_sudoers_path, 'w') as f:
-                    f.write(fb_sudoers_content)
-
-                logger.info("Sudoers files regenerated successfully")
-                result['output'].append(f"✓ Sudoers files regenerated for user: {current_user}")
-
-                # Now install them if needed
-                install_needed = []
-
-                # Check clientst0r-install
-                install_dest = '/etc/sudoers.d/clientst0r-install'
-                if not os.path.exists(install_dest):
-                    install_needed.append(('clientst0r-install', install_sudoers_path, install_dest))
-                else:
-                    # Check if content differs
-                    try:
-                        with open(install_dest, 'r') as f:
-                            existing_content = f.read()
-                        if existing_content != install_sudoers_content:
-                            install_needed.append(('clientst0r-install', install_sudoers_path, install_dest))
-                    except:
-                        pass
-
-                # Check clientst0r-fail2ban
-                fb_dest = '/etc/sudoers.d/clientst0r-fail2ban'
-                if not os.path.exists(fb_dest):
-                    install_needed.append(('clientst0r-fail2ban', fb_sudoers_path, fb_dest))
-                else:
-                    # Check if content differs
-                    try:
-                        with open(fb_dest, 'r') as f:
-                            existing_content = f.read()
-                        if existing_content != fb_sudoers_content:
-                            install_needed.append(('clientst0r-fail2ban', fb_sudoers_path, fb_dest))
-                    except:
-                        pass
-
-                # Install files that need updating
-                if install_needed:
-                    result['output'].append("📝 Installing sudoers files (requires passwordless sudo)...")
-                    install_success_count = 0
-                    install_fail_count = 0
-
-                    for name, source, dest in install_needed:
-                        try:
-                            # Copy file
-                            copy_result = subprocess.run(
-                                ['/usr/bin/sudo', '/usr/bin/cp', source, dest],
-                                capture_output=True,
-                                text=True,
-                                timeout=10
-                            )
-
-                            if copy_result.returncode == 0:
-                                # Set permissions
-                                chmod_result = subprocess.run(
-                                    ['/usr/bin/sudo', '/usr/bin/chmod', '0440', dest],
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=10
-                                )
-
-                                if chmod_result.returncode == 0:
-                                    result['steps_completed'].append(f'install_{name}_sudoers')
-                                    result['output'].append(f"  ✓ {name} sudoers installed successfully")
-                                    logger.info(f"{name} sudoers installed successfully")
-                                    install_success_count += 1
-                                else:
-                                    logger.warning(f"Failed to set {name} sudoers permissions: {chmod_result.stderr}")
-                                    result['output'].append(f"  ⚠ {name} installed but permissions not set: {chmod_result.stderr[:50]}")
-                                    install_fail_count += 1
-                            else:
-                                error_msg = copy_result.stderr.strip() if copy_result.stderr else 'Unknown error'
-                                logger.warning(f"Failed to copy {name} sudoers: {error_msg}")
-                                if 'password' in error_msg.lower() or 'sudo' in error_msg.lower():
-                                    result['output'].append(f"  ✗ {name} FAILED - passwordless sudo not configured")
-                                    result['output'].append(f"     Run CLI update first: cd {install_dir} && ./update.sh")
-                                else:
-                                    result['output'].append(f"  ✗ {name} FAILED: {error_msg[:70]}")
-                                install_fail_count += 1
-                        except subprocess.TimeoutExpired:
-                            logger.warning(f"Timeout installing {name} sudoers - may be waiting for password")
-                            result['output'].append(f"  ✗ {name} TIMED OUT - likely waiting for sudo password")
-                            result['output'].append(f"     Run CLI update first: cd {install_dir} && ./update.sh")
-                            install_fail_count += 1
-                        except Exception as e:
-                            logger.warning(f"Failed to install {name} sudoers: {e}")
-                            result['output'].append(f"  ✗ {name} ERROR: {str(e)[:60]}")
-                            install_fail_count += 1
-
-                    # Summary message
-                    if install_fail_count > 0:
-                        result['output'].append("")
-                        result['output'].append(f"⚠ WARNING: {install_fail_count} sudoers file(s) failed to install")
-                        result['output'].append("Some features may require manual sudo password entry.")
-                        result['output'].append(f"Fix: Run './update.sh' from {install_dir} to configure sudoers properly")
-                else:
-                    result['output'].append("✓ Sudoers files already up to date")
-                    logger.info("Sudoers files already up to date")
-
-            except Exception as e:
-                # Non-critical - log warning but continue
-                logger.warning(f"Sudoers configuration update failed (non-critical): {e}")
-                result['output'].append(f"⚠ Sudoers configuration update skipped: {str(e)[:100]}")
-
-            if progress_tracker:
-                progress_tracker.step_complete('Update Sudoers Configuration')
-
-            # Step 7.5: Install/Update Scheduler Service
-            if progress_tracker:
-                progress_tracker.step_start('Configure Task Scheduler')
-
-            logger.info("Checking scheduler service installation...")
-            try:
-                scheduler_service = os.path.join(self.base_dir, 'deploy', 'itdocs-scheduler.service')
-                scheduler_timer = os.path.join(self.base_dir, 'deploy', 'itdocs-scheduler.timer')
-
-                if os.path.exists(scheduler_service) and os.path.exists(scheduler_timer):
-                    # Check if scheduler timer is installed and running
-                    timer_check = subprocess.run(
-                        ['/usr/bin/systemctl', 'is-enabled', 'itdocs-scheduler.timer'],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-
-                    needs_install = timer_check.returncode != 0
-
-                    if needs_install:
-                        logger.info("Scheduler service not found - installing...")
-                        result['output'].append("")
-                        result['output'].append("⚙️  Installing Task Scheduler Service...")
-
-                        # Update service file with correct paths
-                        with open(scheduler_service, 'r') as f:
-                            service_content = f.read()
-
-                        # Replace placeholder paths with actual installation paths
-                        service_content = service_content.replace(
-                            'WorkingDirectory=/home/administrator',
-                            f'WorkingDirectory={self.base_dir}'
-                        )
-                        service_content = service_content.replace(
-                            'Environment="PATH=/home/administrator/venv/bin"',
-                            f'Environment="PATH={os.path.join(self.base_dir, "venv", "bin")}"'
-                        )
-                        service_content = service_content.replace(
-                            'EnvironmentFile=/home/administrator/.env',
-                            f'EnvironmentFile={os.path.join(self.base_dir, ".env")}'
-                        )
-                        service_content = service_content.replace(
-                            'ExecStart=/home/administrator/venv/bin/python manage.py run_scheduler',
-                            f'ExecStart={os.path.join(self.base_dir, "venv", "bin", "python")} manage.py run_scheduler'
-                        )
-
-                        # Get current user
-                        import pwd
-                        current_user = pwd.getpwuid(os.getuid()).pw_name
-                        service_content = service_content.replace('User=administrator', f'User={current_user}')
-                        service_content = service_content.replace('Group=administrator', f'Group={current_user}')
-
-                        # Write updated service file to temp location
-                        import tempfile
-                        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.service') as temp_service:
-                            temp_service.write(service_content)
-                            temp_service_path = temp_service.name
-
-                        try:
-                            # Copy service files to systemd directory
-                            copy_service = self._run_command([
-                                '/usr/bin/sudo', '/usr/bin/cp',
-                                temp_service_path,
-                                '/etc/systemd/system/itdocs-scheduler.service'
-                            ])
-
-                            copy_timer = self._run_command([
-                                '/usr/bin/sudo', '/usr/bin/cp',
-                                scheduler_timer,
-                                '/etc/systemd/system/itdocs-scheduler.timer'
-                            ])
-
-                            # Reload systemd
-                            self._run_command(['/usr/bin/sudo', '/usr/bin/systemctl', 'daemon-reload'])
-
-                            # Enable and start timer
-                            self._run_command(['/usr/bin/sudo', '/usr/bin/systemctl', 'enable', 'itdocs-scheduler.timer'])
-                            self._run_command(['/usr/bin/sudo', '/usr/bin/systemctl', 'start', 'itdocs-scheduler.timer'])
-
-                            result['output'].append("  ✓ Scheduler service installed and started")
-                            result['output'].append(f"  ✓ Scheduled tasks will now run automatically")
-                            logger.info("Scheduler service installed successfully")
-
-                        except Exception as e:
-                            logger.warning(f"Failed to install scheduler service: {e}")
-                            result['output'].append(f"  ⚠ Scheduler install failed: {str(e)[:70]}")
-                            result['output'].append("  → Manual fix: See issue #88 on GitHub")
-                        finally:
-                            # Clean up temp file
-                            try:
-                                os.unlink(temp_service_path)
-                            except:
-                                pass
-                    else:
-                        logger.info("Scheduler service already installed")
-                        result['output'].append("✓ Task Scheduler service already running")
-                else:
-                    logger.warning("Scheduler service files not found in deploy/")
-
-            except Exception as e:
-                logger.warning(f"Scheduler service check failed (non-critical): {e}")
-                result['output'].append(f"⚠ Scheduler check skipped: {str(e)[:80]}")
-
-            if progress_tracker:
-                progress_tracker.step_complete('Configure Task Scheduler')
-
-            # Step 8: Service restart - DISABLED
-            # The UpdateService runs INSIDE gunicorn and cannot reliably restart itself.
-            # This is a fundamental design flaw - a process cannot restart itself.
-            # Instead, we mark the update as complete and require manual restart.
-            logger.info("Update complete. Service restart required manually.")
-            result['output'].append("")
-            result['output'].append("=" * 50)
-            result['output'].append("✓ CODE UPDATE COMPLETE!")
-            result['output'].append("=" * 50)
-            service_name = self.service_name or 'clientst0r-gunicorn.service'
-            result['output'].append("")
-            result['output'].append("⚠️  SERVICES NEED MANUAL RESTART")
-            result['output'].append("")
-            result['output'].append("Choose ONE method:")
-            result['output'].append("1. Click 'Force Restart Services' button below")
-            result['output'].append(f"2. SSH: sudo systemctl restart {service_name}")
-            result['output'].append("3. Run: python manage.py auto_heal_version")
-            result['steps_completed'].append('restart_service')
-
-            if True:  # Enable restart logic
-                if progress_tracker:
-                    progress_tracker.step_start('Restart Service')
-                logger.info("Restarting systemd service")
-
-                try:
-                    # Reload systemd daemon first to pick up any service file changes
-                    try:
-                        daemon_reload = self._run_command(['/usr/bin/sudo', '/usr/bin/systemctl', 'daemon-reload'])
-                        logger.info(f"Systemd daemon reloaded: {daemon_reload}")
-                        result['output'].append("✓ Systemd daemon reloaded")
-                    except Exception as e:
-                        logger.warning(f"Daemon reload failed (non-critical): {e}")
-
-                    # DELAYED RESTART: Schedule restart using systemd-run
-                    # This prevents suicide - restart happens AFTER this response completes
-                    logger.info("Scheduling delayed service restart to avoid suicide problem")
-
-                    try:
-                        # Use auto-detected service name or fallback to detecting it now
-                        service_name = self.service_name
-                        if not service_name:
-                            service_name = self._detect_gunicorn_service_name()
-
-                        if service_name:
-                            # Schedule restart in 5 seconds - gives time for response to complete
-                            restart_output = self._run_command([
-                                '/usr/bin/sudo', '/usr/bin/systemd-run',
-                                '--on-active=5',  # Wait 5 seconds for response to complete
-                                '/usr/bin/systemctl', 'restart', service_name
-                            ])
-                            logger.info(f"Systemd service {service_name} restart scheduled: {restart_output}")
-
-                            result['steps_completed'].append('restart_service')
-                            result['output'].append(f"✓ Service restart scheduled (5 second delay)")
-                            result['output'].append("⚠️  Please wait 10 seconds, then refresh the page")
-                        else:
-                            # No systemd service - use pkill for manual gunicorn
-                            logger.info("No systemd service found - restarting manual gunicorn with pkill")
-
-                            # Try multiple restart methods to ensure it works
-                            restart_methods = []
-
-                            # Method 1: SIGUSR2 - graceful restart of master and all workers
-                            try:
-                                pkill_cmd1 = self._run_command([
-                                    '/usr/bin/sudo', '/usr/bin/systemd-run',
-                                    '--on-active=5',
-                                    '/usr/bin/pkill', '-USR2', '-f', 'gunicorn.*config.wsgi:application'
-                                ])
-                                logger.info(f"Gunicorn USR2 restart scheduled: {pkill_cmd1}")
-                                restart_methods.append("USR2 signal")
-                            except:
-                                pass
-
-                            # Method 2: HUP - reload workers (fallback)
-                            try:
-                                pkill_cmd2 = self._run_command([
-                                    '/usr/bin/sudo', '/usr/bin/systemd-run',
-                                    '--on-active=7',  # Slightly later
-                                    '/usr/bin/pkill', '-HUP', '-f', 'gunicorn'
-                                ])
-                                logger.info(f"Gunicorn HUP reload scheduled: {pkill_cmd2}")
-                                restart_methods.append("HUP signal")
-                            except:
-                                pass
-
-                            result['steps_completed'].append('restart_service')
-                            if restart_methods:
-                                result['output'].append(f"✓ Gunicorn restart scheduled: {', '.join(restart_methods)}")
-                            else:
-                                result['output'].append(f"⚠️  Using fallback restart method")
-                            result['output'].append("⚠️  Wait 15 seconds, then HARD REFRESH (Ctrl+Shift+R)")
-                            result['output'].append(f"📍 Updated directory: {self.base_dir}")
-
-                    except Exception as e:
-                        logger.error(f"Service restart failed: {e}")
-                        # Fallback: try direct pkill as last resort
-                        try:
-                            logger.info("Fallback: trying direct gunicorn restart")
-                            # Send both USR2 and HUP to ensure restart
-                            subprocess.run(
-                                ['nohup', '/bin/bash', '-c',
-                                 'sleep 5 && pkill -USR2 gunicorn; sleep 2 && pkill -HUP gunicorn'],
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL,
-                                start_new_session=True
-                            )
-                            result['output'].append(f"✓ Gunicorn restart scheduled (fallback: USR2+HUP)")
-                            result['output'].append("⚠️  Wait 15 seconds, then HARD REFRESH (Ctrl+Shift+R)")
-                            result['output'].append(f"📍 Updated: {self.base_dir}")
-                            result['steps_completed'].append('restart_service')
-                        except Exception as fallback_error:
-                            logger.error(f"All restart methods failed: {fallback_error}")
-                            result['output'].append(f"⚠️  Auto-restart failed. Manually restart gunicorn:")
-                            result['output'].append(f"   kill -HUP $(ps aux | grep gunicorn | grep -v grep | head -1 | awk '{{print $2}}')")
-                            result['steps_completed'].append('restart_service')
-                    if progress_tracker:
-                        progress_tracker.step_complete('Restart Service')
-                except Exception as e:
-                    error_msg = str(e)
-                    if 'password is required' in error_msg or 'terminal is required' in error_msg:
-                        raise Exception(
-                            "Passwordless sudo is not configured. Auto-update requires passwordless sudo "
-                            "to restart the service. Please configure it by running:\n\n"
-                            "sudo tee /etc/sudoers.d/clientst0r-auto-update > /dev/null <<SUDOERS\n"
-                            f"$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart clientst0r-gunicorn.service, "
-                            "/usr/bin/systemctl stop clientst0r-gunicorn.service, /usr/bin/systemctl start clientst0r-gunicorn.service, "
-                            "/usr/bin/systemctl status clientst0r-gunicorn.service, /usr/bin/systemctl daemon-reload, "
-                            "/usr/bin/systemd-run, /usr/bin/pkill, "
-                            "/usr/bin/tee /etc/systemd/system/clientst0r-gunicorn.service, "
-                            "/usr/bin/cp, /usr/bin/chmod\n"
-                            "SUDOERS\n\n"
-                            "sudo chmod 0440 /etc/sudoers.d/clientst0r-auto-update\n\n"
-                            "Or update manually via command line. See the system updates page for instructions."
-                        )
-                    else:
-                        raise
-            else:
-                logger.warning("Not running as systemd service - skipping restart")
+                progress_tracker.step_complete('Execute Update')
 
             result['success'] = True
 
+        except Exception as e:
+            logger.error(f"Update failed: {e}")
+            error_msg = str(e)
+
+            result['error'] = error_msg
+            result['output'].append(f"ERROR: {error_msg}")
+
+            if progress_tracker:
+                progress_tracker.finish(success=False, error=error_msg)
+
+            # Log failure to audit trail
+            AuditLog.objects.create(
+                action='system_update_failed',
+                description=f'System update failed: {str(e)}',
+                user=user,
+                username=user.username if user else 'system',
+                success=False,
+                extra_data={
+                    'current_version': self.current_version,
+                    'steps_completed': result['steps_completed'],
+                    'error': str(e),
+                }
+            )
+
+        finally:
+            # Always clean up the temp script
+            if script_path and os.path.exists(script_path):
+                try:
+                    os.unlink(script_path)
+                    logger.info(f"Cleaned up temp script: {script_path}")
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean up temp script: {cleanup_err}")
+
+        if result['success']:
             # Clear Django cache to ensure fresh version display
             from django.core.cache import cache
             cache.delete('system_update_check')
             logger.info("Cleared system_update_check cache")
 
             # Force reload version module to display new version immediately
-            # This only affects THIS worker, but at least one worker will show correct version
             try:
                 import sys
                 import importlib
@@ -1023,13 +468,11 @@ class UpdateService:
                     from config.version import VERSION
                     self.current_version = VERSION
                     logger.info(f"Reloaded version module: {VERSION}")
-                    result['output'].append(f"")
-                    result['output'].append(f"🎉 UPDATE SUCCESSFUL!")
-                    result['output'].append(f"📦 New version: {VERSION}")
-                    result['output'].append(f"📍 Location: {self.base_dir}")
-                    result['output'].append(f"")
-
-                    # Update result to show new version
+                    result['output'].append("")
+                    result['output'].append("UPDATE SUCCESSFUL!")
+                    result['output'].append(f"New version: {VERSION}")
+                    result['output'].append(f"Location: {self.base_dir}")
+                    result['output'].append("")
                     result['new_version'] = VERSION
             except Exception as e:
                 logger.warning(f"Failed to reload version module: {e}")
@@ -1051,45 +494,6 @@ class UpdateService:
             )
 
             logger.info("Update completed successfully")
-
-        except Exception as e:
-            logger.error(f"Update failed: {e}")
-            error_msg = str(e)
-
-            # Special handling for divergent branches error with helpful instructions
-            if 'divergent branches' in error_msg.lower():
-                error_msg = (
-                    "Update failed due to repository history changes (force push).\n\n"
-                    "This happens when you're on an older version that doesn't have the auto-fix.\n\n"
-                    "Quick fix - run these commands in terminal:\n\n"
-                    f"cd {self.base_dir}\n"
-                    "git fetch origin\n"
-                    "git reset --hard origin/main\n"
-                    "sudo systemctl restart clientst0r-gunicorn.service\n\n"
-                    "After this one-time fix, future updates will handle this automatically.\n\n"
-                    "See Issue #24 on GitHub for more details."
-                )
-                logger.error(f"Divergent branches detected. Manual fix required. See error message for instructions.")
-
-            result['error'] = error_msg
-            result['output'].append(f"ERROR: {error_msg}")
-
-            if progress_tracker:
-                progress_tracker.finish(success=False, error=error_msg)
-
-            # Log failure to audit trail
-            AuditLog.objects.create(
-                action='system_update_failed',
-                description=f'System update failed: {str(e)}',
-                user=user,
-                username=user.username if user else 'system',
-                success=False,
-                extra_data={
-                    'current_version': self.current_version,
-                    'steps_completed': result['steps_completed'],
-                    'error': str(e),
-                }
-            )
 
         return result
 

@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.6] - 2026-02-24
+
+### Architecture
+
+**Downloadable Update Instructions:**
+- `perform_update()` in `core/updater.py` now downloads `deploy/update_instructions.sh` fresh from the GitHub `main` branch and executes it, instead of running ~800 lines of hardcoded Python step logic
+- `scripts/auto_update.sh` is now a thin wrapper that downloads and delegates to `deploy/update_instructions.sh` the same way
+- If the update logic has a bug (wrong service name, broken restart command, etc.), push a fix to `deploy/update_instructions.sh` on GitHub — the next update attempt from any client automatically picks up the fixed script without needing a version bump
+- The downloaded script is written to `/tmp/clientst0r_update_<pid>.sh`, executed, then cleaned up regardless of success or failure
+- Progress is streamed line-by-line from the script to the GUI progress tracker in real time
+
 ## [3.12.5] - 2026-02-24
 
 ### 🔧 Fixes
