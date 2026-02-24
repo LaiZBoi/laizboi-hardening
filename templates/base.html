@@ -142,7 +142,6 @@
                             <li><a class="dropdown-item" href="{% url 'reports:analytics_overview' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="System analytics and usage metrics"><i class="fas fa-chart-line"></i> Analytics</a></li>
                         </ul>
                     </li>
-                    <li class="nav-item"><a class="nav-link px-2" href="{% url 'core:favorite_list' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Favorites"><i class="fas fa-star text-warning"></i></a></li>
                     {% if user.is_superuser %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">
@@ -178,6 +177,7 @@
                             <i class="fas fa-heart text-danger"></i>
                         </a>
                     </li>
+                    <li class="nav-item"><a class="nav-link px-2" href="{% url 'core:favorite_list' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Favorites"><i class="fas fa-star text-warning"></i></a></li>
                     <!-- Global KB Link -->
                     {% if global_kb_enabled %}
                         {% if is_staff_user or user.is_superuser %}
