@@ -105,6 +105,10 @@ class Command(BaseCommand):
         self.stdout.write('\nCreating website monitors...')
         self._create_website_monitors()
 
+        # Step 12: Create racks and network closets
+        self.stdout.write('\nCreating racks and network closets...')
+        self._create_racks()
+
         self.stdout.write(self.style.SUCCESS('\n' + '='*60))
         self.stdout.write(self.style.SUCCESS('Demo data seeding completed!'))
         self.stdout.write(self.style.SUCCESS('='*60))
@@ -939,3 +943,145 @@ Post-mortem required for all P1 and P2 incidents within 48 hours.
 
             if created:
                 self.stdout.write(f'  ✓ Created monitor: {monitor.name}')
+
+    def _create_racks(self):
+        """Create sample racks and network closets with devices"""
+        from monitoring.models import Rack, RackDevice, RackResource
+
+        # --- Full server rack ---
+        rack, created = Rack.objects.get_or_create(
+            organization=self.demo_org,
+            name='Server Room - Rack A1',
+            defaults={
+                'rack_type': 'full_rack',
+                'building': 'HQ',
+                'floor': '1',
+                'room': 'Server Room',
+                'units': 42,
+                'width_inches': 19,
+                'power_capacity_watts': 10000,
+                'cooling_capacity_btu': 20000,
+                'pdu_count': 2,
+                'notes': 'Primary production rack. Hosts core infrastructure.',
+            }
+        )
+        if created:
+            self.stdout.write('  ✓ Created rack: Server Room - Rack A1')
+            for device in [
+                {'name': 'Core Switch - Cisco 9300', 'start_unit': 42, 'units': 1, 'power_draw_watts': 370, 'color': '#0d6efd'},
+                {'name': 'Firewall - FortiGate 400F',  'start_unit': 41, 'units': 1, 'power_draw_watts': 150, 'color': '#dc3545'},
+                {'name': 'Patch Panel 1 (1-24)',        'start_unit': 40, 'units': 1, 'power_draw_watts': 0,   'color': '#6c757d'},
+                {'name': 'Patch Panel 2 (25-48)',       'start_unit': 39, 'units': 1, 'power_draw_watts': 0,   'color': '#6c757d'},
+                {'name': 'Server 1 - Dell R750',        'start_unit': 37, 'units': 2, 'power_draw_watts': 800, 'color': '#198754'},
+                {'name': 'Server 2 - Dell R750',        'start_unit': 35, 'units': 2, 'power_draw_watts': 800, 'color': '#198754'},
+                {'name': 'NAS - Synology RS3621',       'start_unit': 33, 'units': 2, 'power_draw_watts': 300, 'color': '#6f42c1'},
+                {'name': 'KVM Switch',                  'start_unit': 32, 'units': 1, 'power_draw_watts': 20,  'color': '#fd7e14'},
+                {'name': 'UPS - APC 3000VA',            'start_unit': 1,  'units': 3, 'power_draw_watts': 0,   'color': '#ffc107'},
+            ]:
+                RackDevice.objects.get_or_create(rack=rack, start_unit=device['start_unit'], defaults=device)
+
+        # --- Half rack (secondary) ---
+        rack2, created = Rack.objects.get_or_create(
+            organization=self.demo_org,
+            name='Server Room - Rack B1',
+            defaults={
+                'rack_type': 'half_rack',
+                'building': 'HQ',
+                'floor': '1',
+                'room': 'Server Room',
+                'units': 24,
+                'width_inches': 19,
+                'power_capacity_watts': 4000,
+                'cooling_capacity_btu': 8000,
+                'pdu_count': 1,
+                'notes': 'Secondary rack for dev and staging servers.',
+            }
+        )
+        if created:
+            self.stdout.write('  ✓ Created rack: Server Room - Rack B1')
+            for device in [
+                {'name': 'Dev Server 1',    'start_unit': 24, 'units': 2, 'power_draw_watts': 500, 'color': '#0dcaf0'},
+                {'name': 'Dev Server 2',    'start_unit': 22, 'units': 2, 'power_draw_watts': 500, 'color': '#0dcaf0'},
+                {'name': 'Staging Switch',  'start_unit': 21, 'units': 1, 'power_draw_watts': 80,  'color': '#0d6efd'},
+                {'name': 'Patch Panel',     'start_unit': 20, 'units': 1, 'power_draw_watts': 0,   'color': '#6c757d'},
+                {'name': 'UPS - APC 1500VA','start_unit': 1,  'units': 2, 'power_draw_watts': 0,   'color': '#ffc107'},
+            ]:
+                RackDevice.objects.get_or_create(rack=rack2, start_unit=device['start_unit'], defaults=device)
+
+        # --- Network closet (Floor 2) ---
+        closet1, created = Rack.objects.get_or_create(
+            organization=self.demo_org,
+            name='Floor 2 Network Closet',
+            defaults={
+                'rack_type': 'network_closet',
+                'building': 'HQ',
+                'floor': '2',
+                'room': 'IDF-2',
+                'units': 12,
+                'width_inches': 19,
+                'power_capacity_watts': 1500,
+                'patch_panel_count': 2,
+                'total_port_count': 48,
+                'notes': 'IDF for floor 2. Services 35 workstations and 4 APs.',
+            }
+        )
+        if created:
+            self.stdout.write('  ✓ Created network closet: Floor 2 Network Closet')
+            for device in [
+                {'name': 'Access Switch - UniFi 48-Port', 'start_unit': 12, 'units': 1, 'power_draw_watts': 195, 'color': '#0d6efd'},
+                {'name': 'Patch Panel A (1-24)',           'start_unit': 11, 'units': 1, 'power_draw_watts': 0,   'color': '#6c757d'},
+                {'name': 'Patch Panel B (25-48)',          'start_unit': 10, 'units': 1, 'power_draw_watts': 0,   'color': '#6c757d'},
+                {'name': 'UPS - APC 750VA',               'start_unit': 1,  'units': 2, 'power_draw_watts': 0,   'color': '#ffc107'},
+            ]:
+                RackDevice.objects.get_or_create(rack=closet1, start_unit=device['start_unit'], defaults=device)
+
+        # --- Network closet (Floor 3) ---
+        closet2, created = Rack.objects.get_or_create(
+            organization=self.demo_org,
+            name='Floor 3 Network Closet',
+            defaults={
+                'rack_type': 'network_closet',
+                'building': 'HQ',
+                'floor': '3',
+                'room': 'IDF-3',
+                'units': 9,
+                'width_inches': 19,
+                'power_capacity_watts': 1000,
+                'patch_panel_count': 1,
+                'total_port_count': 24,
+                'notes': 'IDF for floor 3. Services 20 workstations and 2 APs.',
+            }
+        )
+        if created:
+            self.stdout.write('  ✓ Created network closet: Floor 3 Network Closet')
+            for device in [
+                {'name': 'Access Switch - UniFi 24-Port', 'start_unit': 9, 'units': 1, 'power_draw_watts': 95, 'color': '#0d6efd'},
+                {'name': 'Patch Panel (1-24)',             'start_unit': 8, 'units': 1, 'power_draw_watts': 0,  'color': '#6c757d'},
+                {'name': 'UPS - APC 500VA',               'start_unit': 1, 'units': 1, 'power_draw_watts': 0,  'color': '#ffc107'},
+            ]:
+                RackDevice.objects.get_or_create(rack=closet2, start_unit=device['start_unit'], defaults=device)
+
+        # --- Wall-mount closet (Warehouse) ---
+        wall_mount, created = Rack.objects.get_or_create(
+            organization=self.demo_org,
+            name='Warehouse Wall Mount',
+            defaults={
+                'rack_type': 'wall_mount',
+                'building': 'Warehouse',
+                'floor': '1',
+                'room': 'Network Room',
+                'units': 6,
+                'width_inches': 19,
+                'power_capacity_watts': 500,
+                'patch_panel_count': 1,
+                'total_port_count': 12,
+                'notes': 'Small wall-mount enclosure for warehouse connectivity.',
+            }
+        )
+        if created:
+            self.stdout.write('  ✓ Created wall mount: Warehouse Wall Mount')
+            for device in [
+                {'name': 'PoE Switch - 8-Port', 'start_unit': 6, 'units': 1, 'power_draw_watts': 65, 'color': '#0d6efd'},
+                {'name': 'Patch Panel (1-12)',   'start_unit': 5, 'units': 1, 'power_draw_watts': 0,  'color': '#6c757d'},
+            ]:
+                RackDevice.objects.get_or_create(rack=wall_mount, start_unit=device['start_unit'], defaults=device)

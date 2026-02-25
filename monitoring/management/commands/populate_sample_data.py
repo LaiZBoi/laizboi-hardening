@@ -199,10 +199,15 @@ class Command(BaseCommand):
             organization=org,
             name='Rack A1',
             defaults={
+                'rack_type': 'full_rack',
                 'location': 'Data Center - Row 1',
+                'building': 'HQ',
+                'floor': '1',
+                'room': 'Server Room',
                 'units': 42,
                 'power_capacity_watts': 5000,
                 'cooling_capacity_btu': 10000,
+                'pdu_count': 2,
             }
         )
 
@@ -210,6 +215,7 @@ class Command(BaseCommand):
         device_data = [
             {'name': 'Core Switch', 'start_unit': 40, 'units': 2, 'power_draw_watts': 150, 'color': '#0d6efd'},
             {'name': 'Firewall', 'start_unit': 38, 'units': 1, 'power_draw_watts': 100, 'color': '#dc3545'},
+            {'name': 'Patch Panel (1-24)', 'start_unit': 37, 'units': 1, 'power_draw_watts': 0, 'color': '#6c757d'},
             {'name': 'Server 1', 'start_unit': 35, 'units': 2, 'power_draw_watts': 400, 'color': '#198754'},
             {'name': 'Server 2', 'start_unit': 33, 'units': 2, 'power_draw_watts': 400, 'color': '#198754'},
             {'name': 'UPS', 'start_unit': 1, 'units': 4, 'power_draw_watts': 200, 'color': '#ffc107'},
@@ -220,6 +226,29 @@ class Command(BaseCommand):
                 start_unit=data['start_unit'],
                 defaults=data
             )
+
+        # Create network closets
+        closet, _ = Rack.objects.get_or_create(
+            organization=org,
+            name='Floor 2 Network Closet',
+            defaults={
+                'rack_type': 'network_closet',
+                'building': 'HQ',
+                'floor': '2',
+                'room': 'IDF-2',
+                'units': 12,
+                'power_capacity_watts': 1500,
+                'patch_panel_count': 2,
+                'total_port_count': 48,
+            }
+        )
+        for data in [
+            {'name': 'Access Switch - 48-Port', 'start_unit': 12, 'units': 1, 'power_draw_watts': 195, 'color': '#0d6efd'},
+            {'name': 'Patch Panel A (1-24)',     'start_unit': 11, 'units': 1, 'power_draw_watts': 0,   'color': '#6c757d'},
+            {'name': 'Patch Panel B (25-48)',    'start_unit': 10, 'units': 1, 'power_draw_watts': 0,   'color': '#6c757d'},
+            {'name': 'UPS - 750VA',              'start_unit': 1,  'units': 2, 'power_draw_watts': 0,   'color': '#ffc107'},
+        ]:
+            RackDevice.objects.get_or_create(rack=closet, start_unit=data['start_unit'], defaults=data)
 
         # Create subnets
         self.stdout.write("Creating IPAM subnets...")
