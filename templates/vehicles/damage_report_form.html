@@ -3,6 +3,22 @@
 
 {% block title %}{{ title }} - Client St0r{% endblock %}
 
+{% block extra_css %}
+<style>
+.damage-diagram-svg [data-area] { cursor: pointer; }
+.damage-diagram-svg [data-area]:hover { opacity: 0.72; }
+.damage-diagram-svg [data-area].selected-area {
+    filter: brightness(1.4) drop-shadow(0 0 8px #ef4444);
+    stroke: #ef4444 !important;
+    stroke-width: 4 !important;
+}
+.view-pane { display: none; }
+.view-pane.active { display: block; }
+.vehicle-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; border: 2px solid transparent; cursor: pointer; }
+.vehicle-thumb:hover { border-color: #0d6efd; }
+</style>
+{% endblock %}
+
 {% block content %}
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
@@ -12,80 +28,67 @@
     </ol>
 </nav>
 
-<h2><i class="fas fa-exclamation-triangle"></i> {{ title }}</h2>
+<h2><i class="fas fa-exclamation-triangle text-danger"></i> {{ title }}</h2>
+<p class="text-muted mb-3">{{ vehicle.year }} {{ vehicle.make }} {{ vehicle.model }} &mdash; {{ vehicle.license_plate }}</p>
 
 <div class="card">
     <div class="card-body">
         <form method="post">
             {% csrf_token %}
 
-            <div class="row">
-                <div class="col-md-6">
-                    <h5 class="mb-3">Incident Details</h5>
+            <div class="row g-4">
+
+                <!-- LEFT: Incident details -->
+                <div class="col-lg-5">
+                    <h5 class="mb-3"><i class="fas fa-clipboard-list me-1"></i>Incident Details</h5>
+
                     <div class="mb-3">
-                        <label class="form-label">Incident Date *</label>
+                        <label class="form-label fw-semibold">Incident Date <span class="text-danger">*</span></label>
                         {{ form.incident_date }}
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Reported By *</label>
+                        <label class="form-label fw-semibold">Reported By <span class="text-danger">*</span></label>
                         {{ form.reported_by }}
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Description *</label>
+                        <label class="form-label fw-semibold">Description <span class="text-danger">*</span></label>
                         {{ form.description }}
                     </div>
                     <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Severity *</label>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-semibold">Severity <span class="text-danger">*</span></label>
                             {{ form.severity }}
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Repair Status *</label>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-semibold">Repair Status</label>
                             {{ form.repair_status }}
                         </div>
                     </div>
-
-                    <!-- Interactive Vehicle Diagram -->
-                    <div class="mb-3">
-                        <label class="form-label">Damage Location</label>
-                        <div class="card bg-light p-3 mb-2">
-                            <div class="text-center mb-2">
-                                <small class="text-muted"><i class="fas fa-hand-pointer"></i> Click on the diagram to select damage location</small>
-                            </div>
-                            <div id="vehicle-diagram-container" style="max-width: 600px; margin: 0 auto;">
-                                <object data="{% static 'img/vehicle-diagram.svg' %}" type="image/svg+xml" id="vehicle-svg" style="width: 100%; height: auto;"></object>
-                            </div>
-                        </div>
-                        {{ form.damage_location }}
-                    </div>
                     <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Condition Before</label>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-semibold">Condition Before</label>
                             {{ form.condition_before }}
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Condition After</label>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-semibold">Condition After</label>
                             {{ form.condition_after }}
                         </div>
                     </div>
-                </div>
 
-                <div class="col-md-6">
-                    <h5 class="mb-3">Cost Tracking</h5>
+                    <hr>
+                    <h5 class="mb-3"><i class="fas fa-dollar-sign me-1"></i>Cost & Insurance</h5>
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-6 mb-3">
                             <label class="form-label">Estimated Cost</label>
                             {{ form.estimated_cost }}
                         </div>
-                        <div class="col-md-6 mb-3">
+                        <div class="col-6 mb-3">
                             <label class="form-label">Actual Cost</label>
                             {{ form.actual_cost }}
                         </div>
                     </div>
-
-                    <h5 class="mb-3 mt-4">Insurance Claim</h5>
                     <div class="mb-3">
-                        <label class="form-label">Claim Number</label>
+                        <label class="form-label">Insurance Claim #</label>
                         {{ form.insurance_claim_number }}
                     </div>
                     <div class="mb-3">
@@ -93,7 +96,8 @@
                         {{ form.insurance_payout }}
                     </div>
 
-                    <h5 class="mb-3 mt-4">Repair Details</h5>
+                    <hr>
+                    <h5 class="mb-3"><i class="fas fa-tools me-1"></i>Repair Details</h5>
                     <div class="mb-3">
                         <label class="form-label">Repair Date</label>
                         {{ form.repair_date }}
@@ -107,108 +111,141 @@
                         {{ form.repair_notes }}
                     </div>
                 </div>
+
+                <!-- RIGHT: Vehicle photo + damage diagram -->
+                <div class="col-lg-7">
+
+                    <!-- Vehicle photo strip -->
+                    {% if vehicle_photos %}
+                    <div class="mb-3">
+                        <h6 class="text-muted small text-uppercase mb-2"><i class="fas fa-camera me-1"></i>Vehicle Photos</h6>
+                        <div class="d-flex gap-2 flex-wrap">
+                            {% for photo in vehicle_photos|slice:":8" %}
+                            <img src="{% url 'files:serve_attachment' photo.id %}"
+                                 class="vehicle-thumb"
+                                 alt="Vehicle photo"
+                                 onclick="window.open('{% url 'files:serve_attachment' photo.id %}','_blank')"
+                                 title="Click to enlarge">
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Damage location selector -->
+                    <h5 class="mb-2"><i class="fas fa-map-marker-alt me-1"></i>Damage Location</h5>
+                    <p class="text-muted small mb-2"><i class="fas fa-hand-pointer me-1"></i>Click on the diagram to mark the damage location. Switch views with the buttons below.</p>
+
+                    <!-- Selected location display -->
+                    <div id="location-display" class="alert alert-info py-2 mb-2 {% if not form.damage_location.value %}d-none{% endif %}">
+                        <i class="fas fa-map-marker-alt me-1"></i>
+                        Selected: <strong id="location-label">{{ form.damage_location.value|default:"" }}</strong>
+                        <button type="button" class="btn-close btn-sm float-end" onclick="clearLocation()"></button>
+                    </div>
+
+                    <!-- Hidden field -->
+                    <div style="display:none;">{{ form.damage_location }}</div>
+
+                    <!-- View switcher -->
+                    <div class="btn-group btn-group-sm mb-2" id="view-switcher">
+                        <button type="button" class="btn btn-outline-secondary active" data-view="driver">Driver Side</button>
+                        <button type="button" class="btn btn-outline-secondary" data-view="passenger">Pass. Side</button>
+                        <button type="button" class="btn btn-outline-secondary" data-view="front">Front</button>
+                        <button type="button" class="btn btn-outline-secondary" data-view="rear">Rear</button>
+                        <button type="button" class="btn btn-outline-secondary" data-view="top">Top</button>
+                    </div>
+
+                    <!-- Diagram panels -->
+                    <div id="diagram-container" style="background:#1e293b;border-radius:8px;padding:12px;">
+                        {% if vehicle.diagram_type == 'pickup_truck' %}
+                        <div class="view-pane active" data-pane="driver">{% include 'vehicles/pickup_diagram.html' %}</div>
+                        <div class="view-pane" data-pane="passenger">{% include 'vehicles/pickup_diagram_passenger.html' %}</div>
+                        <div class="view-pane" data-pane="front">{% include 'vehicles/pickup_diagram_front.html' %}</div>
+                        <div class="view-pane" data-pane="rear">{% include 'vehicles/pickup_diagram_rear.html' %}</div>
+                        <div class="view-pane" data-pane="top">{% include 'vehicles/pickup_diagram_top.html' %}</div>
+                        {% else %}
+                        <div class="view-pane active" data-pane="driver">{% include 'vehicles/van_diagram.html' %}</div>
+                        <div class="view-pane" data-pane="passenger">{% include 'vehicles/van_diagram_passenger.html' %}</div>
+                        <div class="view-pane" data-pane="front">{% include 'vehicles/van_diagram_front.html' %}</div>
+                        <div class="view-pane" data-pane="rear">{% include 'vehicles/van_diagram_rear.html' %}</div>
+                        <div class="view-pane" data-pane="top">{% include 'vehicles/van_diagram_top.html' %}</div>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
 
             {% if form.errors %}
-            <div class="alert alert-danger">{{ form.errors }}</div>
+            <div class="alert alert-danger mt-3">{{ form.errors }}</div>
             {% endif %}
 
-            <div class="mt-4">
+            <div class="mt-4 d-flex gap-2">
                 <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save"></i> {{ button_text }}
+                    <i class="fas fa-save me-1"></i>{{ button_text }}
                 </button>
                 <a href="{% url 'vehicles:vehicle_detail' vehicle.pk %}" class="btn btn-secondary">
-                    <i class="fas fa-times"></i> Cancel
+                    <i class="fas fa-times me-1"></i>Cancel
                 </a>
             </div>
         </form>
     </div>
 </div>
-
 {% endblock %}
 
 {% block extra_js %}
-<style>
-#vehicle-diagram-container [data-area] {
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-#vehicle-diagram-container [data-area]:hover {
-    filter: brightness(1.3);
-    stroke-width: 4 !important;
-}
-
-#vehicle-diagram-container [data-area].selected {
-    filter: brightness(1.5) drop-shadow(0 0 10px #ef4444);
-    stroke: #ef4444 !important;
-    stroke-width: 5 !important;
-}
-</style>
-
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const svgObject = document.getElementById('vehicle-svg');
+(function() {
+    const input = document.querySelector('[name="damage_location"]');
+    const display = document.getElementById('location-display');
+    const label = document.getElementById('location-label');
+    const preSelected = input ? input.value.trim() : '';
 
-    svgObject.addEventListener('load', function() {
-        const svgDoc = svgObject.contentDocument;
-        const damageLocationInput = document.querySelector('[name="damage_location"]');
-
-        // Get all clickable areas
-        const areas = svgDoc.querySelectorAll('[data-area]');
-
-        // Add click handlers
-        areas.forEach(area => {
-            area.addEventListener('click', function() {
-                const areaName = this.getAttribute('data-area');
-
-                // Update input field
-                damageLocationInput.value = areaName;
-
-                // Visual feedback - remove previous selection
-                areas.forEach(a => a.classList.remove('selected'));
-
-                // Highlight selected area
-                this.classList.add('selected');
-
-                // Show confirmation
-                const container = document.getElementById('vehicle-diagram-container');
-                const existingMsg = container.querySelector('.selection-message');
-                if (existingMsg) existingMsg.remove();
-
-                const msg = document.createElement('div');
-                msg.className = 'alert alert-success alert-dismissible fade show selection-message mt-2';
-                msg.innerHTML = `
-                    <i class="fas fa-check-circle"></i> Selected: <strong>${areaName}</strong>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                `;
-                container.appendChild(msg);
-
-                // Auto-dismiss after 3 seconds
-                setTimeout(() => {
-                    if (msg.parentNode) {
-                        const bsAlert = new bootstrap.Alert(msg);
-                        bsAlert.close();
-                    }
-                }, 3000);
-            });
-
-            // Add hover tooltip
-            area.addEventListener('mouseenter', function() {
-                const areaName = this.getAttribute('data-area');
-                this.setAttribute('title', `Click to select: ${areaName}`);
+    // View switcher
+    document.querySelectorAll('#view-switcher button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#view-switcher button').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            const view = this.dataset.view;
+            document.querySelectorAll('#diagram-container .view-pane').forEach(p => {
+                p.classList.toggle('active', p.dataset.pane === view);
             });
         });
-
-        // Highlight pre-selected area if editing
-        if (damageLocationInput.value) {
-            areas.forEach(area => {
-                if (area.getAttribute('data-area') === damageLocationInput.value) {
-                    area.classList.add('selected');
-                }
-            });
-        }
     });
-});
+
+    // Wire up all diagram area clicks
+    document.querySelectorAll('#diagram-container .damage-diagram-svg [data-area]').forEach(area => {
+        // Pre-highlight if editing
+        if (preSelected && area.getAttribute('data-area') === preSelected) {
+            area.classList.add('selected-area');
+        }
+
+        area.addEventListener('click', function() {
+            const areaName = this.getAttribute('data-area');
+
+            // Clear previous selection
+            document.querySelectorAll('#diagram-container .damage-diagram-svg [data-area]').forEach(a => {
+                a.classList.remove('selected-area');
+            });
+
+            // Highlight clicked area across all views (same data-area name)
+            document.querySelectorAll(`#diagram-container .damage-diagram-svg [data-area="${CSS.escape(areaName)}"]`).forEach(a => {
+                a.classList.add('selected-area');
+            });
+
+            // Update field
+            if (input) input.value = areaName;
+
+            // Show display
+            if (label) label.textContent = areaName;
+            if (display) display.classList.remove('d-none');
+        });
+    });
+
+    window.clearLocation = function() {
+        if (input) input.value = '';
+        if (display) display.classList.add('d-none');
+        document.querySelectorAll('#diagram-container .damage-diagram-svg [data-area]').forEach(a => {
+            a.classList.remove('selected-area');
+        });
+    };
+})();
 </script>
 {% endblock %}

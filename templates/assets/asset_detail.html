@@ -108,36 +108,30 @@
                         </dl>
 
                         <!-- Network -->
-                        {% if asset.hostname or asset.ip_address or asset.mac_address %}
                         <hr class="my-2">
                         <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-network-wired me-1"></i>Network</h6>
                         <dl class="row mb-0">
-                            {% if asset.hostname %}<dt class="col-sm-4">Hostname</dt><dd class="col-sm-8"><code>{{ asset.hostname }}</code></dd>{% endif %}
-                            {% if asset.ip_address %}<dt class="col-sm-4">IP Address</dt><dd class="col-sm-8"><code>{{ asset.ip_address }}</code></dd>{% endif %}
-                            {% if asset.mac_address %}<dt class="col-sm-4">MAC Address</dt><dd class="col-sm-8"><code>{{ asset.mac_address }}</code></dd>{% endif %}
+                            <dt class="col-sm-4">Hostname</dt><dd class="col-sm-8">{% if asset.hostname %}<code>{{ asset.hostname }}</code>{% else %}<span class="text-muted">—</span>{% endif %}</dd>
+                            <dt class="col-sm-4">IP Address</dt><dd class="col-sm-8">{% if asset.ip_address %}<code>{{ asset.ip_address }}</code>{% else %}<span class="text-muted">—</span>{% endif %}</dd>
+                            <dt class="col-sm-4">MAC Address</dt><dd class="col-sm-8">{% if asset.mac_address %}<code>{{ asset.mac_address }}</code>{% else %}<span class="text-muted">—</span>{% endif %}</dd>
                         </dl>
-                        {% endif %}
 
                         <!-- Operating System -->
-                        {% if asset.os_name or asset.os_version %}
                         <hr class="my-2">
                         <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-desktop me-1"></i>Operating System</h6>
                         <dl class="row mb-0">
-                            {% if asset.os_name %}<dt class="col-sm-4">OS</dt><dd class="col-sm-8">{{ asset.os_name }}</dd>{% endif %}
-                            {% if asset.os_version %}<dt class="col-sm-4">Version</dt><dd class="col-sm-8">{{ asset.os_version }}</dd>{% endif %}
+                            <dt class="col-sm-4">OS</dt><dd class="col-sm-8">{{ asset.os_name|default:"<span class='text-muted'>—</span>" }}</dd>
+                            <dt class="col-sm-4">Version</dt><dd class="col-sm-8">{{ asset.os_version|default:"<span class='text-muted'>—</span>" }}</dd>
                         </dl>
-                        {% endif %}
 
                         <!-- Hardware Specs -->
-                        {% if asset.cpu or asset.ram_gb or asset.storage %}
                         <hr class="my-2">
                         <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-microchip me-1"></i>Hardware Specs</h6>
                         <dl class="row mb-0">
-                            {% if asset.cpu %}<dt class="col-sm-4">CPU</dt><dd class="col-sm-8">{{ asset.cpu }}</dd>{% endif %}
-                            {% if asset.ram_gb %}<dt class="col-sm-4">RAM</dt><dd class="col-sm-8">{{ asset.ram_gb }} GB</dd>{% endif %}
-                            {% if asset.storage %}<dt class="col-sm-4">Storage</dt><dd class="col-sm-8">{{ asset.storage }}</dd>{% endif %}
+                            <dt class="col-sm-4">CPU</dt><dd class="col-sm-8">{{ asset.cpu|default:"<span class='text-muted'>—</span>" }}</dd>
+                            <dt class="col-sm-4">RAM</dt><dd class="col-sm-8">{% if asset.ram_gb %}{{ asset.ram_gb }} GB{% else %}<span class="text-muted">—</span>{% endif %}</dd>
+                            <dt class="col-sm-4">Storage</dt><dd class="col-sm-8">{{ asset.storage|default:"<span class='text-muted'>—</span>" }}</dd>
                         </dl>
-                        {% endif %}
 
                         <!-- Equipment Model Specs -->
                         {% if asset.equipment_model and asset.equipment_model.specifications %}
@@ -151,31 +145,26 @@
                         {% endif %}
 
                         <!-- Physical / Rack -->
-                        {% if asset.is_rackmount or asset.rack_units or asset.port_count %}
                         <hr class="my-2">
                         <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-server me-1"></i>Physical</h6>
                         <dl class="row mb-0">
-                            {% if asset.is_rackmount %}<dt class="col-sm-4">Rackmount</dt><dd class="col-sm-8"><span class="badge bg-success">Yes</span>{% if asset.rack_units %} {{ asset.rack_units }}U{% endif %}</dd>{% endif %}
-                            {% if asset.port_count %}<dt class="col-sm-4">Port Count</dt><dd class="col-sm-8">{{ asset.port_count }}</dd>{% endif %}
+                            <dt class="col-sm-4">Rackmount</dt>
+                            <dd class="col-sm-8">{% if asset.is_rackmount %}<span class="badge bg-success">Yes</span>{% if asset.rack_units %} — {{ asset.rack_units }}U{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</dd>
+                            <dt class="col-sm-4">Ports</dt>
+                            <dd class="col-sm-8">{% if asset.port_count %}{{ asset.port_count }}{% else %}<span class="text-muted">—</span>{% endif %}</dd>
                         </dl>
-                        {% endif %}
 
                         <!-- Lifecycle -->
-                        {% if asset.purchase_date or asset.lifespan_years %}
                         <hr class="my-2">
                         <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-calendar-alt me-1"></i>Lifecycle</h6>
                         <dl class="row mb-0">
-                            {% if asset.purchase_date %}<dt class="col-sm-4">Purchase Date</dt><dd class="col-sm-8">{{ asset.purchase_date }}</dd>{% endif %}
-                            {% if asset.lifespan_years %}<dt class="col-sm-4">Lifespan</dt><dd class="col-sm-8">{{ asset.lifespan_years }} years</dd>{% endif %}
-                            {% with eol=asset.get_end_of_life_date %}{% if eol %}
+                            <dt class="col-sm-4">Purchase Date</dt><dd class="col-sm-8">{{ asset.purchase_date|default:"<span class='text-muted'>—</span>" }}</dd>
+                            <dt class="col-sm-4">Lifespan</dt><dd class="col-sm-8">{% if asset.lifespan_years %}{{ asset.lifespan_years }} years{% else %}<span class="text-muted">—</span>{% endif %}</dd>
+                            {% with eol=asset.get_end_of_life_date %}
                             <dt class="col-sm-4">End of Life</dt>
-                            <dd class="col-sm-8">
-                                {{ eol }}
-                                {% if asset.is_nearing_end_of_life %}<span class="badge bg-warning text-dark ms-1">Nearing EOL</span>{% endif %}
-                            </dd>
-                            {% endif %}{% endwith %}
+                            <dd class="col-sm-8">{% if eol %}{{ eol }}{% if asset.is_nearing_end_of_life %} <span class="badge bg-warning text-dark">Nearing EOL</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</dd>
+                            {% endwith %}
                         </dl>
-                        {% endif %}
 
                         {% if asset.tags.all %}
                         <hr class="my-2">

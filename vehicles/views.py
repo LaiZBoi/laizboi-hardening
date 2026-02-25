@@ -446,9 +446,15 @@ def damage_report_create(request, vehicle_id):
             initial['damage_location'] = location
         form = VehicleDamageReportForm(initial=initial)
 
+    vehicle_photos = Attachment.objects.filter(
+        entity_type='vehicle', entity_id=vehicle.pk,
+        content_type__startswith='image/'
+    ).order_by('-created_at')
+
     return render(request, 'vehicles/damage_report_form.html', {
         'form': form,
         'vehicle': vehicle,
+        'vehicle_photos': vehicle_photos,
         'title': 'Report Damage',
         'button_text': 'Create Report'
     })
@@ -468,9 +474,15 @@ def damage_report_edit(request, pk):
     else:
         form = VehicleDamageReportForm(instance=report)
 
+    vehicle_photos = Attachment.objects.filter(
+        entity_type='vehicle', entity_id=report.vehicle.pk,
+        content_type__startswith='image/'
+    ).order_by('-created_at')
+
     return render(request, 'vehicles/damage_report_form.html', {
         'form': form,
         'vehicle': report.vehicle,
+        'vehicle_photos': vehicle_photos,
         'report': report,
         'title': 'Edit Damage Report',
         'button_text': 'Save Changes'
