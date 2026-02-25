@@ -10,6 +10,13 @@ from django.db.models import Q
 from django.contrib.auth.decorators import login_required
 from core.middleware import get_request_organization
 from .models import Rack, RackDevice, RackResource, RackConnection
+
+
+def _api_get_rack(pk, org):
+    """get_object_or_404 for Rack, skipping org filter in global view."""
+    if org:
+        return get_object_or_404(Rack, pk=pk, organization=org)
+    return get_object_or_404(Rack, pk=pk)
 from assets.models import Asset
 import json
 
@@ -22,7 +29,7 @@ def rack_devices_list(request, pk):
     Return JSON list of all devices in rack.
     """
     org = get_request_organization(request)
-    rack = get_object_or_404(Rack, pk=pk, organization=org)
+    rack = _api_get_rack(pk, org)
 
     devices = rack.rack_devices.select_related('asset', 'equipment_model').all()
 
@@ -221,7 +228,7 @@ def create_rack_device(request, pk):
     if request.content_type != 'application/json':
         return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
-    rack = get_object_or_404(Rack, pk=pk, organization=org)
+    rack = _api_get_rack(pk, org)
 
     try:
         data = json.loads(request.body)
@@ -570,7 +577,7 @@ def rack_resources_list(request, pk):
     Return JSON list of all rack resources (patch panels, switches, etc.) with positions.
     """
     org = get_request_organization(request)
-    rack = get_object_or_404(Rack, pk=pk, organization=org)
+    rack = _api_get_rack(pk, org)
 
     resources = rack.resources.filter(rack_position__isnull=False)
 
@@ -736,7 +743,7 @@ def rack_connections_list(request, pk):
     Return JSON list of all connections in a rack.
     """
     org = get_request_organization(request)
-    rack = get_object_or_404(Rack, pk=pk, organization=org)
+    rack = _api_get_rack(pk, org)
     
     # Get all connections where either from_device or to_device is in this rack
     connections = RackConnection.objects.filter(
