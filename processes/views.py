@@ -75,14 +75,20 @@ def process_list(request):
 def process_detail(request, slug):
     """View process details with all stages"""
     org = get_request_organization(request)
-    if not org:
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+
+    if not org and not in_global_view:
         messages.error(request, 'Organization context required.')
         return redirect('accounts:organization_list')
 
-    process = get_object_or_404(
-        Process.objects.filter(Q(organization=org) | Q(is_global=True)),
-        slug=slug
-    )
+    if in_global_view:
+        process = get_object_or_404(Process, slug=slug)
+    else:
+        process = get_object_or_404(
+            Process.objects.filter(Q(organization=org) | Q(is_global=True)),
+            slug=slug
+        )
 
     # Get all stages with linked entities
     stages = process.stages.all().select_related(
@@ -92,19 +98,20 @@ def process_detail(request, slug):
         'linked_secure_note'
     )
 
-    # Get user's active executions for this process
+    # Get user's active executions for this process (only when org context exists)
     my_executions = ProcessExecution.objects.filter(
         process=process,
         organization=org,
         assigned_to=request.user,
         status__in=['not_started', 'in_progress']
-    )
+    ) if org else ProcessExecution.objects.none()
 
     return render(request, 'processes/process_detail.html', {
         'process': process,
         'stages': stages,
         'current_organization': org,
         'my_executions': my_executions,
+        'in_global_view': in_global_view,
     })
 
 
