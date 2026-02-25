@@ -81,6 +81,37 @@
 </div>
 {% endif %}
 
+<!-- Service Alerts Panel -->
+{% if pending_service_alerts %}
+<div class="card mb-4 border-danger">
+    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="fas fa-bell"></i> Pending Service Alerts ({{ pending_service_alerts.count }})</h6>
+        <a href="{% url 'vehicles:service_alert_list' %}" class="btn btn-sm btn-light">View All</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0">
+            <thead><tr><th>Vehicle</th><th>Service</th><th>Due</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for alert in pending_service_alerts|slice:":10" %}
+                <tr class="{% if alert.is_overdue %}table-danger{% else %}table-warning{% endif %}">
+                    <td><a href="{% url 'vehicles:vehicle_detail' alert.vehicle.pk %}">{{ alert.vehicle.display_name }}</a></td>
+                    <td>{{ alert.title }}</td>
+                    <td>
+                        {% if alert.is_overdue %}<span class="badge bg-danger">Overdue</span>{% else %}<span class="badge bg-warning text-dark">Due Soon</span>{% endif %}
+                        {% if alert.due_mileage %}<small class="ms-1">@ {{ alert.due_mileage|floatformat:0 }} mi</small>{% endif %}
+                        {% if alert.due_date %}<small class="ms-1">by {{ alert.due_date }}</small>{% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'vehicles:service_alert_acknowledge' alert.pk %}" class="btn btn-sm btn-success py-0"><i class="fas fa-check"></i> Acknowledge</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
 <!-- Recent Activity -->
 <div class="row">
     <div class="col-md-4">

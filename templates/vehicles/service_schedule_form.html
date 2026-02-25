@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} - {{ vehicle.display_name }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicles_dashboard' %}">Vehicles</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicle_detail' vehicle.pk %}">{{ vehicle.display_name }}</a></li>
+        <li class="breadcrumb-item active">{{ title }}</li>
+    </ol>
+</nav>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-calendar-check"></i> {{ title }}</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Schedule Name *</label>
+                            {{ form.name }}
+                            {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Service Type</label>
+                            {{ form.service_type }}
+                        </div>
+
+                        <div class="col-12"><hr class="my-1"><h6 class="text-muted">Recurrence Intervals <small>(set at least one)</small></h6></div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Every X Miles</label>
+                            {{ form.interval_miles }}
+                            <div class="form-text">e.g., 5000 for oil change every 5,000 mi</div>
+                            {% if form.interval_miles.errors %}<div class="text-danger small">{{ form.interval_miles.errors }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Every X Days</label>
+                            {{ form.interval_days }}
+                            <div class="form-text">e.g., 90 for quarterly service</div>
+                            {% if form.interval_days.errors %}<div class="text-danger small">{{ form.interval_days.errors }}</div>{% endif %}
+                        </div>
+
+                        <div class="col-12"><hr class="my-1"><h6 class="text-muted">Alert Thresholds</h6></div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Warn X Miles Before Due</label>
+                            {{ form.warning_miles }}
+                            <div class="form-text">Default: 500 miles</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Warn X Days Before Due</label>
+                            {{ form.warning_days }}
+                            <div class="form-text">Default: 7 days</div>
+                        </div>
+
+                        <div class="col-12"><hr class="my-1"><h6 class="text-muted">Last Service (sets the starting point)</h6></div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Last Service Mileage</label>
+                            {{ form.last_service_mileage }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Last Service Date</label>
+                            {{ form.last_service_date }}
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Notes</label>
+                            {{ form.notes }}
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check">
+                                {{ form.is_active }}
+                                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Schedule is active (will generate alerts)</label>
+                            </div>
+                        </div>
+
+                        {% if form.non_field_errors %}
+                        <div class="col-12">
+                            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> {{ button_text }}</button>
+                        <a href="{% url 'vehicles:vehicle_detail' vehicle.pk %}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

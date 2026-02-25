@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Service Alerts — Fleet{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-bell"></i> Fleet Service Alerts</h2>
+    <a href="{% url 'vehicles:vehicles_dashboard' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left"></i> Dashboard</a>
+</div>
+
+{% if pending_alerts %}
+<div class="card mb-4">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Pending Alerts ({{ pending_alerts.count }})</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Vehicle</th>
+                    <th>Service</th>
+                    <th>Due Mileage</th>
+                    <th>Due Date</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in pending_alerts %}
+                <tr class="{% if alert.is_overdue %}table-danger{% endif %}">
+                    <td>
+                        <a href="{% url 'vehicles:vehicle_detail' alert.vehicle.pk %}">{{ alert.vehicle.display_name }}</a>
+                        <br><small class="text-muted">{{ alert.vehicle.license_plate }}</small>
+                    </td>
+                    <td>
+                        <strong>{{ alert.title }}</strong>
+                        {% if alert.schedule %}<br><small class="text-muted">{{ alert.schedule.get_service_type_display }}</small>{% endif %}
+                    </td>
+                    <td>
+                        {% if alert.due_mileage %}
+                        {{ alert.due_mileage|floatformat:0 }} mi
+                        <br><small class="text-muted">Current: {{ alert.vehicle.current_mileage|floatformat:0 }} mi</small>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if alert.due_date %}{{ alert.due_date }}{% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if alert.is_overdue %}
+                        <span class="badge bg-danger">Overdue</span>
+                        {% else %}
+                        <span class="badge bg-warning text-dark">Due Soon</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'vehicles:service_alert_acknowledge' alert.pk %}" class="btn btn-sm btn-success">
+                            <i class="fas fa-check"></i> Acknowledge
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-success"><i class="fas fa-check-circle"></i> No pending service alerts. Fleet is up to date!</div>
+{% endif %}
+
+{% if recent_completed %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-check-double"></i> Recently Completed (last 20)</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr><th>Vehicle</th><th>Service</th><th>Completed By</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+                {% for alert in recent_completed %}
+                <tr>
+                    <td><a href="{% url 'vehicles:vehicle_detail' alert.vehicle.pk %}">{{ alert.vehicle.display_name }}</a></td>
+                    <td>{{ alert.title }}</td>
+                    <td>{{ alert.acknowledged_by.get_full_name|default:alert.acknowledged_by.username|default:"—" }}</td>
+                    <td>{{ alert.acknowledged_at|date:"M d, Y" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

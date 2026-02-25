@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Acknowledge Service Alert — {{ alert.vehicle.display_name }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicles_dashboard' %}">Vehicles</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicle_detail' alert.vehicle.pk %}">{{ alert.vehicle.display_name }}</a></li>
+        <li class="breadcrumb-item active">Acknowledge Alert</li>
+    </ol>
+</nav>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <!-- Alert Summary -->
+        <div class="alert alert-{% if alert.is_overdue %}danger{% else %}warning{% endif %} mb-4">
+            <h5 class="mb-1"><i class="fas fa-bell"></i> {{ alert.title }}</h5>
+            <div class="row g-2 mt-1">
+                <div class="col-auto"><strong>Vehicle:</strong> {{ alert.vehicle.display_name }}</div>
+                {% if alert.due_mileage %}
+                <div class="col-auto"><strong>Due at:</strong> {{ alert.due_mileage|floatformat:0 }} mi
+                    (current: {{ alert.vehicle.current_mileage|floatformat:0 }} mi)</div>
+                {% endif %}
+                {% if alert.due_date %}
+                <div class="col-auto"><strong>Due by:</strong> {{ alert.due_date }}
+                    {% if alert.is_overdue %}<span class="badge bg-danger ms-1">Overdue</span>{% endif %}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-check-circle"></i> Acknowledge & Record Service</h5></div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Notes</label>
+                        {{ form.acknowledgement_notes }}
+                    </div>
+
+                    <div class="form-check mb-3">
+                        {{ form.record_service_done }}
+                        <label class="form-check-label fw-semibold" for="id_record_service">
+                            Record service as completed now
+                        </label>
+                    </div>
+
+                    <div id="service-detail-fields">
+                        <hr>
+                        <h6 class="text-muted mb-3">Service Details</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Service Date *</label>
+                                {{ form.service_date }}
+                                {% if form.service_date.errors %}<div class="text-danger small">{{ form.service_date.errors }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Mileage at Service *</label>
+                                {{ form.service_mileage }}
+                                {% if form.service_mileage.errors %}<div class="text-danger small">{{ form.service_mileage.errors }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Performed By</label>
+                                {{ form.performed_by }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Service Notes</label>
+                                {{ form.service_notes }}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger mt-3">{{ form.non_field_errors }}</div>
+                    {% endif %}
+
+                    <div class="mt-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Acknowledge Alert</button>
+                        <a href="{% url 'vehicles:vehicle_detail' alert.vehicle.pk %}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const checkbox = document.getElementById('id_record_service');
+const fields = document.getElementById('service-detail-fields');
+function toggle() { fields.style.display = checkbox.checked ? '' : 'none'; }
+checkbox.addEventListener('change', toggle);
+toggle();
+</script>
+{% endblock %}

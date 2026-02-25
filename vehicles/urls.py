@@ -51,4 +51,18 @@ urlpatterns = [
     path('vehicles/<int:vehicle_id>/inventory/print-qr/', views.inventory_print_qr_codes, name='inventory_print_qr_codes'),
     path('scan/<str:qr_code>/', views.inventory_scan, name='inventory_scan'),
     path('inventory/<int:pk>/quick-update/', views.inventory_quick_update, name='inventory_quick_update'),
+
+    # Service Alerts
+    path('service-alerts/', views.service_alert_list, name='service_alert_list'),
+    path('service-alerts/<int:pk>/acknowledge/', views.service_alert_acknowledge, name='service_alert_acknowledge'),
+
+    # Service Schedules
+    path('vehicles/<int:vehicle_id>/schedules/create/', views.service_schedule_create, name='service_schedule_create'),
+    path('schedules/<int:pk>/edit/', views.service_schedule_edit, name='service_schedule_edit'),
+    path('schedules/<int:pk>/delete/', views.service_schedule_delete, name='service_schedule_delete'),
+
+    # Service Providers
+    path('vehicles/<int:vehicle_id>/providers/create/', views.service_provider_create, name='service_provider_create'),
+    path('providers/<int:pk>/edit/', views.service_provider_edit, name='service_provider_edit'),
+    path('providers/<int:pk>/delete/', views.service_provider_delete, name='service_provider_delete'),
 ]

@@ -5,7 +5,8 @@ from django import forms
 from django.contrib.auth import get_user_model
 from .models import (
     ServiceVehicle, VehicleInventoryItem, VehicleDamageReport,
-    VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment
+    VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment,
+    VehicleServiceSchedule, VehicleServiceAlert, VehicleServiceProvider
 )
 
 User = get_user_model()
@@ -201,3 +202,94 @@ class VehicleAssignmentForm(forms.ModelForm):
                 )
 
         return cleaned_data
+
+
+class VehicleServiceScheduleForm(forms.ModelForm):
+    class Meta:
+        model = VehicleServiceSchedule
+        fields = [
+            'name', 'service_type', 'interval_miles', 'interval_days',
+            'warning_miles', 'warning_days',
+            'last_service_mileage', 'last_service_date', 'is_active', 'notes'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Oil Change, Tire Rotation'}),
+            'service_type': forms.Select(attrs={'class': 'form-select'}),
+            'interval_miles': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'e.g., 5000'}),
+            'interval_days': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'e.g., 90'}),
+            'warning_miles': forms.NumberInput(attrs={'class': 'form-control'}),
+            'warning_days': forms.NumberInput(attrs={'class': 'form-control'}),
+            'last_service_mileage': forms.NumberInput(attrs={'class': 'form-control'}),
+            'last_service_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get('interval_miles') and not cleaned_data.get('interval_days'):
+            raise forms.ValidationError("Set at least one interval: miles or days.")
+        return cleaned_data
+
+
+class VehicleServiceAlertAcknowledgeForm(forms.Form):
+    acknowledgement_notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Optional notes…'}),
+        label="Notes"
+    )
+    record_service_done = forms.BooleanField(
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'id_record_service'}),
+        label="Record service as completed now"
+    )
+    service_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        label="Service Date"
+    )
+    service_mileage = forms.IntegerField(
+        required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control'}),
+        label="Mileage at Service"
+    )
+    performed_by = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Mechanic or shop name'}),
+        label="Performed By"
+    )
+    service_notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        label="Service Notes"
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('record_service_done'):
+            if not cleaned_data.get('service_date'):
+                self.add_error('service_date', 'Required when recording service.')
+            if cleaned_data.get('service_mileage') is None:
+                self.add_error('service_mileage', 'Required when recording service.')
+        return cleaned_data
+
+
+class VehicleServiceProviderForm(forms.ModelForm):
+    class Meta:
+        model = VehicleServiceProvider
+        fields = [
+            'name', 'contact_name', 'phone', 'email', 'address',
+            'website', 'service_types', 'is_preferred', 'notes'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Shop or service center name'}),
+            'contact_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Primary contact person'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '(555) 555-5555'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'website': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://'}),
+            'service_types': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Oil change, Tires, Brakes, State inspection'}),
+            'is_preferred': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }

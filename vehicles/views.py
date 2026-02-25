@@ -12,11 +12,13 @@ from datetime import timedelta
 
 from .models import (
     ServiceVehicle, VehicleInventoryItem, VehicleDamageReport,
-    VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment
+    VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment,
+    VehicleServiceSchedule, VehicleServiceAlert, VehicleServiceProvider
 )
 from .forms import (
     ServiceVehicleForm, VehicleInventoryItemForm, VehicleDamageReportForm,
-    VehicleMaintenanceRecordForm, VehicleFuelLogForm, VehicleAssignmentForm
+    VehicleMaintenanceRecordForm, VehicleFuelLogForm, VehicleAssignmentForm,
+    VehicleServiceScheduleForm, VehicleServiceAlertAcknowledgeForm, VehicleServiceProviderForm
 )
 
 
@@ -75,6 +77,26 @@ def vehicles_dashboard(request):
             'message': f'{len(overdue_maintenance)} maintenance task(s) are overdue'
         })
 
+    # Service schedule alerts
+    pending_service_alerts = VehicleServiceAlert.objects.filter(status='pending').select_related('vehicle', 'schedule')
+    if pending_service_alerts.exists():
+        overdue_count = sum(1 for a in pending_service_alerts if a.is_overdue)
+        due_count = pending_service_alerts.count() - overdue_count
+        if overdue_count:
+            alerts.append({
+                'type': 'danger',
+                'icon': 'fas fa-bell',
+                'title': 'Service Overdue',
+                'message': f'{overdue_count} service(s) are overdue — schedule service now'
+            })
+        if due_count:
+            alerts.append({
+                'type': 'warning',
+                'icon': 'fas fa-bell',
+                'title': 'Service Due Soon',
+                'message': f'{due_count} service(s) are coming due'
+            })
+
     # Low inventory items
     inventory_items = VehicleInventoryItem.objects.all()
 
@@ -120,6 +142,7 @@ def vehicles_dashboard(request):
         'total_fuel_cost': total_fuel_cost,
         'avg_mpg': avg_mpg,
         'active_vehicles_list': active_vehicles_list,
+        'pending_service_alerts': pending_service_alerts,
     }
 
     return render(request, 'vehicles/vehicles_dashboard.html', context)
@@ -191,11 +214,20 @@ def vehicle_detail(request, pk):
     total_fuel_cost = fuel_logs.aggregate(total=Sum('total_cost'))['total'] or 0
     avg_mpg = vehicle.get_recent_fuel_mpg() or 0
 
+    # Generate service alerts for this vehicle
+    _generate_vehicle_service_alerts(vehicle)
+
+    # Service data
+    service_schedules = vehicle.service_schedules.all().order_by('name')
+    service_alerts = vehicle.service_alerts.filter(status='pending').order_by('-created_at')
+    service_providers = vehicle.service_providers.all().order_by('-is_preferred', 'name')
+
     # Compute vehicle health score (0-100)
     condition_scores = {'excellent': 100, 'good': 80, 'fair': 60, 'poor': 40, 'needs_repair': 20}
     health_score = condition_scores.get(vehicle.condition, 60)
     health_score -= (pending_damage * 10)
     health_score -= (overdue_maintenance * 15)
+    health_score -= (service_alerts.count() * 5)
     health_score = max(0, min(100, health_score))
     if health_score >= 80:
         vehicle_health_label = 'Excellent'
@@ -217,6 +249,9 @@ def vehicle_detail(request, pk):
         'maintenance_records': maintenance_records,
         'fuel_logs': fuel_logs,
         'assignments': assignments,
+        'service_schedules': service_schedules,
+        'service_alerts': service_alerts,
+        'service_providers': service_providers,
         'total_inventory_value': total_inventory_value,
         'low_stock_count': low_stock_count,
         'pending_damage': pending_damage,
@@ -922,5 +957,227 @@ def end_inventory_session(request, vehicle_id):
     }
     
     messages.success(request, f'Inventory session completed! Scanned {session_data.get("total_scanned", 0)} items.')
-    
+
     return render(request, 'vehicles/inventory_summary.html', context)
+
+
+# ============================================================================
+# Service Alerts & Schedules
+# ============================================================================
+
+def _generate_vehicle_service_alerts(vehicle):
+    """Check all active service schedules and create pending alerts if needed."""
+    from datetime import timedelta
+    today = timezone.now().date()
+
+    for schedule in vehicle.service_schedules.filter(is_active=True):
+        # Skip if a pending alert already exists for this schedule
+        if schedule.alerts.filter(status='pending').exists():
+            continue
+
+        triggered = False
+        due_mileage = None
+        due_date = None
+
+        if schedule.interval_miles and schedule.last_service_mileage is not None:
+            next_mi = schedule.last_service_mileage + schedule.interval_miles
+            if vehicle.current_mileage >= next_mi - schedule.warning_miles:
+                triggered = True
+                due_mileage = next_mi
+
+        if schedule.interval_days and schedule.last_service_date:
+            next_dt = schedule.last_service_date + timedelta(days=schedule.interval_days)
+            if today >= next_dt - timedelta(days=schedule.warning_days):
+                triggered = True
+                due_date = next_dt
+
+        if triggered:
+            VehicleServiceAlert.objects.create(
+                vehicle=vehicle,
+                schedule=schedule,
+                title=f'{schedule.name} due',
+                due_mileage=due_mileage,
+                due_date=due_date,
+                status='pending',
+            )
+
+
+@login_required
+def service_alert_list(request):
+    """Fleet-wide view of all pending and recent service alerts."""
+    pending = VehicleServiceAlert.objects.filter(
+        status='pending'
+    ).select_related('vehicle', 'schedule').order_by('-created_at')
+
+    recent_completed = VehicleServiceAlert.objects.filter(
+        status='completed'
+    ).select_related('vehicle', 'schedule', 'acknowledged_by').order_by('-acknowledged_at')[:20]
+
+    return render(request, 'vehicles/service_alert_list.html', {
+        'pending_alerts': pending,
+        'recent_completed': recent_completed,
+    })
+
+
+@login_required
+def service_alert_acknowledge(request, pk):
+    """Acknowledge a service alert, optionally recording service as done."""
+    alert = get_object_or_404(VehicleServiceAlert, pk=pk)
+
+    if request.method == 'POST':
+        form = VehicleServiceAlertAcknowledgeForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            alert.acknowledgement_notes = cd.get('acknowledgement_notes', '')
+            alert.acknowledged_by = request.user
+            alert.acknowledged_at = timezone.now()
+
+            if cd.get('record_service_done'):
+                # Create a maintenance record
+                record = VehicleMaintenanceRecord.objects.create(
+                    vehicle=alert.vehicle,
+                    maintenance_type=alert.schedule.service_type if alert.schedule else 'other',
+                    description=cd.get('service_notes') or f'{alert.title} — completed',
+                    service_date=cd['service_date'],
+                    mileage_at_service=cd['service_mileage'],
+                    performed_by=cd.get('performed_by', ''),
+                    is_scheduled=True,
+                )
+                alert.service_record = record
+                alert.status = 'completed'
+
+                # Update the schedule's last service info
+                if alert.schedule:
+                    alert.schedule.last_service_date = cd['service_date']
+                    alert.schedule.last_service_mileage = cd['service_mileage']
+                    alert.schedule.save(update_fields=['last_service_date', 'last_service_mileage'])
+            else:
+                alert.status = 'acknowledged'
+
+            alert.save()
+            messages.success(request, f'Alert acknowledged for {alert.vehicle.display_name}.')
+            return redirect('vehicles:vehicle_detail', pk=alert.vehicle.pk)
+    else:
+        initial = {'record_service_done': True}
+        if alert.schedule and alert.schedule.last_service_mileage:
+            initial['service_mileage'] = alert.vehicle.current_mileage
+        initial['service_date'] = timezone.now().date()
+        form = VehicleServiceAlertAcknowledgeForm(initial=initial)
+
+    return render(request, 'vehicles/service_alert_acknowledge.html', {
+        'alert': alert,
+        'form': form,
+    })
+
+
+@login_required
+def service_schedule_create(request, vehicle_id):
+    vehicle = get_object_or_404(ServiceVehicle, pk=vehicle_id)
+    if request.method == 'POST':
+        form = VehicleServiceScheduleForm(request.POST)
+        if form.is_valid():
+            schedule = form.save(commit=False)
+            schedule.vehicle = vehicle
+            schedule.save()
+            messages.success(request, f'Service schedule "{schedule.name}" created.')
+            return redirect('vehicles:vehicle_detail', pk=vehicle.pk)
+    else:
+        initial = {'last_service_mileage': vehicle.current_mileage}
+        form = VehicleServiceScheduleForm(initial=initial)
+
+    return render(request, 'vehicles/service_schedule_form.html', {
+        'form': form,
+        'vehicle': vehicle,
+        'title': 'Add Service Schedule',
+        'button_text': 'Create Schedule',
+    })
+
+
+@login_required
+def service_schedule_edit(request, pk):
+    schedule = get_object_or_404(VehicleServiceSchedule, pk=pk)
+    if request.method == 'POST':
+        form = VehicleServiceScheduleForm(request.POST, instance=schedule)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Service schedule "{schedule.name}" updated.')
+            return redirect('vehicles:vehicle_detail', pk=schedule.vehicle.pk)
+    else:
+        form = VehicleServiceScheduleForm(instance=schedule)
+
+    return render(request, 'vehicles/service_schedule_form.html', {
+        'form': form,
+        'vehicle': schedule.vehicle,
+        'schedule': schedule,
+        'title': 'Edit Service Schedule',
+        'button_text': 'Save Changes',
+    })
+
+
+@login_required
+def service_schedule_delete(request, pk):
+    schedule = get_object_or_404(VehicleServiceSchedule, pk=pk)
+    vehicle = schedule.vehicle
+    if request.method == 'POST':
+        schedule.delete()
+        messages.success(request, 'Service schedule deleted.')
+        return redirect('vehicles:vehicle_detail', pk=vehicle.pk)
+    return render(request, 'vehicles/service_schedule_confirm_delete.html', {
+        'schedule': schedule, 'vehicle': vehicle
+    })
+
+
+@login_required
+def service_provider_create(request, vehicle_id):
+    vehicle = get_object_or_404(ServiceVehicle, pk=vehicle_id)
+    if request.method == 'POST':
+        form = VehicleServiceProviderForm(request.POST)
+        if form.is_valid():
+            provider = form.save(commit=False)
+            provider.vehicle = vehicle
+            provider.save()
+            messages.success(request, f'Service provider "{provider.name}" added.')
+            return redirect('vehicles:vehicle_detail', pk=vehicle.pk)
+    else:
+        form = VehicleServiceProviderForm()
+
+    return render(request, 'vehicles/service_provider_form.html', {
+        'form': form,
+        'vehicle': vehicle,
+        'title': 'Add Service Provider',
+        'button_text': 'Add Provider',
+    })
+
+
+@login_required
+def service_provider_edit(request, pk):
+    provider = get_object_or_404(VehicleServiceProvider, pk=pk)
+    if request.method == 'POST':
+        form = VehicleServiceProviderForm(request.POST, instance=provider)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Service provider "{provider.name}" updated.')
+            return redirect('vehicles:vehicle_detail', pk=provider.vehicle.pk)
+    else:
+        form = VehicleServiceProviderForm(instance=provider)
+
+    return render(request, 'vehicles/service_provider_form.html', {
+        'form': form,
+        'vehicle': provider.vehicle,
+        'provider': provider,
+        'title': 'Edit Service Provider',
+        'button_text': 'Save Changes',
+    })
+
+
+@login_required
+def service_provider_delete(request, pk):
+    provider = get_object_or_404(VehicleServiceProvider, pk=pk)
+    vehicle = provider.vehicle
+    if request.method == 'POST':
+        provider.delete()
+        messages.success(request, 'Service provider removed.')
+        return redirect('vehicles:vehicle_detail', pk=vehicle.pk)
+    return render(request, 'vehicles/service_provider_confirm_delete.html', {
+        'provider': provider, 'vehicle': vehicle
+    })

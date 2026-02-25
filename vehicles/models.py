@@ -625,3 +625,206 @@ class VehicleAssignment(BaseModel):
         from django.utils import timezone
         end = self.end_date or timezone.now().date()
         return (end - self.start_date).days
+
+
+class VehicleServiceProvider(BaseModel):
+    """
+    Shop or mechanic that services this vehicle, with contact info.
+    """
+    vehicle = models.ForeignKey(
+        ServiceVehicle,
+        on_delete=models.CASCADE,
+        related_name='service_providers'
+    )
+    name = models.CharField(max_length=200, help_text="Shop or service center name")
+    contact_name = models.CharField(max_length=200, blank=True, help_text="Primary contact person")
+    phone = models.CharField(max_length=50, blank=True)
+    email = models.EmailField(blank=True)
+    address = models.TextField(blank=True)
+    website = models.URLField(blank=True)
+    service_types = models.TextField(blank=True, help_text="Types of service this provider offers (e.g., Oil change, Tires, Brakes)")
+    is_preferred = models.BooleanField(default=False, help_text="Mark as preferred/primary shop for this vehicle")
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'vehicle_service_providers'
+        ordering = ['-is_preferred', 'name']
+
+    def __str__(self):
+        return f"{self.name} ({self.vehicle.display_name})"
+
+
+class VehicleServiceSchedule(BaseModel):
+    """
+    Recurring maintenance schedule for a vehicle.
+    Triggers service alerts based on mileage or time intervals.
+    """
+    vehicle = models.ForeignKey(
+        ServiceVehicle,
+        on_delete=models.CASCADE,
+        related_name='service_schedules'
+    )
+    name = models.CharField(max_length=200, help_text="e.g., Oil Change, Tire Rotation")
+    service_type = models.CharField(
+        max_length=50,
+        choices=VehicleMaintenanceRecord.MAINTENANCE_TYPES,
+        default='other'
+    )
+
+    # Recurrence intervals (at least one required)
+    interval_miles = models.IntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1)],
+        help_text="Trigger alert every X miles (e.g., 5000 for oil change)"
+    )
+    interval_days = models.IntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1)],
+        help_text="Trigger alert every X days (e.g., 90 for 3-month service)"
+    )
+
+    # Early warning thresholds
+    warning_miles = models.IntegerField(
+        default=500,
+        validators=[MinValueValidator(0)],
+        help_text="Alert this many miles before the service is due"
+    )
+    warning_days = models.IntegerField(
+        default=7,
+        validators=[MinValueValidator(0)],
+        help_text="Alert this many days before the service is due"
+    )
+
+    # Last performed
+    last_service_mileage = models.IntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Odometer reading at last service"
+    )
+    last_service_date = models.DateField(null=True, blank=True, help_text="Date of last service")
+
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'vehicle_service_schedules'
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.vehicle.display_name} — {self.name}"
+
+    @property
+    def next_due_mileage(self):
+        if self.interval_miles and self.last_service_mileage is not None:
+            return self.last_service_mileage + self.interval_miles
+        return None
+
+    @property
+    def next_due_date(self):
+        from datetime import timedelta
+        if self.interval_days and self.last_service_date:
+            return self.last_service_date + timedelta(days=self.interval_days)
+        return None
+
+    @property
+    def miles_until_due(self):
+        nd = self.next_due_mileage
+        if nd is not None:
+            return nd - self.vehicle.current_mileage
+        return None
+
+    @property
+    def days_until_due(self):
+        from django.utils import timezone
+        nd = self.next_due_date
+        if nd:
+            return (nd - timezone.now().date()).days
+        return None
+
+    @property
+    def is_due(self):
+        """True if service should be alerted now (within warning threshold)."""
+        from django.utils import timezone
+        today = timezone.now().date()
+        if self.miles_until_due is not None and self.miles_until_due <= self.warning_miles:
+            return True
+        if self.days_until_due is not None and self.days_until_due <= self.warning_days:
+            return True
+        return False
+
+    @property
+    def is_overdue(self):
+        from django.utils import timezone
+        today = timezone.now().date()
+        if self.next_due_mileage is not None and self.vehicle.current_mileage >= self.next_due_mileage:
+            return True
+        if self.next_due_date and today > self.next_due_date:
+            return True
+        return False
+
+
+class VehicleServiceAlert(BaseModel):
+    """
+    Alert generated when a service schedule is due or overdue.
+    Can be acknowledged and linked to a maintenance record when service is done.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('acknowledged', 'Acknowledged'),
+        ('completed', 'Completed — Service Done'),
+    ]
+
+    vehicle = models.ForeignKey(
+        ServiceVehicle,
+        on_delete=models.CASCADE,
+        related_name='service_alerts'
+    )
+    schedule = models.ForeignKey(
+        VehicleServiceSchedule,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='alerts'
+    )
+    title = models.CharField(max_length=300)
+    due_date = models.DateField(null=True, blank=True)
+    due_mileage = models.IntegerField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    # Acknowledgement
+    acknowledged_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='acknowledged_service_alerts'
+    )
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    acknowledgement_notes = models.TextField(blank=True)
+
+    # Optional link to the service record when completed
+    service_record = models.OneToOneField(
+        VehicleMaintenanceRecord,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='service_alert'
+    )
+
+    class Meta:
+        db_table = 'vehicle_service_alerts'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['vehicle', 'status']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"{self.vehicle.display_name} — {self.title} ({self.status})"
+
+    @property
+    def is_overdue(self):
+        from django.utils import timezone
+        today = timezone.now().date()
+        if self.due_date and today > self.due_date:
+            return True
+        if self.due_mileage and self.vehicle.current_mileage >= self.due_mileage:
+            return True
+        return False

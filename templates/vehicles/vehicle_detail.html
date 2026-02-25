@@ -73,6 +73,12 @@
         <a class="nav-link" data-bs-toggle="tab" href="#fuel"><i class="fas fa-gas-pump"></i> Fuel</a>
     </li>
     <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#service">
+            <i class="fas fa-bell"></i> Service
+            {% if service_alerts.count > 0 %}<span class="badge bg-danger ms-1">{{ service_alerts.count }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
         <a class="nav-link" data-bs-toggle="tab" href="#history"><i class="fas fa-history"></i> History</a>
     </li>
 </ul>
@@ -385,6 +391,149 @@
         {% else %}
         <p class="text-muted">No fuel logs yet</p>
         {% endif %}
+    </div>
+
+    <!-- Service Tab -->
+    <div class="tab-pane fade" id="service">
+
+        <!-- Active Alerts -->
+        {% if service_alerts %}
+        <div class="card mb-4 border-danger">
+            <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-bell"></i> Service Alerts ({{ service_alerts.count }} pending)</h6>
+                <a href="{% url 'vehicles:service_alert_list' %}" class="btn btn-sm btn-light">View All Fleet Alerts</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>Service</th><th>Due Mileage</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead>
+                    <tbody>
+                        {% for alert in service_alerts %}
+                        <tr class="{% if alert.is_overdue %}table-danger{% endif %}">
+                            <td><strong>{{ alert.title }}</strong></td>
+                            <td>{% if alert.due_mileage %}{{ alert.due_mileage|floatformat:0 }} mi{% else %}—{% endif %}</td>
+                            <td>{% if alert.due_date %}{{ alert.due_date }}{% else %}—{% endif %}</td>
+                            <td>{% if alert.is_overdue %}<span class="badge bg-danger">Overdue</span>{% else %}<span class="badge bg-warning text-dark">Due Soon</span>{% endif %}</td>
+                            <td>
+                                <a href="{% url 'vehicles:service_alert_acknowledge' alert.pk %}" class="btn btn-sm btn-success">
+                                    <i class="fas fa-check"></i> Acknowledge
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Service Schedules -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-calendar-check"></i> Service Schedules</h6>
+                <a href="{% url 'vehicles:service_schedule_create' vehicle.pk %}" class="btn btn-sm btn-primary">
+                    <i class="fas fa-plus"></i> Add Schedule
+                </a>
+            </div>
+            {% if service_schedules %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr><th>Name</th><th>Type</th><th>Interval</th><th>Last Service</th><th>Next Due</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for sched in service_schedules %}
+                        <tr class="{% if not sched.is_active %}table-secondary opacity-75{% elif sched.is_overdue %}table-danger{% elif sched.is_due %}table-warning{% endif %}">
+                            <td><strong>{{ sched.name }}</strong></td>
+                            <td><small>{{ sched.get_service_type_display }}</small></td>
+                            <td>
+                                {% if sched.interval_miles %}<span class="badge bg-secondary">Every {{ sched.interval_miles|floatformat:0 }} mi</span>{% endif %}
+                                {% if sched.interval_days %}<span class="badge bg-secondary">Every {{ sched.interval_days }} days</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if sched.last_service_date %}{{ sched.last_service_date }}{% else %}<span class="text-muted">Never</span>{% endif %}
+                                {% if sched.last_service_mileage %}<br><small class="text-muted">{{ sched.last_service_mileage|floatformat:0 }} mi</small>{% endif %}
+                            </td>
+                            <td>
+                                {% if sched.next_due_date %}<div>{{ sched.next_due_date }}</div>{% endif %}
+                                {% if sched.next_due_mileage %}<div><small>{{ sched.next_due_mileage|floatformat:0 }} mi</small></div>{% endif %}
+                                {% if not sched.next_due_date and not sched.next_due_mileage %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if not sched.is_active %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% elif sched.is_overdue %}
+                                    <span class="badge bg-danger">Overdue</span>
+                                {% elif sched.is_due %}
+                                    <span class="badge bg-warning text-dark">Due Soon</span>
+                                    {% if sched.miles_until_due is not None %}<br><small>{{ sched.miles_until_due }} mi remaining</small>{% endif %}
+                                    {% if sched.days_until_due is not None %}<small>{{ sched.days_until_due }} days</small>{% endif %}
+                                {% else %}
+                                    <span class="badge bg-success">OK</span>
+                                    {% if sched.miles_until_due is not None %}<br><small class="text-muted">{{ sched.miles_until_due }} mi left</small>{% endif %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'vehicles:service_schedule_edit' sched.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a>
+                                <a href="{% url 'vehicles:service_schedule_delete' sched.pk %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted">No service schedules yet. <a href="{% url 'vehicles:service_schedule_create' vehicle.pk %}">Add one</a> to start getting maintenance alerts.</div>
+            {% endif %}
+        </div>
+
+        <!-- Service Providers -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-store"></i> Service Providers / Shops</h6>
+                <a href="{% url 'vehicles:service_provider_create' vehicle.pk %}" class="btn btn-sm btn-primary">
+                    <i class="fas fa-plus"></i> Add Provider
+                </a>
+            </div>
+            {% if service_providers %}
+            <div class="card-body">
+                <div class="row g-3">
+                    {% for provider in service_providers %}
+                    <div class="col-md-6">
+                        <div class="card h-100 {% if provider.is_preferred %}border-success{% endif %}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <h6 class="mb-1">
+                                        {% if provider.is_preferred %}<i class="fas fa-star text-warning me-1" title="Preferred"></i>{% endif %}
+                                        {{ provider.name }}
+                                    </h6>
+                                    <div class="d-flex gap-1">
+                                        <a href="{% url 'vehicles:service_provider_edit' provider.pk %}" class="btn btn-xs btn-outline-secondary btn-sm"><i class="fas fa-edit"></i></a>
+                                        <a href="{% url 'vehicles:service_provider_delete' provider.pk %}" class="btn btn-xs btn-outline-danger btn-sm"><i class="fas fa-trash"></i></a>
+                                    </div>
+                                </div>
+                                {% if provider.service_types %}
+                                <div class="mb-2">
+                                    <small class="text-muted">{{ provider.service_types }}</small>
+                                </div>
+                                {% endif %}
+                                <div class="text-sm">
+                                    {% if provider.contact_name %}<div><i class="fas fa-user fa-fw text-muted"></i> {{ provider.contact_name }}</div>{% endif %}
+                                    {% if provider.phone %}<div><i class="fas fa-phone fa-fw text-muted"></i> <a href="tel:{{ provider.phone }}">{{ provider.phone }}</a></div>{% endif %}
+                                    {% if provider.email %}<div><i class="fas fa-envelope fa-fw text-muted"></i> <a href="mailto:{{ provider.email }}">{{ provider.email }}</a></div>{% endif %}
+                                    {% if provider.address %}<div><i class="fas fa-map-marker-alt fa-fw text-muted"></i> {{ provider.address }}</div>{% endif %}
+                                    {% if provider.website %}<div><i class="fas fa-globe fa-fw text-muted"></i> <a href="{{ provider.website }}" target="_blank">{{ provider.website }}</a></div>{% endif %}
+                                    {% if provider.notes %}<div class="text-muted mt-1"><small>{{ provider.notes }}</small></div>{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="card-body text-muted">No service providers added. <a href="{% url 'vehicles:service_provider_create' vehicle.pk %}">Add a shop</a> to keep contact info handy.</div>
+            {% endif %}
+        </div>
     </div>
 
     <!-- History Tab -->

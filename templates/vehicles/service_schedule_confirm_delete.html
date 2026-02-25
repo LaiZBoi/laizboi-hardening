@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Delete Service Schedule{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-trash"></i> Delete Service Schedule</h5></div>
+            <div class="card-body">
+                <p>Delete schedule <strong>{{ schedule.name }}</strong> from <strong>{{ vehicle.display_name }}</strong>?</p>
+                <p class="text-muted small">Any pending alerts for this schedule will also be removed.</p>
+                <form method="post" class="d-flex gap-2">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Yes, Delete</button>
+                    <a href="{% url 'vehicles:vehicle_detail' vehicle.pk %}" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
