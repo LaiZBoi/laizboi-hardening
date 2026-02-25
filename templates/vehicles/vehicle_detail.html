@@ -586,34 +586,35 @@
 
 {% block extra_js %}
 <style>
-/* Solid, high-contrast tabs */
+/* Vehicle detail tabs — primary-colour bar */
 .nav-tabs {
-    background: #e9ecef;
+    background: var(--primary-color, #0d6efd);
     border-radius: 6px 6px 0 0;
-    padding: 4px 4px 0;
-    border-bottom: 2px solid #dee2e6;
+    padding: 6px 6px 0;
+    border-bottom: none;
+    gap: 2px;
 }
 .nav-tabs .nav-link,
 .nav-tabs .nav-link:link,
 .nav-tabs .nav-link:visited {
-    color: #212529 !important;
+    color: rgba(255,255,255,0.85) !important;
     font-weight: 600;
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-bottom: none;
-    margin-right: 2px;
+    background: rgba(255,255,255,0.15);
+    border: none;
     border-radius: 4px 4px 0 0;
+    padding: 0.45rem 0.9rem;
 }
 .nav-tabs .nav-link:hover,
 .nav-tabs .nav-link:focus {
-    color: #000 !important;
-    background: #fff !important;
+    color: #fff !important;
+    background: rgba(255,255,255,0.28) !important;
+    border: none;
 }
 .nav-tabs .nav-link.active {
-    color: #0d6efd !important;
+    color: var(--primary-color, #0d6efd) !important;
     font-weight: 700;
     background: #fff !important;
-    border-color: #dee2e6 #dee2e6 #fff !important;
+    border: none;
 }
 
 #damage-diagram-container [data-area].damaged {
