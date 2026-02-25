@@ -10,6 +10,7 @@ from django.views.decorators.http import require_http_methods
 from django.core.exceptions import PermissionDenied
 from datetime import timedelta
 
+from files.models import Attachment
 from .models import (
     ServiceVehicle, VehicleInventoryItem, VehicleDamageReport,
     VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment,
@@ -242,8 +243,16 @@ def vehicle_detail(request, pk):
         vehicle_health_label = 'Poor'
         vehicle_health_color = 'danger'
 
+    # Vehicle photos
+    vehicle_photos = Attachment.objects.filter(
+        entity_type='vehicle',
+        entity_id=vehicle.pk,
+        content_type__startswith='image/'
+    ).order_by('-created_at')
+
     context = {
         'vehicle': vehicle,
+        'vehicle_photos': vehicle_photos,
         'inventory_items': inventory_items,
         'damage_reports': damage_reports,
         'maintenance_records': maintenance_records,

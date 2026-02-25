@@ -9,4 +9,5 @@ app_name = 'files'
 urlpatterns = [
     path('serve/<int:pk>/', views.serve_attachment, name='serve_attachment'),
     path('upload/', views.upload_attachment, name='upload_attachment'),
+    path('delete/<int:pk>/', views.delete_attachment, name='delete_attachment'),
 ]

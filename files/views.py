@@ -90,7 +90,7 @@ def upload_attachment(request):
         return HttpResponse("Missing entity_type or entity_id", status=400)
 
     # Security: Validate entity_type against whitelist
-    VALID_ENTITY_TYPES = ['password', 'asset', 'document', 'contact', 'integration', 'rack']
+    VALID_ENTITY_TYPES = ['password', 'asset', 'document', 'contact', 'integration', 'rack', 'vehicle']
     if entity_type not in VALID_ENTITY_TYPES:
         return HttpResponse(f"Invalid entity_type: {entity_type}", status=400)
 
@@ -227,4 +227,20 @@ def upload_attachment(request):
     )
     attachment.save()
 
-    return HttpResponse(f"File uploaded: {attachment.id}", status=201)
+    return JsonResponse({
+        'id': attachment.id,
+        'url': attachment.file.url,
+        'filename': attachment.original_filename,
+        'file_size_human': f"{attachment.file_size // 1024} KB" if attachment.file_size >= 1024 else f"{attachment.file_size} B",
+    }, status=201)
+
+
+@login_required
+@require_http_methods(["POST"])
+def delete_attachment(request, pk):
+    """Delete an attachment owned by this organisation."""
+    org = get_request_organization(request)
+    attachment = get_object_or_404(Attachment, pk=pk, organization=org)
+    attachment.file.delete(save=False)
+    attachment.delete()
+    return JsonResponse({'success': True})

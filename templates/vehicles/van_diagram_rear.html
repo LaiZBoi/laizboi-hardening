@@ -1,0 +1,78 @@
+<svg id="damage-svg-rear" class="damage-diagram-svg" width="800" height="370" viewBox="0 0 800 370" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:260px;">
+  <style>
+    #damage-svg-rear [data-area] { cursor: pointer; transition: opacity 0.15s; }
+    #damage-svg-rear [data-area]:hover { opacity: 0.75; }
+  </style>
+
+  <!-- Shadow -->
+  <ellipse cx="400" cy="358" rx="310" ry="10" fill="#00000022"/>
+
+  <!-- Roof strip -->
+  <rect data-area="Roof" x="120" y="5" width="560" height="26" rx="6" fill="#718096" stroke="#2d3748" stroke-width="2"/>
+
+  <!-- Left body panel (passenger side — from rear, passenger is on LEFT from viewer) -->
+  <rect x="120" y="30" width="50" height="225" fill="#718096" stroke="#2d3748" stroke-width="2"/>
+
+  <!-- Right body panel (driver side — from rear, driver is on RIGHT from viewer) -->
+  <rect x="630" y="30" width="50" height="225" fill="#718096" stroke="#2d3748" stroke-width="2"/>
+
+  <!-- Rear Doors (two halves, split in center) -->
+  <rect data-area="Rear Doors" x="170" y="30" width="460" height="228" rx="2" fill="#a0aec0" stroke="#2d3748" stroke-width="2.5"/>
+  <!-- Door split line -->
+  <line x1="400" y1="30" x2="400" y2="258" stroke="#2d3748" stroke-width="2.5"/>
+  <!-- Door handles -->
+  <rect x="370" y="155" width="24" height="8" rx="4" fill="#2d3748"/>
+  <rect x="406" y="155" width="24" height="8" rx="4" fill="#2d3748"/>
+  <!-- Rear window (upper portion of doors) -->
+  <rect data-area="Rear Window" x="192" y="48" width="196" height="80" rx="4" fill="#90cdf4" stroke="#2d3748" stroke-width="1.5" opacity="0.8"/>
+  <rect x="412" y="48" width="196" height="80" rx="4" fill="#90cdf4" stroke="#2d3748" stroke-width="1.5" opacity="0.8"/>
+  <!-- Hinge marks -->
+  <line x1="170" y1="70" x2="170" y2="120" stroke="#2d3748" stroke-width="3"/>
+  <line x1="630" y1="70" x2="630" y2="120" stroke="#2d3748" stroke-width="3"/>
+
+  <!-- Rear Bumper -->
+  <rect data-area="Rear Bumper" x="112" y="256" width="576" height="32" rx="5" fill="#4a5568" stroke="#2d3748" stroke-width="2"/>
+
+  <!-- Left Taillight (passenger side from rear = LEFT) -->
+  <rect data-area="Taillight (L)" x="124" y="85" width="50" height="90" rx="6" fill="#ef4444" stroke="#2d3748" stroke-width="1.5"/>
+  <ellipse cx="149" cy="130" rx="16" ry="26" fill="#dc2626" opacity="0.7"/>
+
+  <!-- Right Taillight (driver side from rear = RIGHT) -->
+  <rect data-area="Taillight (R)" x="626" y="85" width="50" height="90" rx="6" fill="#ef4444" stroke="#2d3748" stroke-width="1.5"/>
+  <ellipse cx="651" cy="130" rx="16" ry="26" fill="#dc2626" opacity="0.7"/>
+
+  <!-- Left Reverse Light -->
+  <rect data-area="Reverse Light (L)" x="124" y="178" width="50" height="22" rx="4" fill="#e2e8f0" stroke="#2d3748" stroke-width="1"/>
+
+  <!-- Right Reverse Light -->
+  <rect data-area="Reverse Light (R)" x="626" y="178" width="50" height="22" rx="4" fill="#e2e8f0" stroke="#2d3748" stroke-width="1"/>
+
+  <!-- License plate (center of bumper) -->
+  <rect x="344" y="260" width="112" height="26" rx="3" fill="#e2e8f0" stroke="#2d3748" stroke-width="1"/>
+
+  <!-- Left Rear Wheel (passenger side — LEFT from rear viewer) -->
+  <circle data-area="Rear Left Wheel" cx="87" cy="326" r="42" fill="#1a202c" stroke="#718096" stroke-width="4"/>
+  <circle cx="87" cy="326" r="20" fill="#4a5568"/>
+  <circle cx="87" cy="326" r="8" fill="#718096"/>
+  <path d="M 45 285 Q 48 254 87 252 Q 126 254 129 285" fill="#2d3748"/>
+  <rect x="0" y="270" width="178" height="30" fill="#1e293b"/>
+
+  <!-- Right Rear Wheel (driver side — RIGHT from rear viewer) -->
+  <circle data-area="Rear Right Wheel" cx="713" cy="326" r="42" fill="#1a202c" stroke="#718096" stroke-width="4"/>
+  <circle cx="713" cy="326" r="20" fill="#4a5568"/>
+  <circle cx="713" cy="326" r="8" fill="#718096"/>
+  <path d="M 671 285 Q 674 254 713 252 Q 752 254 755 285" fill="#2d3748"/>
+  <rect x="622" y="270" width="178" height="30" fill="#1e293b"/>
+
+  <!-- Labels -->
+  <g font-family="Arial,sans-serif" font-size="11" fill="#e2e8f0" opacity="0.7" text-anchor="middle">
+    <text x="149" y="78">Taillight (L)</text>
+    <text x="651" y="78">Taillight (R)</text>
+    <text x="285" y="22">Rear Doors</text>
+    <text x="515" y="22">Rear Doors</text>
+    <text x="87" y="362">Rear L Wheel</text>
+    <text x="713" y="362">Rear R Wheel</text>
+    <text x="149" y="215">Pass. Side</text>
+    <text x="651" y="215">Driver Side</text>
+  </g>
+</svg>
