@@ -130,6 +130,15 @@ class Asset(BaseModel):
     ip_address = models.GenericIPAddressField(null=True, blank=True, help_text='IPv4 or IPv6 address')
     mac_address = models.CharField(max_length=17, blank=True, help_text='MAC address (e.g., 00:11:22:33:44:55)')
 
+    # Operating system
+    os_name = models.CharField(max_length=100, blank=True, help_text='Operating system (e.g., Windows Server 2022, Ubuntu 22.04, Cisco IOS)')
+    os_version = models.CharField(max_length=100, blank=True, help_text='OS version or build number')
+
+    # Hardware specs (for servers/workstations/laptops)
+    cpu = models.CharField(max_length=200, blank=True, help_text='Processor (e.g., Intel Xeon E5-2680 v4)')
+    ram_gb = models.PositiveIntegerField(null=True, blank=True, help_text='RAM in GB')
+    storage = models.CharField(max_length=200, blank=True, help_text='Storage configuration (e.g., 2× 1TB SSD RAID-1)')
+
     # Rackmount fields
     is_rackmount = models.BooleanField(default=False, help_text='Is this asset rackmountable?')
     rack_units = models.PositiveIntegerField(null=True, blank=True, help_text='Height in rack units (U)')

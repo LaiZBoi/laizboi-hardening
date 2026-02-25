@@ -93,21 +93,93 @@
                 <div class="tab-content">
                     <!-- Details Tab -->
                     <div class="tab-pane fade show active" id="details" role="tabpanel">
+
+                        <!-- Identity -->
+                        <h6 class="text-muted text-uppercase small mb-2 mt-1"><i class="fas fa-tag me-1"></i>Identity</h6>
                         <dl class="row mb-0">
-                            <dt class="col-sm-3">Type:</dt><dd class="col-sm-9">{{ asset.get_asset_type_display }}</dd>
-                            <dt class="col-sm-3">Asset Tag:</dt><dd class="col-sm-9">{{ asset.asset_tag|default:"-" }}</dd>
-                            <dt class="col-sm-3">Serial Number:</dt><dd class="col-sm-9">{{ asset.serial_number|default:"-" }}</dd>
-                            <dt class="col-sm-3">Manufacturer:</dt><dd class="col-sm-9">{{ asset.manufacturer|default:"-" }}</dd>
-                            <dt class="col-sm-3">Model:</dt><dd class="col-sm-9">{{ asset.model|default:"-" }}</dd>
-                            <dt class="col-sm-3">Hostname:</dt><dd class="col-sm-9">{{ asset.hostname|default:"-" }}</dd>
-                            <dt class="col-sm-3">IP Address:</dt><dd class="col-sm-9">{{ asset.ip_address|default:"-" }}</dd>
-                            <dt class="col-sm-3">MAC Address:</dt><dd class="col-sm-9">{{ asset.mac_address|default:"-" }}</dd>
-                            <dt class="col-sm-3">Contact:</dt><dd class="col-sm-9">{{ asset.primary_contact.full_name|default:"N/A" }}</dd>
+                            <dt class="col-sm-4">Type</dt><dd class="col-sm-8">{{ asset.get_asset_type_display }}</dd>
+                            {% if asset.asset_tag %}<dt class="col-sm-4">Asset Tag</dt><dd class="col-sm-8">{{ asset.asset_tag }}</dd>{% endif %}
+                            {% if asset.serial_number %}<dt class="col-sm-4">Serial Number</dt><dd class="col-sm-8"><code>{{ asset.serial_number }}</code></dd>{% endif %}
+                            {% if asset.manufacturer or asset.model %}
+                            <dt class="col-sm-4">Make / Model</dt><dd class="col-sm-8">{{ asset.manufacturer|default:"" }}{% if asset.manufacturer and asset.model %} / {% endif %}{{ asset.model|default:"" }}</dd>
+                            {% endif %}
+                            {% if asset.equipment_model %}<dt class="col-sm-4">Equipment Model</dt><dd class="col-sm-8"><a href="{% url 'assets:equipment_model_detail' asset.equipment_model.pk %}">{{ asset.equipment_model.vendor.name }} {{ asset.equipment_model.model_name }}</a></dd>{% endif %}
+                            {% if asset.primary_contact %}<dt class="col-sm-4">Contact</dt><dd class="col-sm-8">{{ asset.primary_contact.full_name }}</dd>{% endif %}
                         </dl>
 
+                        <!-- Network -->
+                        {% if asset.hostname or asset.ip_address or asset.mac_address %}
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-network-wired me-1"></i>Network</h6>
+                        <dl class="row mb-0">
+                            {% if asset.hostname %}<dt class="col-sm-4">Hostname</dt><dd class="col-sm-8"><code>{{ asset.hostname }}</code></dd>{% endif %}
+                            {% if asset.ip_address %}<dt class="col-sm-4">IP Address</dt><dd class="col-sm-8"><code>{{ asset.ip_address }}</code></dd>{% endif %}
+                            {% if asset.mac_address %}<dt class="col-sm-4">MAC Address</dt><dd class="col-sm-8"><code>{{ asset.mac_address }}</code></dd>{% endif %}
+                        </dl>
+                        {% endif %}
+
+                        <!-- Operating System -->
+                        {% if asset.os_name or asset.os_version %}
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-desktop me-1"></i>Operating System</h6>
+                        <dl class="row mb-0">
+                            {% if asset.os_name %}<dt class="col-sm-4">OS</dt><dd class="col-sm-8">{{ asset.os_name }}</dd>{% endif %}
+                            {% if asset.os_version %}<dt class="col-sm-4">Version</dt><dd class="col-sm-8">{{ asset.os_version }}</dd>{% endif %}
+                        </dl>
+                        {% endif %}
+
+                        <!-- Hardware Specs -->
+                        {% if asset.cpu or asset.ram_gb or asset.storage %}
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-microchip me-1"></i>Hardware Specs</h6>
+                        <dl class="row mb-0">
+                            {% if asset.cpu %}<dt class="col-sm-4">CPU</dt><dd class="col-sm-8">{{ asset.cpu }}</dd>{% endif %}
+                            {% if asset.ram_gb %}<dt class="col-sm-4">RAM</dt><dd class="col-sm-8">{{ asset.ram_gb }} GB</dd>{% endif %}
+                            {% if asset.storage %}<dt class="col-sm-4">Storage</dt><dd class="col-sm-8">{{ asset.storage }}</dd>{% endif %}
+                        </dl>
+                        {% endif %}
+
+                        <!-- Equipment Model Specs -->
+                        {% if asset.equipment_model and asset.equipment_model.specifications %}
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-list-ul me-1"></i>Model Specifications</h6>
+                        <dl class="row mb-0">
+                            {% for key, val in asset.equipment_model.specifications.items %}
+                            <dt class="col-sm-4">{{ key|title }}</dt><dd class="col-sm-8">{{ val }}</dd>
+                            {% endfor %}
+                        </dl>
+                        {% endif %}
+
+                        <!-- Physical / Rack -->
+                        {% if asset.is_rackmount or asset.rack_units or asset.port_count %}
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-server me-1"></i>Physical</h6>
+                        <dl class="row mb-0">
+                            {% if asset.is_rackmount %}<dt class="col-sm-4">Rackmount</dt><dd class="col-sm-8"><span class="badge bg-success">Yes</span>{% if asset.rack_units %} {{ asset.rack_units }}U{% endif %}</dd>{% endif %}
+                            {% if asset.port_count %}<dt class="col-sm-4">Port Count</dt><dd class="col-sm-8">{{ asset.port_count }}</dd>{% endif %}
+                        </dl>
+                        {% endif %}
+
+                        <!-- Lifecycle -->
+                        {% if asset.purchase_date or asset.lifespan_years %}
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-calendar-alt me-1"></i>Lifecycle</h6>
+                        <dl class="row mb-0">
+                            {% if asset.purchase_date %}<dt class="col-sm-4">Purchase Date</dt><dd class="col-sm-8">{{ asset.purchase_date }}</dd>{% endif %}
+                            {% if asset.lifespan_years %}<dt class="col-sm-4">Lifespan</dt><dd class="col-sm-8">{{ asset.lifespan_years }} years</dd>{% endif %}
+                            {% with eol=asset.get_end_of_life_date %}{% if eol %}
+                            <dt class="col-sm-4">End of Life</dt>
+                            <dd class="col-sm-8">
+                                {{ eol }}
+                                {% if asset.is_nearing_end_of_life %}<span class="badge bg-warning text-dark ms-1">Nearing EOL</span>{% endif %}
+                            </dd>
+                            {% endif %}{% endwith %}
+                        </dl>
+                        {% endif %}
+
                         {% if asset.tags.all %}
-                        <hr>
-                        <h6><i class="fas fa-tags"></i> Tags</h6>
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-tags me-1"></i>Tags</h6>
                         <div>
                             {% for tag in asset.tags.all %}
                             <span class="badge" style="background-color: {{ tag.color }}">{{ tag.name }}</span>
@@ -116,14 +188,14 @@
                         {% endif %}
 
                         {% if asset.notes %}
-                        <hr>
-                        <h6><i class="fas fa-sticky-note"></i> Notes</h6>
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-sticky-note me-1"></i>Notes</h6>
                         <p class="mb-0">{{ asset.notes }}</p>
                         {% endif %}
 
                         {% if relationships %}
-                        <hr>
-                        <h6><i class="fas fa-link"></i> Relationships</h6>
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-link me-1"></i>Relationships</h6>
                         <ul class="mb-0">
                             {% for rel in relationships %}
                             <li>{{ rel.get_relation_type_display }}: {{ rel.target_type }}:{{ rel.target_id }}</li>

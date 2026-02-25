@@ -732,7 +732,8 @@ document.addEventListener('DOMContentLoaded', function() {
             severity: '{{ report.severity }}',
             severityLabel: '{{ report.get_severity_display|escapejs }}',
             date: '{{ report.incident_date }}',
-            description: '{{ report.description|truncatewords:10|escapejs }}'
+            description: '{{ report.description|truncatewords:10|escapejs }}',
+            photoIds: {{ damage_photos_json|safe }}[{{ report.id }}] || []
         }{% if not forloop.last %},{% endif %}
         {% endfor %}
     ];
@@ -792,10 +793,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 html += `<div style="margin-bottom:8px;">`;
                 damageInArea.forEach(d => {
                     const color = severityColors[d.severity] || '#94a3b8';
-                    html += `<div style="margin-bottom:5px;padding:4px 6px;background:#0f172a;border-radius:4px;border-left:3px solid ${color};">
+                    let photoHtml = '';
+                    if (d.photoIds && d.photoIds.length > 0) {
+                        photoHtml = `<div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">`;
+                        d.photoIds.slice(0, 4).forEach(pid => {
+                            photoHtml += `<img src="/files/attachments/${pid}/" style="width:56px;height:42px;object-fit:cover;border-radius:3px;border:1px solid #475569;cursor:pointer;" onclick="window.open('/files/attachments/${pid}/','_blank')">`;
+                        });
+                        if (d.photoIds.length > 4) photoHtml += `<span style="font-size:0.7rem;color:#94a3b8;align-self:center;">+${d.photoIds.length - 4} more</span>`;
+                        photoHtml += `</div>`;
+                    }
+                    html += `<div style="margin-bottom:6px;padding:6px 8px;background:#0f172a;border-radius:4px;border-left:3px solid ${color};">
                         <span style="color:${color};font-weight:600;">${d.severityLabel}</span>
                         <span style="color:#94a3b8;font-size:0.78rem;margin-left:6px;">${d.date}</span><br>
                         <span style="color:#cbd5e1;">${d.description}</span>
+                        ${photoHtml}
                         <br><a href="/vehicles/damage/${d.id}/edit/" style="color:#60a5fa;font-size:0.75rem;">Edit report</a>
                     </div>`;
                 });

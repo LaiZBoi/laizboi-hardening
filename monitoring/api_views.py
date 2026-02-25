@@ -177,6 +177,7 @@ def update_rack_device_position(request, pk):
         }, status=500)
 
 
+@csrf_exempt
 @login_required
 @require_http_methods(["PATCH"])
 def rack_device_detail(request, pk):

@@ -250,9 +250,23 @@ def vehicle_detail(request, pk):
         content_type__startswith='image/'
     ).order_by('-created_at')
 
+    # Damage report photos keyed by report ID
+    import json as _json
+    damage_report_ids = list(damage_reports.values_list('id', flat=True))
+    damage_photos_qs = Attachment.objects.filter(
+        entity_type='vehicle_damage',
+        entity_id__in=damage_report_ids,
+        content_type__startswith='image/'
+    ).values('entity_id', 'id')
+    damage_photos_map = {}
+    for p in damage_photos_qs:
+        damage_photos_map.setdefault(p['entity_id'], []).append(p['id'])
+    damage_photos_json = _json.dumps({str(k): v for k, v in damage_photos_map.items()})
+
     context = {
         'vehicle': vehicle,
         'vehicle_photos': vehicle_photos,
+        'damage_photos_json': damage_photos_json,
         'inventory_items': inventory_items,
         'damage_reports': damage_reports,
         'maintenance_records': maintenance_records,

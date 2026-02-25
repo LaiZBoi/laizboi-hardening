@@ -113,6 +113,9 @@
                 </div>
 
                 <!-- Network Fields - 3 columns -->
+                <div class="col-12">
+                    <h6 class="text-muted mb-2"><i class="fas fa-network-wired"></i> Network</h6>
+                </div>
                 <div class="col-md-4">
                     <label class="form-label">{{ form.hostname.label }}</label>
                     {{ form.hostname }}
@@ -135,6 +138,44 @@
                     {% if form.mac_address.errors %}
                         <div class="text-danger small">{{ form.mac_address.errors }}</div>
                     {% endif %}
+                </div>
+
+                <!-- OS Fields -->
+                <div class="col-12">
+                    <h6 class="text-muted mb-2"><i class="fas fa-desktop"></i> Operating System</h6>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.os_name.label }}</label>
+                    {{ form.os_name }}
+                    {% if form.os_name.errors %}<div class="text-danger small">{{ form.os_name.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.os_version.label }}</label>
+                    {{ form.os_version }}
+                    {% if form.os_version.errors %}<div class="text-danger small">{{ form.os_version.errors }}</div>{% endif %}
+                </div>
+
+                <!-- Hardware Specs -->
+                <div class="col-12">
+                    <h6 class="text-muted mb-2"><i class="fas fa-microchip"></i> Hardware Specs <small class="text-muted fw-normal">(optional, for servers/workstations)</small></h6>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.cpu.label }}</label>
+                    {{ form.cpu }}
+                    {% if form.cpu.errors %}<div class="text-danger small">{{ form.cpu.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.ram_gb.label }}</label>
+                    <div class="input-group">
+                        {{ form.ram_gb }}
+                        <span class="input-group-text">GB</span>
+                    </div>
+                    {% if form.ram_gb.errors %}<div class="text-danger small">{{ form.ram_gb.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.storage.label }}</label>
+                    {{ form.storage }}
+                    {% if form.storage.errors %}<div class="text-danger small">{{ form.storage.errors }}</div>{% endif %}
                 </div>
 
                 <!-- Rackmount Fields - 2 columns -->

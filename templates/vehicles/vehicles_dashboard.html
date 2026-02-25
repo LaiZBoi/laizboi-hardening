@@ -23,7 +23,7 @@
                 <div class="card-body text-center">
                     <i class="fas fa-truck fa-3x mb-2 text-primary"></i>
                     <h3 class="text-primary">{{ total_vehicles }}</h3>
-                    <p class="mb-0 text-dark">Total Vehicles</p>
+                    <p class="mb-0 text-body">Total Vehicles</p>
                 </div>
             </div>
         </a>
@@ -34,7 +34,7 @@
                 <div class="card-body text-center">
                     <i class="fas fa-check-circle fa-3x mb-2 text-success"></i>
                     <h3 class="text-success">{{ active_vehicles }}</h3>
-                    <p class="mb-0 text-dark">Active</p>
+                    <p class="mb-0 text-body">Active</p>
                 </div>
             </div>
         </a>
@@ -45,7 +45,7 @@
                 <div class="card-body text-center">
                     <i class="fas fa-wrench fa-3x mb-2 text-warning"></i>
                     <h3 class="text-warning">{{ in_maintenance }}</h3>
-                    <p class="mb-0 text-dark">In Maintenance</p>
+                    <p class="mb-0 text-body">In Maintenance</p>
                 </div>
             </div>
         </a>
@@ -56,7 +56,7 @@
                 <div class="card-body text-center">
                     <i class="fas fa-road fa-3x mb-2 text-info"></i>
                     <h3 class="text-info">{{ total_mileage|floatformat:0 }}</h3>
-                    <p class="mb-0 text-dark">Total Miles</p>
+                    <p class="mb-0 text-body">Total Miles</p>
                 </div>
             </div>
         </a>
@@ -97,7 +97,7 @@
                     <td><a href="{% url 'vehicles:vehicle_detail' alert.vehicle.pk %}">{{ alert.vehicle.display_name }}</a></td>
                     <td>{{ alert.title }}</td>
                     <td>
-                        {% if alert.is_overdue %}<span class="badge bg-danger">Overdue</span>{% else %}<span class="badge bg-warning text-dark">Due Soon</span>{% endif %}
+                        {% if alert.is_overdue %}<span class="badge bg-danger">Overdue</span>{% else %}<span class="badge bg-warning text-body">Due Soon</span>{% endif %}
                         {% if alert.due_mileage %}<small class="ms-1">@ {{ alert.due_mileage|floatformat:0 }} mi</small>{% endif %}
                         {% if alert.due_date %}<small class="ms-1">by {{ alert.due_date }}</small>{% endif %}
                     </td>

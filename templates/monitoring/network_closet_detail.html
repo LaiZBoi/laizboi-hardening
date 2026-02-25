@@ -835,8 +835,10 @@ function createBoardDevice(item) {
         openClosetEditModal(item);
     });
 
-    // Click body → also open edit
+    // Click body → also open edit (ignore click fired immediately after drop)
+    const _created = Date.now();
     el.addEventListener('click', function(e) {
+        if (Date.now() - _created < 400) return; // ignore accidental mouseup-click on drop
         if (e.target.classList.contains('board-resize-handle')) return;
         if (e.target.closest('.board-device-edit-btn')) return;
         openClosetEditModal(item);
