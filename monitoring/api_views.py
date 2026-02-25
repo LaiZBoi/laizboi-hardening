@@ -252,51 +252,44 @@ def create_rack_device(request, pk):
 
     try:
         data = json.loads(request.body)
-        asset_id = data.get('asset_id')
-        start_unit = int(data.get('start_unit'))
-        units = int(data.get('units', 1))
+        asset_id   = data.get('asset_id')
+        start_unit = data.get('start_unit')
+        units      = int(data.get('units', 1))
+        board_only = start_unit is None  # board-only drop — no rack unit needed
 
-        # Validate required fields
         if not asset_id:
-            return JsonResponse({
-                'success': False,
-                'error': 'asset_id is required'
-            }, status=400)
+            return JsonResponse({'success': False, 'error': 'asset_id is required'}, status=400)
 
         # Get asset
         asset = get_object_or_404(Asset, pk=asset_id, organization=org)
 
-        # Use asset's rack_units if available
         if asset.rack_units:
             units = asset.rack_units
 
-        # Calculate end unit
-        end_unit = start_unit + units - 1
+        if board_only:
+            start_unit = 1  # placeholder; board view doesn't use rack units
+        else:
+            start_unit = int(start_unit)
+            end_unit   = start_unit + units - 1
 
-        # Validate bounds
-        if start_unit < 1 or end_unit > rack.units:
-            return JsonResponse({
-                'success': False,
-                'error': f'Device position (U{start_unit}-U{end_unit}) is outside rack bounds (U1-U{rack.units})'
-            }, status=400)
-
-        # Check for overlaps
-        overlapping = RackDevice.objects.filter(
-            rack=rack,
-            start_unit__lt=end_unit + 1,
-        ).filter(
-            start_unit__gte=start_unit - 100
-        )
-
-        for other in overlapping:
-            other_end = other.start_unit + other.units - 1
-            if not (end_unit < other.start_unit or start_unit > other_end):
+            if start_unit < 1 or end_unit > rack.units:
                 return JsonResponse({
                     'success': False,
-                    'error': f'Position overlaps with "{other.name}" at U{other.start_unit}-U{other_end}'
+                    'error': f'Device position (U{start_unit}-U{end_unit}) is outside rack bounds (U1-U{rack.units})'
                 }, status=400)
 
-        # Create device
+            # Check for overlaps
+            overlapping = RackDevice.objects.filter(rack=rack, start_unit__lt=end_unit + 1,
+                                                    start_unit__gte=start_unit - 100)
+            for other in overlapping:
+                other_end = other.start_unit + other.units - 1
+                if not (end_unit < other.start_unit or start_unit > other_end):
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'Position overlaps with "{other.name}" at U{other.start_unit}-U{other_end}'
+                    }, status=400)
+
+        # Create device, saving board position if provided
         with transaction.atomic():
             device = RackDevice.objects.create(
                 rack=rack,
@@ -304,8 +297,12 @@ def create_rack_device(request, pk):
                 name=asset.name,
                 start_unit=start_unit,
                 units=units,
-                power_draw_watts=asset.power_draw_watts if hasattr(asset, 'power_draw_watts') else None,
-                color=data.get('color', '#0d6efd'),  # Default Bootstrap primary color
+                power_draw_watts=getattr(asset, 'power_draw_watts', None),
+                color=data.get('color', '#0d6efd'),
+                board_position_x=data.get('board_position_x') or 0,
+                board_position_y=data.get('board_position_y') or 0,
+                board_width=data.get('board_width') or 150,
+                board_height=data.get('board_height') or 100,
             )
 
         return JsonResponse({
@@ -319,6 +316,12 @@ def create_rack_device(request, pk):
                 'color': device.color,
                 'power_draw_watts': device.power_draw_watts,
                 'asset_id': device.asset_id,
+                'asset_type': asset.asset_type,
+                'port_count': asset.port_count,
+                'board_position_x': device.board_position_x,
+                'board_position_y': device.board_position_y,
+                'board_width': device.board_width,
+                'board_height': device.board_height,
             }
         })
 

@@ -42,6 +42,48 @@
 /* ── View toggle ───────────────────────────────────────────────── */
 .closet-view-toggle .btn { min-width: 130px; }
 
+/* ── Asset sidebar ─────────────────────────────────────────────── */
+.closet-asset-sidebar {
+    width: 190px;
+    min-width: 190px;
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 6px;
+    padding: 10px 8px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+.closet-asset-sidebar h6 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #6c757d;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+.sidebar-asset-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    cursor: grab;
+    font-size: 0.8rem;
+    border: 1px solid transparent;
+    user-select: none;
+    margin-bottom: 2px;
+    transition: background .12s, border-color .12s;
+}
+.sidebar-asset-item:hover {
+    background: rgba(13,110,253,.08);
+    border-color: rgba(13,110,253,.25);
+}
+.sidebar-asset-item.dragging-source { opacity: .45; }
+.sidebar-asset-item i { font-size: 0.9rem; color: #6c757d; flex-shrink: 0; }
+.sidebar-asset-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-asset-units { font-size: 0.68rem; color: #6c757d; flex-shrink: 0; margin-left: auto; }
+
 /* ── Board canvas ──────────────────────────────────────────────── */
 #closet-board-canvas {
     position: relative;
@@ -339,6 +381,28 @@
 
         <!-- ── RACK VIEW ── -->
         <div id="closet-rack-section">
+            <div class="d-flex gap-3 align-items-start">
+            <!-- Rack asset sidebar -->
+            {% if all_org_assets %}
+            <div class="closet-asset-sidebar flex-shrink-0">
+                <h6><i class="fas fa-box me-1"></i>Assets</h6>
+                <small class="text-muted d-block mb-2" style="font-size:.72rem;">Drag onto the unit grid to add</small>
+                {% for asset in all_org_assets %}
+                <div class="sidebar-asset-item"
+                     draggable="true"
+                     data-asset-id="{{ asset.id }}"
+                     data-asset-name="{{ asset.name }}"
+                     data-asset-type="{{ asset.asset_type }}"
+                     data-rack-units="{{ asset.rack_units|default:'1' }}"
+                     data-port-count="{{ asset.port_count|default:'' }}">
+                    <i class="fas fa-cube"></i>
+                    <span title="{{ asset.name }}">{{ asset.name }}</span>
+                    {% if asset.rack_units %}<span class="sidebar-asset-units">{{ asset.rack_units }}U</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div class="flex-grow-1">
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0"><i class="fas fa-server"></i> Mounted Devices <span class="badge bg-secondary">{{ devices.count }}</span></h5>
@@ -460,15 +524,44 @@
                 </div>
             </div>
             {% endif %}
+            </div><!-- /flex-grow-1 card wrapper -->
+            </div><!-- /d-flex rack+sidebar -->
         </div><!-- /closet-rack-section -->
 
         <!-- ── MOUNTED BOARD VIEW ── -->
         <div id="closet-board-section" style="display:none;">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <small class="text-muted"><i class="fas fa-arrows-alt me-1"></i>Drag to reposition &nbsp;·&nbsp; <i class="fas fa-expand-arrows-alt me-1"></i>Drag corner to resize &nbsp;·&nbsp; <i class="fas fa-pencil-alt me-1"></i>Hover &amp; click pencil to edit</small>
-                <button class="btn btn-sm btn-outline-secondary" onclick="loadClosetBoardDevices()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+            <div class="d-flex gap-3 align-items-start">
+                <!-- Board asset sidebar -->
+                {% if all_org_assets %}
+                <div class="closet-asset-sidebar flex-shrink-0" id="board-asset-sidebar">
+                    <h6><i class="fas fa-box me-1"></i>Assets</h6>
+                    <small class="text-muted d-block mb-2" style="font-size:.72rem;">Drag onto the board to place</small>
+                    {% for asset in all_org_assets %}
+                    <div class="sidebar-asset-item"
+                         draggable="true"
+                         data-asset-id="{{ asset.id }}"
+                         data-asset-name="{{ asset.name }}"
+                         data-asset-type="{{ asset.asset_type }}"
+                         data-rack-units="{{ asset.rack_units|default:'1' }}"
+                         data-port-count="{{ asset.port_count|default:'' }}">
+                        <i class="fas fa-cube"></i>
+                        <span title="{{ asset.name }}">{{ asset.name }}</span>
+                        {% if asset.rack_units %}<span class="sidebar-asset-units">{{ asset.rack_units }}U</span>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <!-- Board canvas -->
+                <div class="flex-grow-1">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <small class="text-muted"><i class="fas fa-arrows-alt me-1"></i>Drag to reposition &nbsp;·&nbsp; <i class="fas fa-expand-alt me-1"></i>Corner to resize &nbsp;·&nbsp; <i class="fas fa-pencil-alt me-1"></i>Hover to edit</small>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadClosetBoardDevices()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+                    </div>
+                    <div id="closet-board-canvas"
+                         ondragover="boardDragOver(event)"
+                         ondrop="boardDrop(event)"></div>
+                </div>
             </div>
-            <div id="closet-board-canvas"></div>
         </div>
 
     </div><!-- /col-lg-8 -->
@@ -545,6 +638,110 @@ function getCookie(name) {
     return v;
 }
 
+// ── Sidebar drag-and-drop ─────────────────────────────────────────
+let _draggedSidebarAsset = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.sidebar-asset-item').forEach(el => {
+        el.addEventListener('dragstart', function(e) {
+            _draggedSidebarAsset = {
+                id:        parseInt(this.dataset.assetId),
+                name:      this.dataset.assetName,
+                type:      this.dataset.assetType,
+                rack_units:parseInt(this.dataset.rackUnits) || 1,
+                port_count:parseInt(this.dataset.portCount) || 0,
+            };
+            e.dataTransfer.effectAllowed = 'copy';
+            this.classList.add('dragging-source');
+        });
+        el.addEventListener('dragend', function() {
+            this.classList.remove('dragging-source');
+        });
+    });
+
+    // Rack-view sidebar: click to add at first available unit
+    document.querySelectorAll('#closet-rack-section .sidebar-asset-item').forEach(el => {
+        el.addEventListener('click', function() {
+            addAssetToRack(parseInt(this.dataset.assetId), this.dataset.assetName);
+        });
+    });
+});
+
+function boardDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+}
+
+function boardDrop(e) {
+    e.preventDefault();
+    if (!_draggedSidebarAsset) return;
+
+    const canvas   = document.getElementById('closet-board-canvas');
+    const rect     = canvas.getBoundingClientRect();
+    const x        = Math.max(0, e.clientX - rect.left - 75);
+    const y        = Math.max(0, e.clientY - rect.top  - 50);
+
+    addAssetToBoard(_draggedSidebarAsset, x, y);
+    _draggedSidebarAsset = null;
+}
+
+function addAssetToBoard(asset, x, y) {
+    fetch('/monitoring/api/racks/{{ closet.pk }}/devices/create/', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body:    JSON.stringify({
+            asset_id:         asset.id,
+            board_position_x: Math.round(x),
+            board_position_y: Math.round(y),
+            board_width:      150,
+            board_height:     100,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) { alert(data.error || 'Failed to add asset'); return; }
+        const item = data.device;
+        // Remove empty-state placeholder if present
+        const canvas = document.getElementById('closet-board-canvas');
+        const placeholder = canvas.querySelector('.text-center');
+        if (placeholder) placeholder.remove();
+        _boardDevices.push(item);
+        createBoardDevice(item);
+    })
+    .catch(e => alert('Request failed: ' + e.message));
+}
+
+function addAssetToRack(assetId, assetName) {
+    // Find first available start_unit
+    const occupied = new Set();
+    document.querySelectorAll('#closet-rack-section tbody tr').forEach(row => {
+        const badge = row.querySelector('.badge');
+        if (badge) {
+            const text = badge.textContent; // e.g. "U3-U5"
+            const match = text.match(/U(\d+)(?:-U(\d+))?/);
+            if (match) {
+                const s = parseInt(match[1]);
+                const e2 = match[2] ? parseInt(match[2]) : s;
+                for (let u = s; u <= e2; u++) occupied.add(u);
+            }
+        }
+    });
+    let start = 1;
+    while (occupied.has(start)) start++;
+
+    fetch('/monitoring/api/racks/{{ closet.pk }}/devices/create/', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body:    JSON.stringify({asset_id: assetId, start_unit: start, units: 1}),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) location.reload();
+        else alert(data.error || 'Failed to add asset');
+    })
+    .catch(e => alert('Request failed: ' + e.message));
+}
+
 // ── Board state ───────────────────────────────────────────────────
 let _boardDevices  = [];
 let _isDragging    = false;
@@ -573,7 +770,7 @@ function loadClosetBoardDevices() {
         canvas.innerHTML = '';
         _boardDevices = data.devices || [];
         if (_boardDevices.length === 0) {
-            canvas.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x mb-2 d-block"></i>No devices — add some from Rack View.</div>';
+            canvas.innerHTML = '<div class="text-center text-muted py-5" style="pointer-events:none;"><i class="fas fa-arrows-alt fa-2x mb-2 d-block"></i>Drag an asset from the sidebar to place it here</div>';
             return;
         }
         // Place devices without board positions in a grid
