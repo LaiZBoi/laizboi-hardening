@@ -317,6 +317,27 @@
     z-index: 10;
 }
 
+.board-device-edit-icon {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    color: rgba(255,255,255,0.6);
+    font-size: 0.75rem;
+    cursor: pointer;
+    z-index: 20;
+    display: none;
+    background: rgba(0,0,0,0.35);
+    border-radius: 3px;
+    padding: 2px 4px;
+}
+.board-device:hover .board-device-edit-icon {
+    display: block;
+}
+.board-device-edit-icon:hover {
+    color: #fff;
+    background: rgba(13,110,253,0.8);
+}
+
 .board-device.dragging {
     opacity: 0.7;
     cursor: grabbing;
@@ -534,6 +555,31 @@
 {% endblock %}
 
 {% block content %}
+
+<!-- Device Hover Tooltip -->
+<div id="rack-device-tooltip" style="display:none;position:fixed;z-index:9999;pointer-events:none;
+  background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:8px;
+  padding:10px 13px;min-width:200px;max-width:280px;font-size:0.82rem;
+  box-shadow:0 4px 20px rgba(0,0,0,0.45);"></div>
+
+<!-- Device Detail Modal -->
+<div class="modal fade" id="deviceDetailModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header" id="deviceDetailModalHeader" style="background:#1e293b;color:#e2e8f0;">
+        <h5 class="modal-title" id="deviceDetailModalTitle"><i class="fas fa-server me-2"></i>Device Details</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="deviceDetailModalBody"></div>
+      <div class="modal-footer">
+        <a id="deviceDetailEditLink" href="#" class="btn btn-primary btn-sm"><i class="fas fa-edit"></i> Edit Device</a>
+        <a id="deviceDetailAssetLink" href="#" class="btn btn-outline-secondary btn-sm" target="_blank"><i class="fas fa-external-link-alt"></i> View Full Asset</a>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="fas fa-server"></i> {{ rack.name }}</h2>
     <div>
@@ -1119,21 +1165,33 @@ function createUnitDiv(unitNumber, device) {
             div.innerHTML = `
                 <span class="rack-unit-number">${unitNumber}</span>
                 ${visual}
-                <span class="device-name" title="${device.name}">${device.name}</span>
+                <span class="device-name">${device.name}</span>
                 <i class="fas fa-edit device-edit-icon" title="Edit device" data-device-id="${device.id}"></i>
                 <div class="device-resize-handle"></div>
             `;
             // Make the start unit draggable
             div.classList.add('draggable');
 
-            // Add click handler for edit icon
+            // Edit icon → navigate to edit page
             const editIcon = div.querySelector('.device-edit-icon');
             if (editIcon) {
                 editIcon.addEventListener('click', function(e) {
-                    e.stopPropagation(); // Prevent drag from starting
+                    e.stopPropagation();
                     window.location.href = `/monitoring/devices/${device.id}/edit/`;
                 });
             }
+
+            // Hover tooltip
+            div.addEventListener('mouseenter', function(e) { showRackDeviceTooltip(e, device); });
+            div.addEventListener('mousemove',  function(e) { positionTooltip(e); });
+            div.addEventListener('mouseleave', hideRackDeviceTooltip);
+
+            // Click body → detail modal (ignore edit icon and resize handle)
+            div.addEventListener('click', function(e) {
+                if (e.target.classList.contains('device-edit-icon') ||
+                    e.target.classList.contains('device-resize-handle')) return;
+                showDeviceDetailModal(device);
+            });
         } else {
             div.innerHTML = `<span class="rack-unit-number">${unitNumber}</span>`;
             div.classList.add('device-continuation');
@@ -1528,12 +1586,35 @@ function createBoardDevice(item, type) {
     // Enhanced visual content
     const content = getBoardDeviceContent(item);
     div.innerHTML = `
+        <i class="fas fa-edit board-device-edit-icon" title="Edit device"></i>
         <div class="board-device-content">
             ${content}
             <div class="board-device-label">${item.name}</div>
         </div>
         <div class="board-resize-handle"></div>
     `;
+
+    // Edit icon
+    const editIcon = div.querySelector('.board-device-edit-icon');
+    if (editIcon) {
+        editIcon.addEventListener('mousedown', e => e.stopPropagation());
+        editIcon.addEventListener('click', function(e) {
+            e.stopPropagation();
+            window.location.href = `/monitoring/devices/${item.id}/edit/`;
+        });
+    }
+
+    // Hover tooltip
+    div.addEventListener('mouseenter', function(e) { showRackDeviceTooltip(e, item); });
+    div.addEventListener('mousemove',  function(e) { positionTooltip(e); });
+    div.addEventListener('mouseleave', hideRackDeviceTooltip);
+
+    // Click body → detail modal
+    div.addEventListener('click', function(e) {
+        if (e.target.classList.contains('board-device-edit-icon') ||
+            e.target.classList.contains('board-resize-handle')) return;
+        showDeviceDetailModal(item);
+    });
 
     boardCanvas.appendChild(div);
 }
@@ -1968,18 +2049,19 @@ function switchToBoardView() {
     document.getElementById('toggle-rack-view').classList.remove('active');
     document.getElementById('toggle-board-view').classList.add('active');
 
-    // Destroy rack sortables
-    const rackVisual = document.getElementById('rack-visual');
-    const rackSortable = Sortable.get(rackVisual);
-    if (rackSortable) {
-        rackSortable.destroy();
-    }
-
-    const assetsSidebar = document.getElementById('available-assets');
-    const sidebarSortable = Sortable.get(assetsSidebar);
-    if (sidebarSortable) {
-        sidebarSortable.destroy();
-    }
+    // Destroy rack sortables (guard against null/uninitialized elements)
+    try {
+        const rackVisual = document.getElementById('rack-visual');
+        if (rackVisual) {
+            const rackSortable = Sortable.get(rackVisual);
+            if (rackSortable) rackSortable.destroy();
+        }
+        const assetsSidebar = document.getElementById('available-assets');
+        if (assetsSidebar) {
+            const sidebarSortable = Sortable.get(assetsSidebar);
+            if (sidebarSortable) sidebarSortable.destroy();
+        }
+    } catch(e) { /* ignore if Sortable not yet initialized */ }
 
     // Enable draggable on assets for board view
     document.querySelectorAll('.asset-item').forEach(asset => {
@@ -2355,6 +2437,76 @@ function deleteConnection(connectionId) {
         console.error('Error deleting connection:', error);
         showToast('Failed to delete connection', 'danger');
     });
+}
+
+// ── Device hover tooltip ──────────────────────────────────────────────────────
+const _tt = document.getElementById('rack-device-tooltip');
+
+function showRackDeviceTooltip(e, device) {
+    const rows = [];
+    if (device.asset_type_display) rows.push(`<span style="color:#94a3b8;font-size:0.75rem;">${device.asset_type_display}</span>`);
+    if (device.ip_address)   rows.push(`<div><span style="color:#94a3b8;">IP&nbsp;</span><strong>${device.ip_address}</strong></div>`);
+    if (device.hostname)     rows.push(`<div><span style="color:#94a3b8;">Host&nbsp;</span>${device.hostname}</div>`);
+    if (device.serial_number)rows.push(`<div><span style="color:#94a3b8;">S/N&nbsp;</span>${device.serial_number}</div>`);
+    if (device.location)     rows.push(`<div><span style="color:#94a3b8;">Location&nbsp;</span>${device.location}</div>`);
+    if (device.status_display) rows.push(`<div><span style="color:#94a3b8;">Status&nbsp;</span>${device.status_display}</div>`);
+    if (device.power_draw_watts) rows.push(`<div><span style="color:#94a3b8;">Power&nbsp;</span>${device.power_draw_watts}W</div>`);
+    if (device.notes)        rows.push(`<div style="margin-top:4px;color:#cbd5e1;font-style:italic;">${device.notes}</div>`);
+    if (!rows.length) return; // nothing useful to show
+
+    _tt.innerHTML = `<div style="font-weight:700;margin-bottom:5px;border-bottom:1px solid #475569;padding-bottom:4px;">${device.name}</div>` + rows.join('');
+    _tt.style.display = 'block';
+    positionTooltip(e);
+}
+
+function positionTooltip(e) {
+    if (_tt.style.display === 'none') return;
+    const x = Math.min(e.clientX + 16, window.innerWidth  - _tt.offsetWidth  - 8);
+    const y = Math.min(e.clientY + 16, window.innerHeight - _tt.offsetHeight - 8);
+    _tt.style.left = x + 'px';
+    _tt.style.top  = y + 'px';
+}
+
+function hideRackDeviceTooltip() {
+    _tt.style.display = 'none';
+}
+
+// ── Device detail modal ───────────────────────────────────────────────────────
+function showDeviceDetailModal(device) {
+    hideRackDeviceTooltip();
+
+    document.getElementById('deviceDetailModalTitle').innerHTML =
+        `<i class="fas fa-server me-2"></i>${device.name}`;
+
+    const editLink  = document.getElementById('deviceDetailEditLink');
+    const assetLink = document.getElementById('deviceDetailAssetLink');
+    editLink.href  = `/monitoring/devices/${device.id}/edit/`;
+    assetLink.href = device.asset_id ? `/assets/${device.asset_id}/` : '#';
+    assetLink.style.display = device.asset_id ? '' : 'none';
+
+    const rows = [];
+    const row = (label, val, mono) => val
+        ? `<tr><th style="width:35%;color:#6c757d;">${label}</th><td>${mono ? `<code>${val}</code>` : val}</td></tr>`
+        : '';
+
+    rows.push(row('Asset Name',   device.asset_name));
+    rows.push(row('Type',         device.asset_type_display));
+    rows.push(row('Status',       device.status_display));
+    rows.push(row('U Position',   device.units > 1
+        ? `U${device.start_unit} – U${device.end_unit} (${device.units}U)`
+        : `U${device.start_unit}`));
+    rows.push(row('IP Address',   device.ip_address,    true));
+    rows.push(row('Hostname',     device.hostname,      true));
+    rows.push(row('Serial No.',   device.serial_number, true));
+    rows.push(row('Location',     device.location));
+    rows.push(row('Port Count',   device.port_count ? `${device.port_count} ports` : null));
+    rows.push(row('Power Draw',   device.power_draw_watts ? `${device.power_draw_watts} W` : null));
+    rows.push(row('Notes',        device.notes));
+
+    document.getElementById('deviceDetailModalBody').innerHTML =
+        `<table class="table table-sm table-borderless mb-0"><tbody>${rows.join('')}</tbody></table>`;
+
+    new bootstrap.Modal(document.getElementById('deviceDetailModal')).show();
 }
 </script>
 

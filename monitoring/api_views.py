@@ -42,6 +42,7 @@ def rack_devices_list(request, pk):
             if image:
                 equipment_image_url = f'/files/attachments/{image.id}/'
 
+        asset = device.asset
         devices_data.append({
             'id': device.id,
             'name': device.name,
@@ -51,9 +52,16 @@ def rack_devices_list(request, pk):
             'color': device.color,
             'power_draw_watts': device.power_draw_watts,
             'asset_id': device.asset_id,
-            'asset_name': device.asset.name if device.asset else None,
-            'asset_type': device.asset.asset_type if device.asset else 'other',
-            'port_count': device.asset.port_count if device.asset else None,
+            'asset_name': asset.name if asset else None,
+            'asset_type': asset.asset_type if asset else 'other',
+            'asset_type_display': asset.get_asset_type_display() if asset else None,
+            'ip_address': str(asset.ip_address) if asset and asset.ip_address else None,
+            'hostname': asset.hostname if asset else None,
+            'serial_number': asset.serial_number if asset else None,
+            'location': asset.location if asset else None,
+            'status': asset.status if asset else None,
+            'status_display': asset.get_status_display() if asset else None,
+            'port_count': asset.port_count if asset else None,
             'equipment_image_url': equipment_image_url,
             'board_position_x': device.board_position_x,
             'board_position_y': device.board_position_y,
