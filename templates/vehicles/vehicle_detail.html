@@ -587,16 +587,19 @@
 {% block extra_js %}
 <style>
 /* Increase tab contrast */
-.nav-tabs .nav-link {
-    color: #343a40;
-    font-weight: 500;
+.nav-tabs .nav-link,
+.nav-tabs .nav-link:link,
+.nav-tabs .nav-link:visited {
+    color: #212529 !important;
+    font-weight: 600;
 }
-.nav-tabs .nav-link:hover {
-    color: #000;
+.nav-tabs .nav-link:hover,
+.nav-tabs .nav-link:focus {
+    color: #000 !important;
 }
 .nav-tabs .nav-link.active {
-    color: #0d6efd;
-    font-weight: 600;
+    color: #0d6efd !important;
+    font-weight: 700;
 }
 
 #damage-diagram-container [data-area].damaged {
