@@ -260,8 +260,8 @@ def create_rack_device(request, pk):
         if not asset_id:
             return JsonResponse({'success': False, 'error': 'asset_id is required'}, status=400)
 
-        # Get asset
-        asset = get_object_or_404(Asset, pk=asset_id, organization=org)
+        # Get asset — skip org filter in global view mode
+        asset = get_object_or_404(Asset, pk=asset_id) if not org else get_object_or_404(Asset, pk=asset_id, organization=org)
 
         if asset.rack_units:
             units = asset.rack_units
