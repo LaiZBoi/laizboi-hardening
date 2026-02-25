@@ -18,7 +18,7 @@ class ServiceVehicleForm(forms.ModelForm):
     class Meta:
         model = ServiceVehicle
         fields = [
-            'name', 'vehicle_type', 'make', 'model', 'year', 'color',
+            'name', 'vehicle_type', 'diagram_type', 'make', 'model', 'year', 'color',
             'vin', 'license_plate', 'qr_code', 'status', 'condition', 'current_mileage',
             'insurance_provider', 'insurance_policy_number', 'insurance_expires_at', 'insurance_premium',
             'registration_expires_at', 'latitude', 'longitude',
@@ -27,6 +27,7 @@ class ServiceVehicleForm(forms.ModelForm):
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'vehicle_type': forms.Select(attrs={'class': 'form-select'}),
+            'diagram_type': forms.Select(attrs={'class': 'form-select'}),
             'make': forms.TextInput(attrs={'class': 'form-control'}),
             'model': forms.TextInput(attrs={'class': 'form-control'}),
             'year': forms.NumberInput(attrs={'class': 'form-control'}),

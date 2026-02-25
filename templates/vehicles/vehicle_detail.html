@@ -47,7 +47,7 @@
 </div>
 
 <!-- Tabs -->
-<ul class="nav nav-tabs mb-3" role="tablist">
+<ul id="vehicle-detail-tabs" class="nav nav-tabs mb-3" role="tablist">
     <li class="nav-item">
         <a class="nav-link active" data-bs-toggle="tab" href="#overview"><i class="fas fa-info-circle"></i> Overview</a>
     </li>
@@ -256,11 +256,19 @@
                     </div>
                 </div>
                 <div id="damage-diagram-container" style="max-width:720px;margin:0 auto;position:relative;">
+                    {% if vehicle.diagram_type == 'pickup_truck' %}
+                    <div class="damage-view-pane" data-pane="driver">{% include 'vehicles/pickup_diagram.html' %}</div>
+                    <div class="damage-view-pane" data-pane="passenger" style="display:none;">{% include 'vehicles/pickup_diagram_passenger.html' %}</div>
+                    <div class="damage-view-pane" data-pane="front" style="display:none;">{% include 'vehicles/pickup_diagram_front.html' %}</div>
+                    <div class="damage-view-pane" data-pane="rear" style="display:none;">{% include 'vehicles/pickup_diagram_rear.html' %}</div>
+                    <div class="damage-view-pane" data-pane="top" style="display:none;">{% include 'vehicles/pickup_diagram_top.html' %}</div>
+                    {% else %}
                     <div class="damage-view-pane" data-pane="driver">{% include 'vehicles/van_diagram.html' %}</div>
                     <div class="damage-view-pane" data-pane="passenger" style="display:none;">{% include 'vehicles/van_diagram_passenger.html' %}</div>
                     <div class="damage-view-pane" data-pane="front" style="display:none;">{% include 'vehicles/van_diagram_front.html' %}</div>
                     <div class="damage-view-pane" data-pane="rear" style="display:none;">{% include 'vehicles/van_diagram_rear.html' %}</div>
                     <div class="damage-view-pane" data-pane="top" style="display:none;">{% include 'vehicles/van_diagram_top.html' %}</div>
+                    {% endif %}
                 </div>
                 <div class="mt-3 text-center">
                     {% if damage_reports %}
@@ -649,30 +657,30 @@
 {% block extra_js %}
 <style>
 /* Vehicle detail tabs — primary-colour bar */
-.nav-tabs {
+#vehicle-detail-tabs {
     background: var(--primary-color, #0d6efd);
     border-radius: 6px 6px 0 0;
     padding: 6px 6px 0;
     border-bottom: none;
     gap: 2px;
 }
-.nav-tabs .nav-link,
-.nav-tabs .nav-link:link,
-.nav-tabs .nav-link:visited {
-    color: rgba(255,255,255,0.85) !important;
+#vehicle-detail-tabs .nav-link,
+#vehicle-detail-tabs .nav-link:link,
+#vehicle-detail-tabs .nav-link:visited {
+    color: rgba(255,255,255,0.9) !important;
     font-weight: 600;
     background: rgba(255,255,255,0.15);
     border: none;
     border-radius: 4px 4px 0 0;
     padding: 0.45rem 0.9rem;
 }
-.nav-tabs .nav-link:hover,
-.nav-tabs .nav-link:focus {
+#vehicle-detail-tabs .nav-link:hover,
+#vehicle-detail-tabs .nav-link:focus {
     color: #fff !important;
     background: rgba(255,255,255,0.28) !important;
     border: none;
 }
-.nav-tabs .nav-link.active {
+#vehicle-detail-tabs .nav-link.active {
     color: var(--primary-color, #0d6efd) !important;
     font-weight: 700;
     background: #fff !important;

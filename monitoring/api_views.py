@@ -197,6 +197,16 @@ def rack_device_detail(request, pk):
             for field in allowed_fields:
                 if field in data:
                     setattr(device, field, data[field])
+
+            # Handle asset_id separately (foreign key)
+            if 'asset_id' in data:
+                asset_id = data['asset_id']
+                if asset_id:
+                    asset = get_object_or_404(Asset, pk=asset_id, organization=org) if org else get_object_or_404(Asset, pk=asset_id)
+                    device.asset = asset
+                else:
+                    device.asset = None
+
             device.save()
 
         return JsonResponse({
@@ -209,6 +219,8 @@ def rack_device_detail(request, pk):
                 'notes': device.notes,
                 'start_unit': device.start_unit,
                 'units': device.units,
+                'asset_id': device.asset_id,
+                'asset_name': device.asset.name if device.asset else None,
             }
         })
 

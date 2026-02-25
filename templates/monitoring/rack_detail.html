@@ -317,26 +317,6 @@
     z-index: 10;
 }
 
-.board-device-edit-icon {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    color: rgba(255,255,255,0.6);
-    font-size: 0.75rem;
-    cursor: pointer;
-    z-index: 20;
-    display: none;
-    background: rgba(0,0,0,0.35);
-    border-radius: 3px;
-    padding: 2px 4px;
-}
-.board-device:hover .board-device-edit-icon {
-    display: block;
-}
-.board-device-edit-icon:hover {
-    color: #fff;
-    background: rgba(13,110,253,0.8);
-}
 
 .board-device.dragging {
     opacity: 0.7;
@@ -551,6 +531,16 @@
     .col-lg-3 { width: 30% !important; float: left; }
     .col-lg-9 { width: 68% !important; float: right; }
 }
+
+/* No-backdrop modals: keep content scrollable, prevent body shift */
+#deviceDetailModal.show,
+#deviceEditModal.show {
+    background: rgba(0,0,0,0) !important;
+}
+#deviceDetailModal .modal-content,
+#deviceEditModal .modal-content {
+    box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+}
 </style>
 {% endblock %}
 
@@ -563,7 +553,7 @@
   box-shadow:0 4px 20px rgba(0,0,0,0.45);"></div>
 
 <!-- Device Detail Modal -->
-<div class="modal fade" id="deviceDetailModal" tabindex="-1">
+<div class="modal fade" id="deviceDetailModal" tabindex="-1" data-bs-backdrop="false" data-bs-keyboard="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header" id="deviceDetailModalHeader" style="background:#1e293b;color:#e2e8f0;">
@@ -581,7 +571,7 @@
 </div>
 
 <!-- Device Inline Edit Modal -->
-<div class="modal fade" id="deviceEditModal" tabindex="-1">
+<div class="modal fade" id="deviceEditModal" tabindex="-1" data-bs-backdrop="false" data-bs-keyboard="true">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header" style="background:#1e293b;color:#e2e8f0;">
@@ -611,6 +601,15 @@
         <div class="mb-3">
           <label class="form-label fw-semibold">Color</label>
           <input type="color" id="editDeviceColor" class="form-control form-control-color" style="height:38px;width:60px;">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Linked Asset</label>
+          <select id="editDeviceAsset" class="form-select">
+            <option value="">-- No Asset (Label Only) --</option>
+            {% for asset in all_org_assets %}
+            <option value="{{ asset.id }}">{{ asset.name }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold">Notes</label>
@@ -1635,23 +1634,12 @@ function createBoardDevice(item, type) {
     // Enhanced visual content
     const content = getBoardDeviceContent(item);
     div.innerHTML = `
-        <i class="fas fa-edit board-device-edit-icon" title="Edit device"></i>
         <div class="board-device-content">
             ${content}
             <div class="board-device-label">${item.name}</div>
         </div>
         <div class="board-resize-handle"></div>
     `;
-
-    // Edit icon
-    const editIcon = div.querySelector('.board-device-edit-icon');
-    if (editIcon) {
-        editIcon.addEventListener('mousedown', e => e.stopPropagation());
-        editIcon.addEventListener('click', function(e) {
-            e.stopPropagation();
-            window.location.href = `/monitoring/devices/${item.id}/edit/`;
-        });
-    }
 
     // Hover tooltip
     div.addEventListener('mouseenter', function(e) { showRackDeviceTooltip(e, item); });
@@ -1660,8 +1648,7 @@ function createBoardDevice(item, type) {
 
     // Click body → detail modal
     div.addEventListener('click', function(e) {
-        if (e.target.classList.contains('board-device-edit-icon') ||
-            e.target.classList.contains('board-resize-handle')) return;
+        if (e.target.classList.contains('board-resize-handle')) return;
         showDeviceDetailModal(item);
     });
 
@@ -2567,8 +2554,9 @@ function showDeviceEditModal(device) {
     document.getElementById('editDeviceName').value    = device.name || '';
     document.getElementById('editDeviceStartUnit').value = device.position || device.start_unit || 1;
     document.getElementById('editDeviceUnits').value   = device.height   || device.units    || 1;
-    document.getElementById('editDevicePower').value   = device.power_watts != null ? device.power_watts : '';
+    document.getElementById('editDevicePower').value   = device.power_draw_watts != null ? device.power_draw_watts : (device.power_watts != null ? device.power_watts : '');
     document.getElementById('editDeviceColor').value   = device.color || '#0d6efd';
+    document.getElementById('editDeviceAsset').value   = device.asset_id || '';
     document.getElementById('editDeviceNotes').value   = device.notes || '';
     document.getElementById('editDeviceError').classList.add('d-none');
 
@@ -2586,6 +2574,9 @@ document.getElementById('saveDeviceEditBtn').addEventListener('click', function(
         color:            document.getElementById('editDeviceColor').value,
         notes:            document.getElementById('editDeviceNotes').value,
     };
+
+    const assetVal = document.getElementById('editDeviceAsset').value;
+    payload.asset_id = assetVal ? parseInt(assetVal) : null;
 
     const btn     = this;
     const spinner = document.getElementById('saveDeviceEditSpinner');

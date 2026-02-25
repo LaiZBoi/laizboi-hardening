@@ -8,7 +8,15 @@
 [![Known Vulnerabilities](https://snyk.io/test/github/agit8or1/clientst0r/badge.svg)](https://snyk.io/test/github/agit8or1/clientst0r)
 [![Security Monitoring](https://img.shields.io/badge/security-Snyk%20%7C%20HaveIBeenPwned-blue)](https://github.com/agit8or1/clientst0r)
 
+> **Open-source, self-hosted MSP documentation platform — an alternative to IT Glue and Hudu.**
+> Full data ownership. No SaaS fees. Runs on your infrastructure.
+
+| [IT Glue Alternative →](docs/it-glue-alternative.md) | [Hudu Alternative →](docs/hudu-alternative.md) | [What is ClientSt0r? →](docs/what-is-clientst0r.md) |
+|---|---|---|
+
 A complete, self-hosted IT documentation platform designed for Managed Service Providers (MSPs) and IT departments. Built with Django 6, Client St0r provides secure asset management, encrypted password vault, knowledge base, PSA integrations, and comprehensive monitoring tools.
+
+Client St0r is commonly evaluated as an **open-source IT Glue alternative** and a **self-hosted Hudu alternative** for MSP documentation.
 
 ## 📸 Screenshots
 
@@ -139,6 +147,13 @@ A complete, self-hosted IT documentation platform designed for Managed Service P
 ## 🐕 About Luna
 
 This project was developed with the assistance of **Luna**, a brilliant German Shepherd Dog with exceptional problem-solving abilities and a keen eye for security best practices. Luna's contributions to code review, architecture decisions, and bug hunting have been invaluable.
+
+## IT Glue / Hudu Alternative
+
+If you're comparing documentation platforms for MSP workflows, Client St0r is designed to cover core documentation needs (assets, credentials, procedures/runbooks, and knowledge base content) while remaining fully self-hosted.
+
+* [Client St0r as an IT Glue alternative](docs/it-glue-alternative.md)
+* [Client St0r as a Hudu alternative](docs/hudu-alternative.md)
 
 ## ✨ Key Features
 
@@ -673,3 +688,9 @@ Your support allows me to continue developing open-source tools like Client St0r
 ---
 
 **Made with ❤️ and 🐕 by the Client St0r Team and Luna the German Shepherd**
+
+---
+
+## Keywords
+
+Open-source IT Glue alternative · Self-hosted Hudu alternative · MSP documentation platform · IT documentation system · MSP knowledge base · self-hosted IT documentation

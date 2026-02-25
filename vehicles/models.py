@@ -25,6 +25,11 @@ class ServiceVehicle(BaseModel):
         ('other', 'Other'),
     ]
 
+    DIAGRAM_TYPES = [
+        ('cargo_van', 'Cargo Van (Transit / Sprinter style)'),
+        ('pickup_truck', 'Pickup Truck (F-150 / Ram style)'),
+    ]
+
     CONDITION_CHOICES = [
         ('excellent', 'Excellent'),
         ('good', 'Good'),
@@ -118,6 +123,14 @@ class ServiceVehicle(BaseModel):
         blank=True,
         related_name='assigned_vehicles',
         help_text="Currently assigned user/technician"
+    )
+
+    # Damage diagram style
+    diagram_type = models.CharField(
+        max_length=30,
+        choices=DIAGRAM_TYPES,
+        default='cargo_van',
+        help_text="Vehicle silhouette used for damage diagrams"
     )
 
     # Notes

@@ -1,85 +1,105 @@
-<svg id="damage-svg-front" class="damage-diagram-svg" width="800" height="370" viewBox="0 0 800 370" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:260px;">
-  <style>
-    #damage-svg-front [data-area] { cursor: pointer; transition: opacity 0.15s; }
-    #damage-svg-front [data-area]:hover { opacity: 0.75; }
-  </style>
+<svg id="damage-svg-front" class="damage-diagram-svg" width="560" height="400" viewBox="0 0 560 400" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:340px;">
+  <defs>
+    <linearGradient id="vfbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d8e4f0"/>
+      <stop offset="40%" stop-color="#eef4fc"/>
+      <stop offset="100%" stop-color="#8898b0"/>
+    </linearGradient>
+    <linearGradient id="vfwin" x1="0" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="#b0d0f0" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#3070b0" stop-opacity="0.95"/>
+    </linearGradient>
+    <radialGradient id="vftire" cx="45%" cy="38%" r="55%">
+      <stop offset="0%" stop-color="#4a4a4a"/><stop offset="100%" stop-color="#111"/>
+    </radialGradient>
+    <radialGradient id="vfhub" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#e0e0e0"/><stop offset="100%" stop-color="#808080"/>
+    </radialGradient>
+    <style>.damage-diagram-svg [data-area]{cursor:pointer}.damage-diagram-svg [data-area]:hover{opacity:0.75}</style>
+  </defs>
 
   <!-- Shadow -->
-  <ellipse cx="400" cy="358" rx="310" ry="10" fill="#00000022"/>
+  <ellipse cx="280" cy="385" rx="230" ry="10" fill="#00000020"/>
 
-  <!-- Roof strip (top edge) -->
-  <rect data-area="Roof" x="120" y="5" width="560" height="26" rx="6" fill="#718096" stroke="#2d3748" stroke-width="2"/>
+  <!-- ===== BODY FRONT FACE ===== -->
+  <!-- Main body rectangle -->
+  <rect x="72" y="88" width="416" height="250" rx="8" fill="url(#vfbg)" stroke="#8898b0" stroke-width="2"/>
+  <!-- Roof rounded top -->
+  <rect x="90" y="60" width="380" height="50" rx="10" fill="#ccdaea" stroke="#aabece" stroke-width="1.5"/>
+  <!-- Roof section -->
+  <rect data-area="Roof" x="90" y="55" width="380" height="55" rx="10" fill="rgba(255,255,255,0)" stroke="none"/>
 
-  <!-- Left body panel (driver side) -->
-  <rect x="120" y="30" width="62" height="225" fill="#718096" stroke="#2d3748" stroke-width="2"/>
+  <!-- Bumper -->
+  <rect x="60" y="310" width="440" height="50" rx="8" fill="#4a5568" stroke="#2d3748" stroke-width="2"/>
+  <rect data-area="Front Bumper" x="60" y="310" width="440" height="50" rx="8" fill="rgba(255,255,255,0)" stroke="none"/>
+  <!-- Bumper grille slots -->
+  <rect x="160" y="318" width="240" height="8" rx="3" fill="#3a4050" opacity="0.8"/>
+  <rect x="160" y="330" width="240" height="6" rx="3" fill="#3a4050" opacity="0.6"/>
+  <rect x="160" y="340" width="240" height="6" rx="3" fill="#3a4050" opacity="0.5"/>
 
-  <!-- Right body panel (passenger side) -->
-  <rect x="618" y="30" width="62" height="225" fill="#718096" stroke="#2d3748" stroke-width="2"/>
+  <!-- ===== GRILLE ===== -->
+  <rect data-area="Grille" x="140" y="270" width="280" height="48" rx="6" fill="rgba(255,255,255,0)" stroke="none"/>
+  <!-- Grille visual -->
+  <rect x="142" y="272" width="276" height="44" rx="5" fill="#2a3040" stroke="#404858" stroke-width="2"/>
+  <rect x="148" y="278" width="264" height="6" rx="2" fill="#353d50" opacity="0.9"/>
+  <rect x="148" y="288" width="264" height="6" rx="2" fill="#353d50" opacity="0.8"/>
+  <rect x="148" y="298" width="264" height="6" rx="2" fill="#353d50" opacity="0.7"/>
 
-  <!-- Windshield (trapezoidal — wider at top, van/cab-over style) -->
-  <polygon data-area="Windshield" points="182,31 618,31 592,152 208,152" fill="#90cdf4" stroke="#2d3748" stroke-width="1.5" opacity="0.8"/>
+  <!-- ===== HOOD ===== -->
+  <rect data-area="Hood" x="80" y="230" width="400" height="50" rx="4" fill="rgba(255,255,255,0)" stroke="none"/>
+  <!-- Hood panel -->
+  <rect x="82" y="232" width="396" height="46" rx="4" fill="#c8d8e8" stroke="#a0b4c8" stroke-width="1"/>
+  <!-- Hood crease -->
+  <line x1="280" y1="232" x2="280" y2="278" stroke="#a8b8cc" stroke-width="1.5" opacity="0.5"/>
 
-  <!-- Hood -->
-  <rect data-area="Hood" x="208" y="152" width="384" height="106" rx="2" fill="#8898aa" stroke="#2d3748" stroke-width="2"/>
+  <!-- ===== WINDSHIELD ===== -->
+  <rect data-area="Windshield" x="100" y="98" width="360" height="140" rx="8" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="102" y="100" width="356" height="136" rx="7" fill="url(#vfwin)" stroke="#508090" stroke-width="2"/>
+  <!-- Wipers -->
+  <path d="M 130,232 C 160,210 220,202 260,200" stroke="#404858" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M 290,200 C 330,200 380,208 415,228" stroke="#404858" stroke-width="3" fill="none" stroke-linecap="round"/>
 
-  <!-- Grille (dark inset) -->
-  <rect data-area="Grille" x="292" y="192" width="216" height="64" rx="6" fill="#1a202c" stroke="#475569" stroke-width="1.5"/>
-  <!-- Grille bars -->
-  <line x1="292" y1="212" x2="508" y2="212" stroke="#2d3748" stroke-width="1.5"/>
-  <line x1="292" y1="228" x2="508" y2="228" stroke="#2d3748" stroke-width="1.5"/>
-  <line x1="292" y1="244" x2="508" y2="244" stroke="#2d3748" stroke-width="1.5"/>
+  <!-- ===== HEADLIGHTS ===== -->
+  <!-- Left headlight -->
+  <rect data-area="Headlight (L)" x="72" y="150" width="90" height="88" rx="8" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="74" y="152" width="86" height="84" rx="7" fill="#f4f2a0" stroke="#c8c030" stroke-width="2"/>
+  <ellipse cx="117" cy="194" rx="28" ry="22" fill="white" opacity="0.5"/>
+  <ellipse cx="117" cy="194" rx="16" ry="13" fill="#ffe060" opacity="0.4"/>
 
-  <!-- Front Bumper -->
-  <rect data-area="Front Bumper" x="112" y="256" width="576" height="32" rx="5" fill="#4a5568" stroke="#2d3748" stroke-width="2"/>
+  <!-- Right headlight -->
+  <rect data-area="Headlight (R)" x="398" y="150" width="90" height="88" rx="8" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="400" y="152" width="86" height="84" rx="7" fill="#f4f2a0" stroke="#c8c030" stroke-width="2"/>
+  <ellipse cx="443" cy="194" rx="28" ry="22" fill="white" opacity="0.5"/>
+  <ellipse cx="443" cy="194" rx="16" ry="13" fill="#ffe060" opacity="0.4"/>
 
-  <!-- Left Headlight (driver side — LEFT from viewer) -->
-  <rect data-area="Headlight (L)" x="124" y="85" width="66" height="88" rx="8" fill="#fbbf24" stroke="#2d3748" stroke-width="1.5"/>
-  <!-- Headlight inner -->
-  <ellipse cx="157" cy="129" rx="24" ry="30" fill="#fde68a" opacity="0.6"/>
+  <!-- ===== DRL ===== -->
+  <rect data-area="DRL (L)" x="76" y="246" width="58" height="12" rx="5" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="78" y="248" width="54" height="8" rx="4" fill="#f4d040" stroke="#c0a020" stroke-width="1"/>
 
-  <!-- Right Headlight (passenger side — RIGHT from viewer) -->
-  <rect data-area="Headlight (R)" x="610" y="85" width="66" height="88" rx="8" fill="#fbbf24" stroke="#2d3748" stroke-width="1.5"/>
-  <ellipse cx="643" cy="129" rx="24" ry="30" fill="#fde68a" opacity="0.6"/>
+  <rect data-area="DRL (R)" x="426" y="246" width="58" height="12" rx="5" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="428" y="248" width="54" height="8" rx="4" fill="#f4d040" stroke="#c0a020" stroke-width="1"/>
 
-  <!-- Left DRL -->
-  <rect data-area="DRL (L)" x="124" y="175" width="66" height="18" rx="4" fill="#fde68a" stroke="#2d3748" stroke-width="1"/>
+  <!-- ===== SIDE MIRRORS ===== -->
+  <ellipse data-area="Driver Side Mirror" cx="55" cy="170" rx="20" ry="13" fill="#9aaabf" stroke="#7a8a9f" stroke-width="1.5"/>
+  <ellipse cx="53" cy="168" rx="13" ry="9" fill="url(#vfwin)" opacity="0.7"/>
 
-  <!-- Right DRL -->
-  <rect data-area="DRL (R)" x="610" y="175" width="66" height="18" rx="4" fill="#fde68a" stroke="#2d3748" stroke-width="1"/>
+  <ellipse data-area="Passenger Side Mirror" cx="505" cy="170" rx="20" ry="13" fill="#9aaabf" stroke="#7a8a9f" stroke-width="1.5"/>
+  <ellipse cx="503" cy="168" rx="13" ry="9" fill="url(#vfwin)" opacity="0.7"/>
 
-  <!-- Driver Side Mirror (sticks out left) -->
-  <rect data-area="Driver Side Mirror" x="55" y="52" width="65" height="24" rx="4" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
-  <line x1="120" y1="64" x2="133" y2="66" stroke="#2d3748" stroke-width="2"/>
+  <!-- ===== WHEELS ===== -->
+  <!-- Left front wheel (partially visible) -->
+  <circle cx="96" cy="348" r="44" fill="url(#vftire)" stroke="#181818" stroke-width="2"/>
+  <circle cx="96" cy="348" r="30" fill="#2a2a2a"/>
+  <circle cx="96" cy="348" r="22" fill="url(#vfhub)"/>
+  <circle cx="96" cy="348" r="7" fill="#aaa"/>
 
-  <!-- Passenger Side Mirror (sticks out right) -->
-  <rect data-area="Passenger Side Mirror" x="680" y="52" width="65" height="24" rx="4" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
-  <line x1="680" y1="64" x2="667" y2="66" stroke="#2d3748" stroke-width="2"/>
+  <!-- Right front wheel -->
+  <circle cx="464" cy="348" r="44" fill="url(#vftire)" stroke="#181818" stroke-width="2"/>
+  <circle cx="464" cy="348" r="30" fill="#2a2a2a"/>
+  <circle cx="464" cy="348" r="22" fill="url(#vfhub)"/>
+  <circle cx="464" cy="348" r="7" fill="#aaa"/>
 
-  <!-- Left Front Wheel (partially visible) -->
-  <circle data-area="Front Left Wheel" cx="87" cy="326" r="42" fill="#1a202c" stroke="#718096" stroke-width="4"/>
-  <circle cx="87" cy="326" r="20" fill="#4a5568"/>
-  <circle cx="87" cy="326" r="8" fill="#718096"/>
-  <!-- Arch mask -->
-  <path d="M 45 285 Q 48 254 87 252 Q 126 254 129 285" fill="#2d3748"/>
-  <rect x="0" y="270" width="178" height="30" fill="#1e293b"/>
-
-  <!-- Right Front Wheel -->
-  <circle data-area="Front Right Wheel" cx="713" cy="326" r="42" fill="#1a202c" stroke="#718096" stroke-width="4"/>
-  <circle cx="713" cy="326" r="20" fill="#4a5568"/>
-  <circle cx="713" cy="326" r="8" fill="#718096"/>
-  <path d="M 671 285 Q 674 254 713 252 Q 752 254 755 285" fill="#2d3748"/>
-  <rect x="622" y="270" width="178" height="30" fill="#1e293b"/>
-
-  <!-- License plate -->
-  <rect x="350" y="228" width="100" height="26" rx="3" fill="#e2e8f0" stroke="#2d3748" stroke-width="1"/>
-
-  <!-- Labels -->
-  <g font-family="Arial,sans-serif" font-size="11" fill="#e2e8f0" opacity="0.7" text-anchor="middle">
-    <text x="157" y="78">Headlight (L)</text>
-    <text x="643" y="78">Headlight (R)</text>
-    <text x="157" y="208">Driver Side</text>
-    <text x="643" y="208">Pass. Side</text>
-    <text x="87" y="362">Front L Wheel</text>
-    <text x="713" y="362">Front R Wheel</text>
-  </g>
+  <!-- Wheel zones -->
+  <circle data-area="Front Left Wheel" cx="96" cy="348" r="44" fill="rgba(255,255,255,0)" stroke="none"/>
+  <circle data-area="Front Right Wheel" cx="464" cy="348" r="44" fill="rgba(255,255,255,0)" stroke="none"/>
 </svg>

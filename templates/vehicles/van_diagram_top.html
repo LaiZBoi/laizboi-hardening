@@ -1,80 +1,71 @@
-<svg id="damage-svg-top" class="damage-diagram-svg" width="800" height="420" viewBox="0 0 800 420" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:280px;">
-  <style>
-    #damage-svg-top [data-area] { cursor: pointer; transition: opacity 0.15s; }
-    #damage-svg-top [data-area]:hover { opacity: 0.75; }
-  </style>
+<svg id="damage-svg-top" class="damage-diagram-svg" width="900" height="400" viewBox="0 0 900 400" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:300px;">
+  <defs>
+    <linearGradient id="vtbg" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#e8f0f8"/>
+      <stop offset="100%" stop-color="#c0d0e4"/>
+    </linearGradient>
+    <linearGradient id="vtbg2" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#c0d0e4"/>
+      <stop offset="50%" stop-color="#ddeaf8"/>
+      <stop offset="100%" stop-color="#c0d0e4"/>
+    </linearGradient>
+    <radialGradient id="vttire" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3a3a3a"/><stop offset="100%" stop-color="#111"/>
+    </radialGradient>
+    <style>.damage-diagram-svg [data-area]{cursor:pointer}.damage-diagram-svg [data-area]:hover{opacity:0.75}</style>
+  </defs>
 
-  <!-- Shadow -->
-  <ellipse cx="400" cy="408" rx="300" ry="10" fill="#00000022"/>
+  <!-- ===== MAIN BODY (top view) ===== -->
+  <!-- Cargo body (large rectangle, center) -->
+  <rect x="220" y="80" width="620" height="240" rx="10" fill="url(#vtbg2)" stroke="#8898b0" stroke-width="2"/>
 
-  <!-- Passenger side strip (TOP edge — passenger is top in this orientation) -->
-  <rect data-area="Passenger Side" x="152" y="70" width="496" height="40" rx="2" fill="#8898aa" stroke="#2d3748" stroke-width="1.5"/>
+  <!-- Cab (front section, slightly tapered) -->
+  <path d="M 100,130 C 100,110 115,92 135,90 L 220,85 L 220,315 L 135,310 C 115,308 100,290 100,270 Z" fill="url(#vtbg)" stroke="#8898b0" stroke-width="2"/>
 
-  <!-- Driver side strip (BOTTOM edge) -->
-  <rect data-area="Driver Side" x="152" y="310" width="496" height="40" rx="2" fill="#8898aa" stroke="#2d3748" stroke-width="1.5"/>
+  <!-- ===== ROOF DETAIL ===== -->
+  <rect data-area="Roof / Top" x="220" y="82" width="618" height="236" rx="10" fill="rgba(255,255,255,0)" stroke="none"/>
+  <!-- Roof rack / line down center -->
+  <line x1="220" y1="200" x2="838" y2="200" stroke="#a8b8cc" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.5"/>
+  <!-- Panel seam lines -->
+  <line x1="450" y1="82" x2="450" y2="318" stroke="#a8b8cc" stroke-width="1" opacity="0.3"/>
+  <line x1="680" y1="82" x2="680" y2="318" stroke="#a8b8cc" stroke-width="1" opacity="0.3"/>
 
-  <!-- Hood (front-left area) -->
-  <rect data-area="Hood" x="40" y="110" width="116" height="200" rx="4" fill="#8898aa" stroke="#2d3748" stroke-width="2"/>
-  <!-- Hood grille slot -->
-  <rect x="60" y="150" width="76" height="12" rx="3" fill="#1a202c" opacity="0.6"/>
-  <rect x="60" y="170" width="76" height="12" rx="3" fill="#1a202c" opacity="0.6"/>
-  <rect x="60" y="190" width="76" height="12" rx="3" fill="#1a202c" opacity="0.6"/>
+  <!-- ===== WINDSHIELD (from top) ===== -->
+  <rect data-area="Windshield" x="205" y="122" width="45" height="156" rx="4" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="207" y="124" width="41" height="152" rx="4" fill="#90c0e0" opacity="0.6" stroke="#607888" stroke-width="1"/>
 
-  <!-- Windshield (top view — thin strip just behind hood) -->
-  <rect data-area="Windshield" x="155" y="110" width="60" height="200" rx="2" fill="#90cdf4" stroke="#2d3748" stroke-width="1.5" opacity="0.8"/>
+  <!-- ===== HOOD (from top) ===== -->
+  <path data-area="Hood" d="M 100,135 L 205,125 L 205,275 L 100,265 Z" fill="rgba(255,255,255,0)" stroke="none"/>
+  <path d="M 102,137 L 205,127 L 205,273 L 102,263 Z" fill="#c0cede" stroke="#9aaabf" stroke-width="1" opacity="0.7"/>
 
-  <!-- Main Roof (large center) -->
-  <rect data-area="Roof" x="215" y="110" width="368" height="200" rx="2" fill="#718096" stroke="#2d3748" stroke-width="2"/>
+  <!-- ===== BUMPERS ===== -->
+  <rect data-area="Front Bumper" x="80" y="150" width="30" height="100" rx="5" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="82" y="152" width="26" height="96" rx="4" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
+  <rect data-area="Rear Bumper" x="840" y="150" width="30" height="100" rx="5" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="842" y="152" width="26" height="96" rx="4" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
 
-  <!-- Roof Rack strips -->
-  <rect data-area="Roof Rack / Top" x="220" y="118" width="356" height="14" rx="3" fill="#5a6778" stroke="#2d3748" stroke-width="1"/>
-  <rect x="220" y="138" width="356" height="14" rx="3" fill="#5a6778" stroke="#2d3748" stroke-width="1" opacity="0.6"/>
-  <rect x="220" y="278" width="356" height="14" rx="3" fill="#5a6778" stroke="#2d3748" stroke-width="1" opacity="0.6"/>
+  <!-- ===== SIDE MIRRORS ===== -->
+  <ellipse data-area="Driver Side Mirror" cx="175" cy="100" rx="22" ry="12" fill="#9aaabf" stroke="#7a8a9f" stroke-width="1.5"/>
+  <ellipse data-area="Passenger Side Mirror" cx="175" cy="300" rx="22" ry="12" fill="#9aaabf" stroke="#7a8a9f" stroke-width="1.5"/>
 
-  <!-- Rear area (right side) -->
-  <rect x="583" y="110" width="65" height="200" rx="2" fill="#8898aa" stroke="#2d3748" stroke-width="2"/>
+  <!-- ===== CLICKABLE SIDES ===== -->
+  <rect data-area="Driver Side" x="220" y="82" width="618" height="30" rx="4" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect data-area="Passenger Side" x="220" y="288" width="618" height="30" rx="4" fill="rgba(255,255,255,0)" stroke="none"/>
 
-  <!-- Front Bumper -->
-  <rect data-area="Front Bumper" x="20" y="110" width="22" height="200" rx="4" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
+  <!-- ===== WHEELS (from top, shown as ovals) ===== -->
+  <!-- Front left (driver side front) -->
+  <ellipse data-area="Front Left Wheel" cx="176" cy="130" rx="18" ry="36" fill="url(#vttire)" stroke="#111" stroke-width="1.5"/>
+  <ellipse cx="176" cy="130" rx="10" ry="22" fill="#555"/>
+  <!-- Front right (passenger side front) -->
+  <ellipse data-area="Front Right Wheel" cx="176" cy="270" rx="18" ry="36" fill="url(#vttire)" stroke="#111" stroke-width="1.5"/>
+  <ellipse cx="176" cy="270" rx="10" ry="22" fill="#555"/>
+  <!-- Rear left (driver side rear) -->
+  <ellipse data-area="Rear Left Wheel" cx="740" cy="130" rx="18" ry="36" fill="url(#vttire)" stroke="#111" stroke-width="1.5"/>
+  <ellipse cx="740" cy="130" rx="10" ry="22" fill="#555"/>
+  <!-- Rear right (passenger side rear) -->
+  <ellipse data-area="Rear Right Wheel" cx="740" cy="270" rx="18" ry="36" fill="url(#vttire)" stroke="#111" stroke-width="1.5"/>
+  <ellipse cx="740" cy="270" rx="10" ry="22" fill="#555"/>
 
-  <!-- Rear Bumper -->
-  <rect data-area="Rear Bumper" x="758" y="110" width="22" height="200" rx="4" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
-
-  <!-- Driver Side Mirror (bottom-left — driver = bottom) -->
-  <rect data-area="Driver Side Mirror" x="58" y="308" width="36" height="14" rx="3" fill="#4a5568" stroke="#2d3748" stroke-width="1"/>
-  <line x1="94" y1="315" x2="108" y2="315" stroke="#2d3748" stroke-width="2"/>
-
-  <!-- Passenger Side Mirror (top-left — passenger = top) -->
-  <rect data-area="Passenger Side Mirror" x="58" y="98" width="36" height="14" rx="3" fill="#4a5568" stroke="#2d3748" stroke-width="1"/>
-  <line x1="94" y1="105" x2="108" y2="105" stroke="#2d3748" stroke-width="2"/>
-
-  <!-- Front Left Wheel (bottom-left, driver side) -->
-  <ellipse data-area="Front Left Wheel" cx="100" cy="330" rx="36" ry="20" fill="#1a202c" stroke="#718096" stroke-width="3"/>
-  <ellipse cx="100" cy="330" rx="16" ry="9" fill="#4a5568"/>
-  <ellipse cx="100" cy="330" rx="6" ry="4" fill="#718096"/>
-
-  <!-- Front Right Wheel (top-left, passenger side) -->
-  <ellipse data-area="Front Right Wheel" cx="100" cy="90" rx="36" ry="20" fill="#1a202c" stroke="#718096" stroke-width="3"/>
-  <ellipse cx="100" cy="90" rx="16" ry="9" fill="#4a5568"/>
-  <ellipse cx="100" cy="90" rx="6" ry="4" fill="#718096"/>
-
-  <!-- Rear Left Wheel (bottom-right, driver side) -->
-  <ellipse data-area="Rear Left Wheel" cx="700" cy="330" rx="36" ry="20" fill="#1a202c" stroke="#718096" stroke-width="3"/>
-  <ellipse cx="700" cy="330" rx="16" ry="9" fill="#4a5568"/>
-  <ellipse cx="700" cy="330" rx="6" ry="4" fill="#718096"/>
-
-  <!-- Rear Right Wheel (top-right, passenger side) -->
-  <ellipse data-area="Rear Right Wheel" cx="700" cy="90" rx="36" ry="20" fill="#1a202c" stroke="#718096" stroke-width="3"/>
-  <ellipse cx="700" cy="90" rx="16" ry="9" fill="#4a5568"/>
-  <ellipse cx="700" cy="90" rx="6" ry="4" fill="#718096"/>
-
-  <!-- Labels -->
-  <g font-family="Arial,sans-serif" font-size="11" fill="#e2e8f0" opacity="0.7" text-anchor="middle">
-    <text x="78" y="210">Front</text>
-    <text x="400" y="105" font-size="10">Passenger Side →</text>
-    <text x="400" y="395" font-size="10">← Driver Side</text>
-    <text x="400" y="220" font-size="13" font-weight="bold" opacity="0.4">ROOF</text>
-    <text x="726" y="210">Rear</text>
-    <text x="182" y="218" font-size="10" transform="rotate(-90,182,218)">Windshield</text>
-  </g>
+  <!-- Direction indicator -->
+  <text x="50" y="210" font-size="13" fill="#8898b8" font-family="sans-serif" text-anchor="middle" transform="rotate(-90,50,210)">FRONT →</text>
 </svg>

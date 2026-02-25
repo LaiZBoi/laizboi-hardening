@@ -343,6 +343,9 @@ def rack_detail(request, pk):
         id__in=existing_asset_ids
     ).order_by('name')
 
+    # All org assets for the inline edit modal asset selector
+    all_org_assets = Asset.objects.filter(organization=org).order_by('name').values('id', 'name') if org else Asset.objects.none()
+
     # Query rack images
     from files.models import Attachment
     rack_images = Attachment.objects.filter(
@@ -358,6 +361,7 @@ def rack_detail(request, pk):
         'rack_resources': rack_resources,
         'rack_units': rack_units,
         'available_rack_assets': available_rack_assets,
+        'all_org_assets': list(all_org_assets),
         'rack_images': rack_images,
     })
 
