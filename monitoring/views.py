@@ -16,6 +16,13 @@ from .forms import (
 from assets.models import Asset
 
 
+def _org_get_or_404(model, org, **kwargs):
+    """get_object_or_404 scoped to org. Skips org filter in global view (org=None)."""
+    if org:
+        kwargs['organization'] = org
+    return get_object_or_404(model, **kwargs)
+
+
 # ============================================================================
 # Website Monitoring
 # ============================================================================
@@ -215,7 +222,7 @@ def expiration_create(request):
 def expiration_edit(request, pk):
     """Edit expiration."""
     org = get_request_organization(request)
-    expiration = get_object_or_404(Expiration, pk=pk, organization=org)
+    expiration = _org_get_or_404(Expiration, org, pk=pk)
 
     if request.method == 'POST':
         form = ExpirationForm(request.POST, instance=expiration, organization=org)
@@ -238,7 +245,7 @@ def expiration_edit(request, pk):
 def expiration_delete(request, pk):
     """Delete expiration."""
     org = get_request_organization(request)
-    expiration = get_object_or_404(Expiration, pk=pk, organization=org)
+    expiration = _org_get_or_404(Expiration, org, pk=pk)
 
     if request.method == 'POST':
         title = expiration.title
@@ -303,7 +310,7 @@ def rack_create(request):
 def rack_detail(request, pk):
     """View rack details with visual layout."""
     org = get_request_organization(request)
-    rack = get_object_or_404(Rack, pk=pk, organization=org)
+    rack = _org_get_or_404(Rack, org, pk=pk)
 
     # Get devices ordered by position
     devices = rack.rack_devices.select_related('asset', 'equipment_model').order_by('start_unit')
@@ -360,7 +367,7 @@ def rack_detail(request, pk):
 def rack_edit(request, pk):
     """Edit rack."""
     org = get_request_organization(request)
-    rack = get_object_or_404(Rack, pk=pk, organization=org)
+    rack = _org_get_or_404(Rack, org, pk=pk)
 
     if request.method == 'POST':
         form = RackForm(request.POST, instance=rack, organization=org, user=request.user)
@@ -383,7 +390,7 @@ def rack_edit(request, pk):
 def rack_delete(request, pk):
     """Delete rack."""
     org = get_request_organization(request)
-    rack = get_object_or_404(Rack, pk=pk, organization=org)
+    rack = _org_get_or_404(Rack, org, pk=pk)
 
     if request.method == 'POST':
         name = rack.name
@@ -401,7 +408,7 @@ def rack_delete(request, pk):
 def rack_device_create(request, rack_id):
     """Add asset to rack."""
     org = get_request_organization(request)
-    rack = get_object_or_404(Rack, pk=rack_id, organization=org)
+    rack = _org_get_or_404(Rack, org, pk=rack_id)
 
     if request.method == 'POST':
         form = RackDeviceForm(request.POST, request.FILES, rack=rack, organization=org)
@@ -534,7 +541,7 @@ def subnet_create(request):
 def subnet_detail(request, pk):
     """View subnet details with IP addresses."""
     org = get_request_organization(request)
-    subnet = get_object_or_404(Subnet, pk=pk, organization=org)
+    subnet = _org_get_or_404(Subnet, org, pk=pk)
 
     # Get IP addresses
     ip_addresses = subnet.ip_addresses.all().order_by('ip_address')
@@ -567,7 +574,7 @@ def subnet_detail(request, pk):
 def subnet_edit(request, pk):
     """Edit subnet."""
     org = get_request_organization(request)
-    subnet = get_object_or_404(Subnet, pk=pk, organization=org)
+    subnet = _org_get_or_404(Subnet, org, pk=pk)
 
     if request.method == 'POST':
         form = SubnetForm(request.POST, instance=subnet, organization=org)
@@ -590,7 +597,7 @@ def subnet_edit(request, pk):
 def subnet_delete(request, pk):
     """Delete subnet."""
     org = get_request_organization(request)
-    subnet = get_object_or_404(Subnet, pk=pk, organization=org)
+    subnet = _org_get_or_404(Subnet, org, pk=pk)
 
     if request.method == 'POST':
         network = subnet.network
@@ -608,7 +615,7 @@ def subnet_delete(request, pk):
 def ip_address_create(request, subnet_id):
     """Add IP address to subnet."""
     org = get_request_organization(request)
-    subnet = get_object_or_404(Subnet, pk=subnet_id, organization=org)
+    subnet = _org_get_or_404(Subnet, org, pk=subnet_id)
 
     if request.method == 'POST':
         form = IPAddressForm(request.POST, subnet=subnet, organization=org)
@@ -756,11 +763,10 @@ def network_closet_detail(request, pk):
     """View network closet details."""
     import re
     org = get_request_organization(request)
-    closet = get_object_or_404(
-        Rack,
-        pk=pk,
-        organization=org,
-        rack_type__in=['network_closet', 'data_closet']
+    _closet_kwargs = {'pk': pk, 'rack_type__in': ['network_closet', 'data_closet']}
+    if org:
+        _closet_kwargs['organization'] = org
+    closet = get_object_or_404(Rack, **_closet_kwargs
     )
 
     # Get devices in this closet
@@ -848,11 +854,10 @@ def network_closet_detail(request, pk):
 def network_closet_edit(request, pk):
     """Edit network closet."""
     org = get_request_organization(request)
-    closet = get_object_or_404(
-        Rack,
-        pk=pk,
-        organization=org,
-        rack_type__in=['network_closet', 'data_closet']
+    _closet_kwargs = {'pk': pk, 'rack_type__in': ['network_closet', 'data_closet']}
+    if org:
+        _closet_kwargs['organization'] = org
+    closet = get_object_or_404(Rack, **_closet_kwargs
     )
 
     if request.method == 'POST':
@@ -876,11 +881,10 @@ def network_closet_edit(request, pk):
 def network_closet_delete(request, pk):
     """Delete network closet."""
     org = get_request_organization(request)
-    closet = get_object_or_404(
-        Rack,
-        pk=pk,
-        organization=org,
-        rack_type__in=['network_closet', 'data_closet']
+    _closet_kwargs = {'pk': pk, 'rack_type__in': ['network_closet', 'data_closet']}
+    if org:
+        _closet_kwargs['organization'] = org
+    closet = get_object_or_404(Rack, **_closet_kwargs
     )
 
     if request.method == 'POST':
@@ -966,7 +970,7 @@ def wan_monitor_list(request):
 def rack_connection_create(request, device_id):
     """Create a new connection from a device."""
     org = get_request_organization(request)
-    from_device = get_object_or_404(RackDevice, pk=device_id, rack__organization=org)
+    from_device = get_object_or_404(RackDevice, pk=device_id) if not org else get_object_or_404(RackDevice, pk=device_id, rack__organization=org)
     
     if request.method == 'POST':
         from .forms import RackConnectionForm
@@ -1013,7 +1017,7 @@ def rack_connection_edit(request, pk):
     """Edit an existing connection."""
     org = get_request_organization(request)
     from .models import RackConnection
-    connection = get_object_or_404(RackConnection, pk=pk, from_device__rack__organization=org)
+    connection = get_object_or_404(RackConnection, pk=pk) if not org else get_object_or_404(RackConnection, pk=pk, from_device__rack__organization=org)
     
     if request.method == 'POST':
         from .forms import RackConnectionForm
@@ -1048,7 +1052,7 @@ def rack_connection_delete(request, pk):
     """Delete a connection."""
     org = get_request_organization(request)
     from .models import RackConnection
-    connection = get_object_or_404(RackConnection, pk=pk, from_device__rack__organization=org)
+    connection = get_object_or_404(RackConnection, pk=pk) if not org else get_object_or_404(RackConnection, pk=pk, from_device__rack__organization=org)
     rack = connection.from_device.rack
     
     if request.method == 'POST':

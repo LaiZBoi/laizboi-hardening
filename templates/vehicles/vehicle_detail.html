@@ -237,7 +237,7 @@
         <div class="card bg-light p-3 mb-4">
             <h6 class="mb-3"><i class="fas fa-car"></i> Damage Locations</h6>
             <div id="damage-diagram-container" style="max-width: 700px; margin: 0 auto; position: relative;">
-                <object data="{% static 'img/vehicle-diagram.svg' %}" type="image/svg+xml" id="damage-svg" style="width: 100%; height: auto;"></object>
+                {% include 'vehicles/van_diagram.html' %}
                 <div id="damage-markers"></div>
             </div>
             <div class="mt-3 text-center">
@@ -470,65 +470,51 @@
 </style>
 
 <script>
-// Highlight damaged areas on the vehicle diagram
+// Highlight damaged areas on the inline vehicle diagram
 document.addEventListener('DOMContentLoaded', function() {
-    const damageSvg = document.getElementById('damage-svg');
-    
-    if (damageSvg) {
-        damageSvg.addEventListener('load', function() {
-            const svgDoc = damageSvg.contentDocument;
-            
-            // Get damage locations from the page
-            const damageReports = [
-                {% for report in damage_reports %}
-                {
-                    id: {{ report.id }},
-                    location: '{{ report.damage_location|escapejs }}',
-                    severity: '{{ report.severity }}',
-                    date: '{{ report.incident_date }}',
-                    description: '{{ report.description|truncatewords:10|escapejs }}'
-                }{% if not forloop.last %},{% endif %}
-                {% endfor %}
-            ];
-            const severityColors = {
-                'minor': '#ffc107', 'moderate': '#fd7e14',
-                'major': '#dc3545', 'total_loss': '#6f42c1'
-            };
-            const severityOrder = ['total_loss', 'major', 'moderate', 'minor'];
+    const damageReports = [
+        {% for report in damage_reports %}
+        {
+            id: {{ report.id }},
+            location: '{{ report.damage_location|escapejs }}',
+            severity: '{{ report.severity }}',
+            date: '{{ report.incident_date }}',
+            description: '{{ report.description|truncatewords:10|escapejs }}'
+        }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ];
+    const severityColors = {
+        'minor': '#ffc107', 'moderate': '#fd7e14',
+        'major': '#dc3545', 'total_loss': '#6f42c1'
+    };
+    const severityOrder = ['total_loss', 'major', 'moderate', 'minor'];
 
-            // Highlight damaged areas
-            const areas = svgDoc.querySelectorAll('[data-area]');
-            areas.forEach(area => {
-                const areaName = area.getAttribute('data-area');
-                const damageInArea = damageReports.filter(d => d.location === areaName);
+    // Highlight damaged areas directly on the inline SVG
+    document.querySelectorAll('#damage-svg [data-area]').forEach(area => {
+        const areaName = area.getAttribute('data-area');
+        const damageInArea = damageReports.filter(d => d.location === areaName);
 
-                if (damageInArea.length > 0) {
-                    // Use worst severity color for this area
-                    const worstSeverity = severityOrder.find(s => damageInArea.some(d => d.severity === s)) || 'minor';
-                    const color = severityColors[worstSeverity];
-                    area.style.setProperty('--damage-color', color);
-                    area.classList.add('damaged');
+        if (damageInArea.length > 0) {
+            const worstSeverity = severityOrder.find(s => damageInArea.some(d => d.severity === s)) || 'minor';
+            const color = severityColors[worstSeverity];
+            area.style.setProperty('--damage-color', color);
+            area.classList.add('damaged');
 
-                    // Add tooltip
-                    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-                    title.textContent = `${damageInArea.length} report(s) — worst: ${worstSeverity.replace('_',' ')}`;
-                    area.appendChild(title);
-                    
-                    // Add click to scroll to reports
-                    area.style.cursor = 'pointer';
-                    area.addEventListener('click', function() {
-                        // Scroll to damage reports section
-                        const firstReport = document.querySelector(`[data-damage-id="${damageInArea[0].id}"]`);
-                        if (firstReport) {
-                            firstReport.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            firstReport.classList.add('highlight-flash');
-                            setTimeout(() => firstReport.classList.remove('highlight-flash'), 2000);
-                        }
-                    });
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = `${damageInArea.length} report(s) — worst: ${worstSeverity.replace('_',' ')}`;
+            area.appendChild(title);
+
+            area.style.cursor = 'pointer';
+            area.addEventListener('click', function() {
+                const firstReport = document.querySelector(`[data-damage-id="${damageInArea[0].id}"]`);
+                if (firstReport) {
+                    firstReport.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    firstReport.classList.add('highlight-flash');
+                    setTimeout(() => firstReport.classList.remove('highlight-flash'), 2000);
                 }
             });
-        });
-    }
+        }
+    });
 });
 </script>
 
