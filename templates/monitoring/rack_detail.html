@@ -813,16 +813,6 @@
                             <div class="rack-main-area">
                                 <!-- Toolbar -->
                                 <div class="rack-toolbar">
-                                    <div class="layout-toggle-buttons">
-                                        <button id="toggle-rack-view" class="btn btn-sm btn-outline-primary active">
-                                            <i class="fas fa-server"></i> Rack View
-                                        </button>
-                                        {% if rack.rack_type == 'network_closet' or rack.rack_type == 'data_closet' %}
-                                        <button id="toggle-board-view" class="btn btn-sm btn-outline-primary">
-                                            <i class="fas fa-th"></i> Board View
-                                        </button>
-                                        {% endif %}
-                                    </div>
                                     <button id="toggle-grid" class="btn btn-sm btn-outline-secondary" style="display: none;">
                                         <i class="fas fa-border-all"></i> Snap to Grid
                                     </button>
@@ -844,13 +834,6 @@
                                     </div>
                                 </div>
 
-                                <!-- Board Layout Container -->
-                                <div id="board-container" class="board-layout-container" style="display: none;">
-                                    <div id="board-canvas" class="board-canvas">
-                                        <!-- Devices rendered by JavaScript -->
-                                    </div>
-                                    <div id="board-grid-overlay" class="board-grid-overlay"></div>
-                                </div>
 
                                 {% if rack_images %}
                                 <div class="mt-3">
@@ -2174,8 +2157,6 @@ function updateBoardPosition(itemId, itemType, x, y, width, height) {
 // Toolbar functions
 function initializeToolbar() {
     document.getElementById('toggle-rack-view').addEventListener('click', switchToRackView);
-    const boardToggleBtn = document.getElementById('toggle-board-view');
-    if (boardToggleBtn) boardToggleBtn.addEventListener('click', switchToBoardView);
     document.getElementById('toggle-grid').addEventListener('click', toggleSnapToGrid);
     document.getElementById('zoom-in').addEventListener('click', () => setZoom(ZOOM_LEVEL + 0.1));
     document.getElementById('zoom-out').addEventListener('click', () => setZoom(ZOOM_LEVEL - 0.1));
