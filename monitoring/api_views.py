@@ -191,7 +191,7 @@ def rack_device_detail(request, pk):
         data = json.loads(request.body)
 
         # Allow updating specific fields
-        allowed_fields = ['name', 'color', 'power_draw_watts', 'notes']
+        allowed_fields = ['name', 'color', 'power_draw_watts', 'notes', 'start_unit', 'units']
 
         with transaction.atomic():
             for field in allowed_fields:
@@ -207,6 +207,8 @@ def rack_device_detail(request, pk):
                 'color': device.color,
                 'power_draw_watts': device.power_draw_watts,
                 'notes': device.notes,
+                'start_unit': device.start_unit,
+                'units': device.units,
             }
         })
 

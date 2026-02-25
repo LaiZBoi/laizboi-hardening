@@ -193,14 +193,17 @@ if [ -n "$SERVICE" ] && [ -n "$SYSTEMCTL" ]; then
         fi
     fi
 
-    # Nohup fallback: runs in its own session, survives parent process death.
-    # Delay is 7 seconds so it wins only if the systemd-run timer didn't fire.
-    nohup sudo bash -c "sleep 7 && $SYSTEMCTL restart $SERVICE" >/dev/null 2>&1 &
-    disown 2>/dev/null || true
+    # Belt-and-suspenders fallback: schedule a second systemd-run timer at +7 s.
+    # This fires only if the first timer somehow doesn't execute.
+    # Uses the same whitelisted systemd-run binary — no need for "sudo bash".
+    if [ -n "$SYSTEMD_RUN" ]; then
+        nohup sudo "$SYSTEMD_RUN" --on-active=7 --system "$SYSTEMCTL" restart "$SERVICE" >/dev/null 2>&1 &
+        disown 2>/dev/null || true
+    fi
     if [ "$RESTART_SCHEDULED" -eq 0 ]; then
-        log "Step 5/5: Restart of '$SERVICE' scheduled via nohup (7-second delay)"
+        log "Step 5/5: Restart of '$SERVICE' scheduled via nohup fallback (7-second delay)"
     else
-        log "Step 5/5: Nohup fallback also armed (fires at 7s if needed)"
+        log "Step 5/5: systemd-run fallback also armed (fires at 7s if needed)"
     fi
 else
     # No systemd service — signal gunicorn master directly

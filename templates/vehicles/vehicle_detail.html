@@ -586,20 +586,34 @@
 
 {% block extra_js %}
 <style>
-/* Increase tab contrast */
+/* Solid, high-contrast tabs */
+.nav-tabs {
+    background: #e9ecef;
+    border-radius: 6px 6px 0 0;
+    padding: 4px 4px 0;
+    border-bottom: 2px solid #dee2e6;
+}
 .nav-tabs .nav-link,
 .nav-tabs .nav-link:link,
 .nav-tabs .nav-link:visited {
     color: #212529 !important;
     font-weight: 600;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-bottom: none;
+    margin-right: 2px;
+    border-radius: 4px 4px 0 0;
 }
 .nav-tabs .nav-link:hover,
 .nav-tabs .nav-link:focus {
     color: #000 !important;
+    background: #fff !important;
 }
 .nav-tabs .nav-link.active {
     color: #0d6efd !important;
     font-weight: 700;
+    background: #fff !important;
+    border-color: #dee2e6 #dee2e6 #fff !important;
 }
 
 #damage-diagram-container [data-area].damaged {
