@@ -317,6 +317,30 @@
     z-index: 10;
 }
 
+.board-device-edit-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 20;
+    background: rgba(0,0,0,0.55);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity .15s;
+    cursor: pointer;
+    padding: 0;
+}
+.board-device:hover .board-device-edit-btn {
+    opacity: 1;
+}
+
 
 .board-device.dragging {
     opacity: 0.7;
@@ -793,9 +817,11 @@
                                         <button id="toggle-rack-view" class="btn btn-sm btn-outline-primary active">
                                             <i class="fas fa-server"></i> Rack View
                                         </button>
+                                        {% if rack.rack_type == 'network_closet' or rack.rack_type == 'data_closet' %}
                                         <button id="toggle-board-view" class="btn btn-sm btn-outline-primary">
                                             <i class="fas fa-th"></i> Board View
                                         </button>
+                                        {% endif %}
                                     </div>
                                     <button id="toggle-grid" class="btn btn-sm btn-outline-secondary" style="display: none;">
                                         <i class="fas fa-border-all"></i> Snap to Grid
@@ -1724,12 +1750,19 @@ function createBoardDevice(item, type) {
     // Enhanced visual content
     const content = getBoardDeviceContent(item);
     div.innerHTML = `
+        <button class="board-device-edit-btn" title="Edit device"><i class="fas fa-pencil-alt"></i></button>
         <div class="board-device-content">
             ${content}
             <div class="board-device-label">${item.name}</div>
         </div>
         <div class="board-resize-handle"></div>
     `;
+
+    // Edit button → open edit modal directly
+    div.querySelector('.board-device-edit-btn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        showDeviceEditModal(item);
+    });
 
     // Hover tooltip
     div.addEventListener('mouseenter', function(e) { showRackDeviceTooltip(e, item); });
@@ -1739,6 +1772,7 @@ function createBoardDevice(item, type) {
     // Click body → detail modal
     div.addEventListener('click', function(e) {
         if (e.target.classList.contains('board-resize-handle')) return;
+        if (e.target.closest('.board-device-edit-btn')) return;
         showDeviceDetailModal(item);
     });
 
@@ -2140,7 +2174,8 @@ function updateBoardPosition(itemId, itemType, x, y, width, height) {
 // Toolbar functions
 function initializeToolbar() {
     document.getElementById('toggle-rack-view').addEventListener('click', switchToRackView);
-    document.getElementById('toggle-board-view').addEventListener('click', switchToBoardView);
+    const boardToggleBtn = document.getElementById('toggle-board-view');
+    if (boardToggleBtn) boardToggleBtn.addEventListener('click', switchToBoardView);
     document.getElementById('toggle-grid').addEventListener('click', toggleSnapToGrid);
     document.getElementById('zoom-in').addEventListener('click', () => setZoom(ZOOM_LEVEL + 0.1));
     document.getElementById('zoom-out').addEventListener('click', () => setZoom(ZOOM_LEVEL - 0.1));
@@ -2155,7 +2190,7 @@ function switchToRackView() {
     document.getElementById('toggle-grid').style.display = 'none';
 
     document.getElementById('toggle-rack-view').classList.add('active');
-    document.getElementById('toggle-board-view').classList.remove('active');
+    if (document.getElementById('toggle-board-view')) document.getElementById('toggle-board-view').classList.remove('active');
 
     // Remove draggable from assets
     document.querySelectorAll('.asset-item').forEach(asset => {
@@ -2173,7 +2208,7 @@ function switchToBoardView() {
     document.getElementById('toggle-grid').style.display = 'inline-block';
 
     document.getElementById('toggle-rack-view').classList.remove('active');
-    document.getElementById('toggle-board-view').classList.add('active');
+    if (document.getElementById('toggle-board-view')) document.getElementById('toggle-board-view').classList.add('active');
 
     // Destroy rack sortables (guard against null/uninitialized elements)
     try {
