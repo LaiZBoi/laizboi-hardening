@@ -85,7 +85,7 @@ def update_rack_device_position(request, pk):
     if request.content_type != 'application/json':
         return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
-    device = get_object_or_404(RackDevice, pk=pk, rack__organization=org)
+    device = get_object_or_404(RackDevice, pk=pk) if not org else get_object_or_404(RackDevice, pk=pk, rack__organization=org)
 
     try:
         data = json.loads(request.body)
@@ -179,7 +179,7 @@ def rack_device_detail(request, pk):
     Partial update for any field (color, name, etc.)
     """
     org = get_request_organization(request)
-    device = get_object_or_404(RackDevice, pk=pk, rack__organization=org)
+    device = get_object_or_404(RackDevice, pk=pk) if not org else get_object_or_404(RackDevice, pk=pk, rack__organization=org)
 
     try:
         data = json.loads(request.body)
@@ -617,7 +617,7 @@ def update_device_board_position(request, pk):
     if request.content_type != 'application/json':
         return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
-    device = get_object_or_404(RackDevice, pk=pk, rack__organization=org)
+    device = get_object_or_404(RackDevice, pk=pk) if not org else get_object_or_404(RackDevice, pk=pk, rack__organization=org)
 
     try:
         data = json.loads(request.body)
@@ -682,7 +682,7 @@ def update_resource_board_position(request, pk):
     if request.content_type != 'application/json':
         return JsonResponse({'error': 'JSON required'}, status=400)
     org = get_request_organization(request)
-    resource = get_object_or_404(RackResource, pk=pk, rack__organization=org)
+    resource = get_object_or_404(RackResource, pk=pk) if not org else get_object_or_404(RackResource, pk=pk, rack__organization=org)
 
     try:
         data = json.loads(request.body)
@@ -777,7 +777,7 @@ def device_connections_list(request, pk):
     Return JSON list of all connections for a specific device.
     """
     org = get_request_organization(request)
-    device = get_object_or_404(RackDevice, pk=pk, rack__organization=org)
+    device = get_object_or_404(RackDevice, pk=pk) if not org else get_object_or_404(RackDevice, pk=pk, rack__organization=org)
     
     # Get all connections where this device is either from or to
     connections = RackConnection.objects.filter(
