@@ -57,6 +57,7 @@
             <div class="mt-3">
                 <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Apply Filters</button>
                 <a href="{% url 'assets:asset_list' %}" class="btn btn-secondary"><i class="fas fa-undo"></i> Clear Filters</a>
+                <a href="{% url 'assets:asset_list' %}?needs_reorder=true" class="btn btn-warning{% if filter_needs_reorder %} active{% endif %}"><i class="fas fa-redo"></i> Needs Reorder</a>
                 <span class="text-muted ms-3">Showing {{ assets.count }} asset{{ assets.count|pluralize }}</span>
             </div>
         </form>
@@ -80,7 +81,10 @@
             <tbody>
                 {% for asset in assets %}
                 <tr>
-                    <td><a href="{% url 'assets:asset_detail' asset.pk %}">{{ asset.name }}</a></td>
+                    <td>
+                        <a href="{% url 'assets:asset_detail' asset.pk %}">{{ asset.name }}</a>
+                        {% if asset.needs_reorder %}<span class="badge bg-warning text-dark ms-1" title="Flagged for reorder"><i class="fas fa-redo"></i> Reorder</span>{% endif %}
+                    </td>
                     <td>
                         {% asset_type_icon asset.asset_type "me-1" %}
                         {{ asset.get_asset_type_display }}

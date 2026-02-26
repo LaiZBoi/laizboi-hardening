@@ -71,7 +71,7 @@ class AssetViewSet(OrganizationScopedViewSet):
     queryset = Asset.objects.all()
     serializer_class = AssetSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['asset_type', 'is_active', 'location']
+    filterset_fields = ['asset_type', 'is_active', 'location', 'needs_reorder']
     search_fields = ['name', 'serial_number', 'model', 'manufacturer']
     ordering_fields = ['name', 'created_at', 'updated_at']
     ordering = ['-created_at']

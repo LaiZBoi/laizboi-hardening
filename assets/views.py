@@ -40,6 +40,7 @@ def asset_list(request):
     filter_manufacturer = request.GET.get('manufacturer', '')
     filter_status = request.GET.get('status', '')
     filter_location = request.GET.get('location', '')
+    filter_needs_reorder = request.GET.get('needs_reorder', '')
 
     if filter_type:
         assets = assets.filter(asset_type=filter_type)
@@ -54,6 +55,9 @@ def asset_list(request):
     if filter_location:
         # Location is typically stored in custom_fields
         assets = assets.filter(custom_fields__location__icontains=filter_location)
+
+    if filter_needs_reorder:
+        assets = assets.filter(needs_reorder=True)
 
     # Get unique values for filter dropdowns
     manufacturers = all_assets.exclude(manufacturer='').values_list('manufacturer', flat=True).distinct().order_by('manufacturer')
@@ -80,6 +84,7 @@ def asset_list(request):
         'filter_manufacturer': filter_manufacturer,
         'filter_status': filter_status,
         'filter_location': filter_location,
+        'filter_needs_reorder': filter_needs_reorder,
         'in_global_view': in_global_view,
     })
 

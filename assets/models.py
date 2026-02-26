@@ -161,6 +161,9 @@ class Asset(BaseModel):
     lifespan_reminder_enabled = models.BooleanField(default=False, help_text='Enable reminders for upcoming end-of-life')
     lifespan_reminder_months = models.PositiveIntegerField(default=6, help_text='Send reminder X months before end-of-life')
 
+    # Physical reorder flag (can be toggled from browser extension)
+    needs_reorder = models.BooleanField(default=False, help_text='Flag asset as needing physical reorder/replacement')
+
     # Metadata
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='assets_created')

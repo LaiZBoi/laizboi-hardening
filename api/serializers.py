@@ -41,8 +41,8 @@ class AssetSerializer(serializers.ModelSerializer):
         model = Asset
         fields = [
             'id', 'name', 'asset_type', 'serial_number', 'model', 'manufacturer',
-            'location', 'notes', 'tags', 'tag_ids', 'is_active',
-            'created_at', 'updated_at', 'created_by', 'created_by_name'
+            'hostname', 'ip_address', 'location', 'notes', 'tags', 'tag_ids', 'is_active',
+            'needs_reorder', 'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
 
