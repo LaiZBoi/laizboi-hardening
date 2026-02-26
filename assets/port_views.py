@@ -16,7 +16,15 @@ import json
 def asset_port_config(request, pk):
     """Configure ports for switches, routers, firewalls, patch panels."""
     org = get_request_organization(request)
-    asset = get_object_or_404(Asset, pk=pk, organization=org)
+
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+
+    if in_global_view:
+        asset = get_object_or_404(Asset, pk=pk)
+        org = asset.organization
+    else:
+        asset = get_object_or_404(Asset, pk=pk, organization=org)
 
     # Check if asset supports ports
     if not asset.has_ports():

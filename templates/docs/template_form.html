@@ -177,6 +177,9 @@
                 const htmlContent = quillEditor.root.innerHTML;
                 markdownTextarea.value = htmlContent;
                 document.getElementById('quill-editor').style.display = 'none';
+            } else if (bodyTextarea.value) {
+                // Initial page load in markdown mode — populate from the Django form textarea
+                markdownTextarea.value = bodyTextarea.value;
             }
         }
     }
