@@ -1,0 +1,33 @@
+name: Initialize Wiki Push
+on:
+  push:
+    paths:
+      - '.github/workflows/create-wiki-push.yml'
+
+jobs:
+  init-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Initialize wiki using PAT
+        env:
+          WIKI_PAT: ${{ secrets.WIKI_PAT }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          WIKI_URL="https://agit8or1:${WIKI_PAT}@github.com/agit8or1/clientst0r.wiki.git"
+          
+          echo "Attempting to initialize wiki..."
+          mkdir wiki-init && cd wiki-init
+          git init
+          git checkout -b master
+          
+          echo "# ClientSt0r" > Home.md
+          echo "" >> Home.md  
+          echo "Welcome to the ClientSt0r wiki. Full documentation coming soon." >> Home.md
+          
+          git add Home.md
+          git commit -m "Initialize wiki"
+          git remote add origin "${WIKI_URL}"
+          
+          git push -u origin master 2>&1 && echo "SUCCESS" || echo "FAILED with exit $?"
