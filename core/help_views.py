@@ -89,18 +89,24 @@ HELP_INDEX = [
      'text': 'import export CSV LastPass 1Password backup migrate'},
 
     # Monitoring
-    {'section': 'Monitoring', 'url_name': 'core:help_monitoring',
-     'anchor': 'system-monitoring', 'heading': 'System Monitoring',
-     'text': 'monitor server CPU memory disk uptime network service HTTP HTTPS TCP ping SSL certificate port'},
-    {'section': 'Monitoring', 'url_name': 'core:help_monitoring',
+    {'section': 'WAN Monitoring', 'url_name': 'core:help_monitoring',
+     'anchor': 'overview', 'heading': 'WAN Monitor Overview',
+     'text': 'WAN monitor external internet-facing outbound check uptime response time interval'},
+    {'section': 'WAN Monitoring', 'url_name': 'core:help_monitoring',
+     'anchor': 'monitor-types', 'heading': 'Monitor Types',
+     'text': 'HTTP HTTPS TCP port ping ICMP SSL certificate DNS monitor type'},
+    {'section': 'WAN Monitoring', 'url_name': 'core:help_monitoring',
      'anchor': 'alerting', 'heading': 'Alerting',
-     'text': 'alert notification email webhook Slack Teams threshold escalation maintenance window silence'},
-    {'section': 'Monitoring', 'url_name': 'core:help_monitoring',
-     'anchor': 'dashboards', 'heading': 'Dashboards & Visualization',
-     'text': 'dashboard real-time graph historical custom heat map uptime SLA'},
-    {'section': 'Monitoring', 'url_name': 'core:help_monitoring',
+     'text': 'alert notification email webhook Slack Teams down up'},
+    {'section': 'WAN Monitoring', 'url_name': 'core:help_monitoring',
+     'anchor': 'dashboards', 'heading': 'Status Dashboard',
+     'text': 'status dashboard green red uptime 30 day response time organization'},
+    {'section': 'WAN Monitoring', 'url_name': 'core:help_monitoring',
+     'anchor': 'ssl-monitoring', 'heading': 'SSL Certificate Checks',
+     'text': 'SSL certificate expiry countdown 30 days warning chain issuer'},
+    {'section': 'WAN Monitoring', 'url_name': 'core:help_monitoring',
      'anchor': 'incident-management', 'heading': 'Incident Management',
-     'text': 'incident timeline MTTR post-mortem root cause resolution'},
+     'text': 'incident down up timestamp duration outage notes maintenance'},
 
     # Security
     {'section': 'Security', 'url_name': 'core:help_security',
@@ -190,8 +196,8 @@ def help_index(request):
          'desc': 'Fleet management, maintenance, fuel, and damage reports.'},
         {'icon': 'fa-lock', 'title': 'Password Vault', 'url_name': 'core:help_vault',
          'desc': 'Encrypted credential storage, breach detection, and TOTP.'},
-        {'icon': 'fa-heartbeat', 'title': 'Monitoring', 'url_name': 'core:help_monitoring',
-         'desc': 'Infrastructure checks, alerting, and dashboards.'},
+        {'icon': 'fa-heartbeat', 'title': 'WAN Monitoring', 'url_name': 'core:help_monitoring',
+         'desc': 'Monitor WAN connections, public URLs, ports, and SSL certificates with alerting.'},
         {'icon': 'fa-shield-alt', 'title': 'Security', 'url_name': 'core:help_security',
          'desc': 'Vulnerability scanning, RBAC, audit logging, and 2FA.'},
         {'icon': 'fa-plug', 'title': 'API & Integrations', 'url_name': 'core:help_api',
@@ -987,25 +993,38 @@ def help_vault(request):
 def help_monitoring(request):
     """Monitoring help"""
     toc = [
-        {'anchor': 'system-monitoring', 'heading': 'System Monitoring'},
+        {'anchor': 'overview', 'heading': 'WAN Monitor Overview'},
+        {'anchor': 'monitor-types', 'heading': 'Monitor Types'},
         {'anchor': 'alerting', 'heading': 'Alerting'},
-        {'anchor': 'dashboards', 'heading': 'Dashboards & Visualization'},
-        {'anchor': 'network-monitoring', 'heading': 'Network Monitoring'},
-        {'anchor': 'website-monitoring', 'heading': 'Website Monitoring'},
+        {'anchor': 'dashboards', 'heading': 'Status Dashboard'},
+        {'anchor': 'ssl-monitoring', 'heading': 'SSL Certificate Checks'},
         {'anchor': 'incident-management', 'heading': 'Incident Management'},
     ]
     content = """
-    <h4>Infrastructure Monitoring</h4>
-    <p class="lead">Monitor servers, network devices, and services with real-time alerts and comprehensive dashboards.</p>
+    <h4>WAN Connection Monitoring</h4>
+    <p class="lead">Monitor external WAN connections, public URLs, and internet-facing services — not internal infrastructure. Checks run from the server to verify reachability and response from the outside.</p>
 
-    <h5 class="mt-4" id="system-monitoring"><i class="fas fa-heartbeat"></i> System Monitoring</h5>
+    <div class="alert alert-info mt-3">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Scope:</strong> Monitors are for <strong>WAN / internet-facing endpoints</strong> — websites, public APIs, remote hosts reachable over the internet. They are not agent-based and do not monitor internal CPU, RAM, or disk on local servers.
+    </div>
+
+    <h5 class="mt-4" id="overview"><i class="fas fa-wifi"></i> WAN Monitor Overview</h5>
     <ul>
-        <li><strong>Server Monitoring:</strong> Track CPU, memory, disk usage, and uptime</li>
-        <li><strong>Network Devices:</strong> Monitor switches, routers, firewalls</li>
-        <li><strong>Service Checks:</strong> HTTP, HTTPS, TCP, UDP, ICMP ping</li>
-        <li><strong>SSL Certificate Monitoring:</strong> Track expiration dates</li>
-        <li><strong>Port Monitoring:</strong> Check if specific ports are open/closed</li>
-        <li><strong>Response Time:</strong> Measure latency and performance</li>
+        <li><strong>Outbound checks:</strong> The ClientSt0r server reaches out to the target URL or IP and records the result</li>
+        <li><strong>No agents required:</strong> Nothing to install on monitored endpoints</li>
+        <li><strong>Configurable interval:</strong> Check every 1 minute up to every 24 hours</li>
+        <li><strong>Response time tracking:</strong> Latency logged per check</li>
+        <li><strong>Uptime history:</strong> 30-day uptime percentage calculated automatically</li>
+    </ul>
+
+    <h5 class="mt-4" id="monitor-types"><i class="fas fa-plug"></i> Monitor Types</h5>
+    <ul>
+        <li><strong>HTTP / HTTPS:</strong> Checks that a URL returns a success status code (2xx/3xx). Optionally verify expected response text is present.</li>
+        <li><strong>TCP Port:</strong> Verifies a TCP port is open and accepting connections (e.g. port 443, 22, 25)</li>
+        <li><strong>ICMP Ping:</strong> Basic reachability check — confirms the host responds to ping</li>
+        <li><strong>SSL Certificate:</strong> Checks HTTPS certificate validity and days-until-expiry</li>
+        <li><strong>DNS:</strong> Verifies a domain resolves to an expected IP address</li>
     </ul>
 
     <div class="help-screenshot mt-3 mb-4">
@@ -1072,7 +1091,7 @@ def help_monitoring(request):
         <rect x="200" y="8" width="120" height="16" rx="8" fill="#da363344"/>
         <text x="260" y="19" fill="#f85149" font-size="10" font-family="sans-serif" text-anchor="middle">Triggers alert email</text>
       </svg>
-      <p class="help-screenshot-caption">Monitor status dashboard. Red circle = DOWN (alert sent), green = UP, yellow = warning. Response time and 30-day uptime percentage shown per monitor.</p>
+      <p class="help-screenshot-caption">WAN monitor status dashboard. Red circle = DOWN (alert sent), green = UP. Response time and 30-day uptime percentage shown per monitor. All checks are outbound from the server to the public endpoint.</p>
     </div>
 
     <h5 class="mt-4" id="alerting"><i class="fas fa-bell"></i> Alerting</h5>
@@ -1085,39 +1104,29 @@ def help_monitoring(request):
         <li><strong>Maintenance Windows:</strong> Silence alerts during maintenance</li>
     </ul>
 
-    <h5 class="mt-4" id="dashboards"><i class="fas fa-chart-line"></i> Dashboards &amp; Visualization</h5>
+    <h5 class="mt-4" id="dashboards"><i class="fas fa-chart-line"></i> Status Dashboard</h5>
     <ul>
-        <li><strong>Real-time Dashboards:</strong> Live status of all monitored systems</li>
-        <li><strong>Historical Graphs:</strong> Performance trends over time</li>
-        <li><strong>Custom Views:</strong> Create dashboards for specific clients or locations</li>
-        <li><strong>Heat Maps:</strong> Visual status overview of infrastructure</li>
-        <li><strong>Uptime Reports:</strong> SLA compliance tracking</li>
+        <li><strong>Live status:</strong> Green/red/yellow indicators for each monitor</li>
+        <li><strong>Response time:</strong> Latest latency reading per monitor</li>
+        <li><strong>30-day uptime:</strong> Percentage availability over the last 30 days</li>
+        <li><strong>Down duration:</strong> How long a monitor has been failing</li>
+        <li><strong>Grouped by org:</strong> Separate views per organization/client</li>
     </ul>
 
-    <h5 class="mt-4" id="network-monitoring"><i class="fas fa-network-wired"></i> Network Monitoring</h5>
+    <h5 class="mt-4" id="ssl-monitoring"><i class="fas fa-certificate"></i> SSL Certificate Checks</h5>
     <ul>
-        <li><strong>Bandwidth Monitoring:</strong> Track network utilization</li>
-        <li><strong>Latency Checks:</strong> Measure network response times</li>
-        <li><strong>Packet Loss:</strong> Detect network quality issues</li>
-        <li><strong>Port Scanning:</strong> Identify open ports and services</li>
-        <li><strong>IP Reputation:</strong> Check for blacklisted IPs</li>
-    </ul>
-
-    <h5 class="mt-4" id="website-monitoring"><i class="fas fa-globe"></i> Website Monitoring</h5>
-    <ul>
-        <li><strong>Uptime Monitoring:</strong> Check if websites are accessible</li>
-        <li><strong>Response Time:</strong> Measure page load speed</li>
-        <li><strong>Status Code Checks:</strong> Detect 404, 500, and other errors</li>
-        <li><strong>Content Monitoring:</strong> Verify expected content is present</li>
-        <li><strong>SSL/TLS Checks:</strong> Monitor certificate validity</li>
+        <li><strong>Expiry countdown:</strong> Days remaining on the certificate</li>
+        <li><strong>Early warning:</strong> Alert at 30 days, 14 days, and 7 days before expiry</li>
+        <li><strong>Chain validation:</strong> Checks the full certificate chain is valid</li>
+        <li><strong>Issuer tracking:</strong> Records certificate authority and subject</li>
     </ul>
 
     <h5 class="mt-4" id="incident-management"><i class="fas fa-history"></i> Incident Management</h5>
     <ul>
-        <li><strong>Incident Timeline:</strong> Track when issues started and resolved</li>
-        <li><strong>Root Cause Analysis:</strong> Document problem resolution</li>
-        <li><strong>MTTR Tracking:</strong> Measure mean time to resolution</li>
-        <li><strong>Post-mortems:</strong> Create detailed incident reports</li>
+        <li><strong>Down/up timestamps:</strong> Exact time an outage started and when it resolved</li>
+        <li><strong>Duration tracking:</strong> Total outage duration logged</li>
+        <li><strong>Alert history:</strong> Record of every notification sent for a monitor</li>
+        <li><strong>Notes:</strong> Add notes to a monitor for context (maintenance, known issues)</li>
     </ul>
     """
     return render(request, 'core/help/section.html', {
