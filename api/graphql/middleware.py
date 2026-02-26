@@ -11,8 +11,11 @@ class AuthenticationMiddleware:
 
     def resolve(self, next, root, info, **kwargs):
         if info.context.user.is_anonymous:
-            # Allow introspection queries
+            # Block introspection for anonymous users in production
             if info.field_name in ['__schema', '__type']:
+                from django.conf import settings
+                if not settings.DEBUG:
+                    raise GraphQLError('Introspection disabled')
                 return next(root, info, **kwargs)
 
             # Check if this is a public query

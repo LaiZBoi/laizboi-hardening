@@ -392,7 +392,7 @@ def contact_delete(request, pk):
 
 @csrf_exempt
 @login_required
-def asset_api_detail(request, pk):
+def asset_api_detail(request, pk):  # noqa: write permission checked inline for PATCH
     """
     GET  /assets/api/assets/<pk>/  — return asset info as JSON
     PATCH /assets/api/assets/<pk>/ — update editable fields
@@ -426,6 +426,13 @@ def asset_api_detail(request, pk):
         })
 
     if request.method == 'PATCH':
+        # Require write permission
+        if not (request.user.is_superuser or request.user.is_staff):
+            from core.decorators import get_user_membership
+            membership = get_user_membership(request)
+            if not membership or not membership.can_write():
+                return JsonResponse({'success': False, 'error': 'Write permission required'}, status=403)
+
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
@@ -439,12 +446,17 @@ def asset_api_detail(request, pk):
                 if field == 'ip_address' and val == '':
                     val = None
                 if field == 'ram_gb':
-                    val = int(val) if val else None
+                    try:
+                        val = int(val) if val else None
+                    except (ValueError, TypeError):
+                        return JsonResponse({'success': False, 'error': 'ram_gb must be a number'}, status=400)
                 setattr(asset, field, val)
         try:
             asset.save()
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        except Exception:
+            import logging
+            logging.getLogger('assets').exception('asset_api_detail save failed pk=%s', pk)
+            return JsonResponse({'success': False, 'error': 'Save failed'}, status=500)
 
         return JsonResponse({'success': True})
 

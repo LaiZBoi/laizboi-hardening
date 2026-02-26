@@ -4,6 +4,14 @@ Custom CSRF middleware to support wildcard domains in DEBUG mode.
 from django.conf import settings
 from django.middleware.csrf import CsrfViewMiddleware
 from django.utils.cache import patch_vary_headers
+from django.core.exceptions import ImproperlyConfigured
+
+# Safety guard: wildcard ALLOWED_HOSTS must never be used in production
+if not settings.DEBUG and '*' in getattr(settings, 'ALLOWED_HOSTS', []):
+    raise ImproperlyConfigured(
+        "ALLOWED_HOSTS='*' is not permitted in production (DEBUG=False). "
+        "Set explicit allowed hosts."
+    )
 
 
 class MultiDomainCsrfViewMiddleware(CsrfViewMiddleware):

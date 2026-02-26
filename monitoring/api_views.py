@@ -1,15 +1,17 @@
 """
 Monitoring API Views - REST endpoints for rack device management
 """
+import logging
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Q
 from django.contrib.auth.decorators import login_required
 from core.middleware import get_request_organization
 from .models import Rack, RackDevice, RackResource, RackConnection
+
+logger = logging.getLogger('monitoring')
 
 
 def _api_get_rack(pk, org):
@@ -79,7 +81,6 @@ def rack_devices_list(request, pk):
     })
 
 
-@csrf_exempt
 @login_required
 @require_http_methods(["POST"])
 def update_rack_device_position(request, pk):
@@ -168,25 +169,30 @@ def update_rack_device_position(request, pk):
     except ValueError as e:
         return JsonResponse({
             'success': False,
-            'error': f'Invalid value: {str(e)}'
+            'error': 'Invalid value'
         }, status=400)
-    except Exception as e:
+    except Exception:
+        logger.exception('API view error')
         return JsonResponse({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': 'An error occurred'
         }, status=500)
 
 
-@csrf_exempt
 @login_required
-@require_http_methods(["PATCH"])
+@require_http_methods(["PATCH", "DELETE"])
 def rack_device_detail(request, pk):
     """
-    PATCH /api/rack-devices/<id>/
-    Partial update for any field (color, name, etc.)
+    PATCH  /api/rack-devices/<id>/  — partial update
+    DELETE /api/rack-devices/<id>/  — remove device from rack/board
     """
     org = get_request_organization(request)
     device = get_object_or_404(RackDevice, pk=pk) if not org else get_object_or_404(RackDevice, pk=pk, rack__organization=org)
+
+    if request.method == 'DELETE':
+        name = device.name
+        device.delete()
+        return JsonResponse({'success': True, 'deleted': name})
 
     try:
         data = json.loads(request.body)
@@ -230,14 +236,14 @@ def rack_device_detail(request, pk):
             'success': False,
             'error': 'Invalid JSON in request body'
         }, status=400)
-    except Exception as e:
+    except Exception:
+        logger.exception('API view error')
         return JsonResponse({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': 'An error occurred'
         }, status=500)
 
 
-@csrf_exempt
 @login_required
 @require_http_methods(["POST"])
 def create_rack_device(request, pk):
@@ -338,12 +344,13 @@ def create_rack_device(request, pk):
     except ValueError as e:
         return JsonResponse({
             'success': False,
-            'error': f'Invalid value: {str(e)}'
+            'error': 'Invalid value'
         }, status=400)
-    except Exception as e:
+    except Exception:
+        logger.exception('API view error')
         return JsonResponse({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': 'An error occurred'
         }, status=500)
 
 # ============================================================================
@@ -398,7 +405,6 @@ def patch_panel_ports_list(request, pk):
     })
 
 
-@csrf_exempt
 @login_required
 @require_http_methods(["POST"])
 def patch_panel_port_connect(request, pk, port_num):
@@ -470,14 +476,14 @@ def patch_panel_port_connect(request, pk, port_num):
             'success': False,
             'error': 'Invalid JSON in request body'
         }, status=400)
-    except Exception as e:
+    except Exception:
+        logger.exception('API view error')
         return JsonResponse({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': 'An error occurred'
         }, status=500)
 
 
-@csrf_exempt
 @login_required
 @require_http_methods(["POST"])
 def patch_panel_port_disconnect(request, pk, port_num):
@@ -530,10 +536,11 @@ def patch_panel_port_disconnect(request, pk, port_num):
             'port': ports[port_index]
         })
 
-    except Exception as e:
+    except Exception:
+        logger.exception('API view error')
         return JsonResponse({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': 'An error occurred'
         }, status=500)
 
 
@@ -590,10 +597,11 @@ def patch_panel_port_update(request, pk, port_num):
             'success': False,
             'error': 'Invalid JSON in request body'
         }, status=400)
-    except Exception as e:
+    except Exception:
+        logger.exception('API view error')
         return JsonResponse({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': 'An error occurred'
         }, status=500)
 
 
@@ -638,7 +646,6 @@ def rack_device_ports_list(request, pk):
     })
 
 
-@csrf_exempt
 @login_required
 @require_http_methods(["PATCH"])
 def rack_device_port_update(request, pk, port_num):
@@ -692,8 +699,9 @@ def rack_device_port_update(request, pk, port_num):
 
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    except Exception:
+        logger.exception('API view error')
+        return JsonResponse({'success': False, 'error': 'An error occurred'}, status=500)
 
 
 @login_required
@@ -732,7 +740,6 @@ def rack_resources_list(request, pk):
     })
 
 
-@csrf_exempt
 @login_required
 @require_http_methods(["POST"])
 def update_device_board_position(request, pk):
@@ -788,16 +795,16 @@ def update_device_board_position(request, pk):
     except ValueError as e:
         return JsonResponse({
             'success': False,
-            'error': f'Invalid value: {str(e)}'
+            'error': 'Invalid value'
         }, status=400)
-    except Exception as e:
+    except Exception:
+        logger.exception('API view error')
         return JsonResponse({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': 'An error occurred'
         }, status=500)
 
 
-@csrf_exempt
 @login_required
 @require_http_methods(["POST"])
 def update_resource_board_position(request, pk):
@@ -854,12 +861,13 @@ def update_resource_board_position(request, pk):
     except ValueError as e:
         return JsonResponse({
             'success': False,
-            'error': f'Invalid value: {str(e)}'
+            'error': 'Invalid value'
         }, status=400)
-    except Exception as e:
+    except Exception:
+        logger.exception('API view error')
         return JsonResponse({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': 'An error occurred'
         }, status=500)
 
 

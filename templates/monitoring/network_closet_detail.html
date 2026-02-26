@@ -292,9 +292,12 @@
         </div>
       </div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto" id="closetDeleteDeviceBtn" onclick="deleteClosetDevice()">
+          <i class="fas fa-trash me-1"></i>Remove
+        </button>
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-primary" id="closetSaveEditBtn">
-          <span id="closetSaveEditText"><i class="fas fa-save me-1"></i>Save Changes</span>
+          <span id="closetSaveEditText"><i class="fas fa-save me-1"></i>Save</span>
           <span id="closetSaveEditSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
         </button>
       </div>
@@ -569,9 +572,15 @@
                 {% endif %}
                 <!-- Board canvas -->
                 <div class="flex-grow-1">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <small class="text-muted"><i class="fas fa-arrows-alt me-1"></i>Drag to reposition &nbsp;·&nbsp; <i class="fas fa-expand-alt me-1"></i>Corner to resize &nbsp;·&nbsp; <i class="fas fa-pencil-alt me-1"></i>Hover to edit</small>
+                    <div class="d-flex justify-content-end align-items-center mb-2">
                         <button class="btn btn-sm btn-outline-secondary" onclick="loadClosetBoardDevices()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+                    </div>
+                    <div id="board-hint-bar" style="display:none;font-size:0.72rem;padding:5px 10px;margin-bottom:6px;background:rgba(0,0,0,0.35);border-radius:4px;color:#e2e8f0;">
+                        <i class="fas fa-arrows-alt me-1"></i>Drag to reposition
+                        &nbsp;·&nbsp;
+                        <i class="fas fa-expand-alt me-1"></i>Corner to resize
+                        &nbsp;·&nbsp;
+                        <i class="fas fa-pencil-alt me-1"></i>Click to edit
                     </div>
                     <div id="closet-board-canvas"
                          ondragover="boardDragOver(event)"
@@ -632,6 +641,7 @@ function showClosetRackView() {
     document.getElementById('closet-board-section').style.display = 'none';
     document.getElementById('btn-rack-view').className = 'btn btn-sm btn-primary';
     document.getElementById('btn-board-view').className = 'btn btn-sm btn-outline-primary';
+    location.hash = '';
 }
 
 function showClosetBoardView() {
@@ -639,8 +649,12 @@ function showClosetBoardView() {
     document.getElementById('closet-board-section').style.display = '';
     document.getElementById('btn-rack-view').className = 'btn btn-sm btn-outline-primary';
     document.getElementById('btn-board-view').className = 'btn btn-sm btn-primary';
+    location.hash = 'board';
     loadClosetBoardDevices();
 }
+
+// Restore last view on load
+if (location.hash === '#board') showClosetBoardView();
 
 // ── CSRF helper ───────────────────────────────────────────────────
 function getCookie(name) {
@@ -733,6 +747,9 @@ function addAssetToBoard(asset, x, y) {
         if (placeholder) placeholder.remove();
         _boardDevices.push(item);
         createBoardDevice(item);
+        // Show hint bar now that there's at least one device
+        const hintBar = document.getElementById('board-hint-bar');
+        if (hintBar) hintBar.style.display = 'block';
         // Hide this asset from board sidebar
         if (asset.id) {
             document.querySelectorAll('#closet-board-section .sidebar-asset-item').forEach(el => {
@@ -803,10 +820,13 @@ function loadClosetBoardDevices() {
         canvas.innerHTML = '';
         // Board view only shows devices that have been explicitly placed on the board
         _boardDevices = (data.devices || []).filter(d => d.board_position_x !== null && d.board_position_x !== undefined);
+        const hintBar = document.getElementById('board-hint-bar');
         if (_boardDevices.length === 0) {
             canvas.innerHTML = '<div class="text-center text-muted py-5" style="pointer-events:none;"><i class="fas fa-arrows-alt fa-2x mb-2 d-block"></i>Drag an asset from the sidebar to place it here</div>';
+            if (hintBar) hintBar.style.display = 'none';
         } else {
             _boardDevices.forEach(item => createBoardDevice(item));
+            if (hintBar) hintBar.style.display = 'block';
         }
         // Update board sidebar: hide assets already placed on board
         const boardAssetIds = new Set(_boardDevices.map(d => d.asset_id).filter(Boolean));
@@ -1298,6 +1318,30 @@ function saveAssetInfo(assetId, prefix) {
     });
 }
 
+// ── Delete device ─────────────────────────────────────────────────
+function deleteClosetDevice() {
+    if (!_closetEditDevice) return;
+    const name = _closetEditDevice.name || 'this device';
+    if (!confirm(`Remove "${name}" from the closet?`)) return;
+    const btn = document.getElementById('closetDeleteDeviceBtn');
+    btn.disabled = true;
+    fetch(`/monitoring/api/rack-devices/${_closetEditDevice.id}/`, {
+        method:  'DELETE',
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('closetDeviceEditModal')).hide();
+            location.reload();
+        } else {
+            alert(data.error || 'Delete failed');
+        }
+    })
+    .catch(e => alert('Request failed: ' + e.message))
+    .finally(() => { btn.disabled = false; });
+}
+
 // ── Save device details ───────────────────────────────────────────
 document.getElementById('closetSaveEditBtn').addEventListener('click', function() {
     const deviceId = document.getElementById('closetEditDeviceId').value;
@@ -1326,16 +1370,7 @@ document.getElementById('closetSaveEditBtn').addEventListener('click', function(
     .then(data => {
         if (data.success) {
             bootstrap.Modal.getInstance(document.getElementById('closetDeviceEditModal')).hide();
-            // Update label on board if in board view
-            const el = document.querySelector(`[data-device-id="${deviceId}"]`);
-            if (el) {
-                const labelEl = el.querySelector('.board-device-label');
-                if (labelEl) labelEl.textContent = payload.name;
-                el.style.backgroundColor = payload.color;
-                // update cached item
-                const item = _boardDevices.find(d => d.id == deviceId);
-                if (item) { item.name = payload.name; item.color = payload.color; }
-            }
+            location.reload();
         } else {
             document.getElementById('closetEditError').textContent = data.error || 'Save failed';
             document.getElementById('closetEditError').classList.remove('d-none');
@@ -1347,7 +1382,7 @@ document.getElementById('closetSaveEditBtn').addEventListener('click', function(
     })
     .finally(() => {
         btn.disabled = false; spinner.classList.add('d-none');
-        text.innerHTML = '<i class="fas fa-save me-1"></i>Save Changes';
+        text.innerHTML = '<i class="fas fa-save me-1"></i>Save';
     });
 });
 </script>

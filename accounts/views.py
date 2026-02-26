@@ -53,18 +53,17 @@ def switch_organization(request, org_id):
         # Get the referring page (where the user came from)
         referer = request.META.get('HTTP_REFERER', '')
         if referer:
-            # Extract the path from the referer URL
-            from django.urls import resolve
+            from django.utils.http import url_has_allowed_host_and_scheme
             from urllib.parse import urlparse
-            try:
-                parsed = urlparse(referer)
-                path = parsed.path
-                # Try to resolve the URL to make sure it's valid
-                resolve(path)
-                return redirect(path)
-            except Exception:
-                # If we can't resolve, fall back to dashboard
-                pass
+            if url_has_allowed_host_and_scheme(
+                url=referer,
+                allowed_hosts={request.get_host()},
+                require_https=request.is_secure(),
+            ):
+                try:
+                    return redirect(urlparse(referer).path)
+                except Exception:
+                    pass
 
     return redirect('core:dashboard')
 

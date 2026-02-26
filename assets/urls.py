@@ -22,6 +22,7 @@ urlpatterns = [
     path('<int:pk>/ports/save/', port_views.asset_port_config_save, name='asset_port_config_save'),
 
     # API endpoints
+    path('api/assets/<int:pk>/', views.asset_api_detail, name='asset_api_detail'),
     path('api/equipment-model/<int:pk>/', views.equipment_model_api, name='equipment_model_api'),
     path('api/equipment-models-by-vendor/<int:vendor_id>/', views.equipment_models_by_vendor_api, name='equipment_models_by_vendor_api'),
 

@@ -90,8 +90,10 @@ class APIKey(BaseModel):
     def verify_key(cls, plaintext_key):
         """
         Verify API key and return APIKey object if valid.
-        Returns None if invalid.
+        Returns None if invalid. Uses timing-safe comparison to prevent
+        timing-based enumeration of valid key hashes.
         """
+        import hmac as _hmac
         key_hash = hash_api_key(plaintext_key)
         try:
             api_key = cls.objects.select_related('organization', 'user').get(
@@ -100,4 +102,6 @@ class APIKey(BaseModel):
             )
             return api_key
         except cls.DoesNotExist:
+            # Constant-time pad to prevent timing side-channel on hash lookup
+            _hmac.compare_digest(key_hash, 'x' * len(key_hash))
             return None

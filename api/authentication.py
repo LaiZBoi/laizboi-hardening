@@ -4,6 +4,7 @@ API authentication - API key authentication for DRF
 from rest_framework import authentication, exceptions
 from django.utils import timezone
 from .models import APIKey
+from audit.models import AuditLog
 
 
 class APIKeyAuthentication(authentication.BaseAuthentication):
@@ -36,6 +37,19 @@ class APIKeyAuthentication(authentication.BaseAuthentication):
         api_key.last_used_at = timezone.now()
         api_key.last_used_ip = self.get_client_ip(request)
         api_key.save(update_fields=['last_used_at', 'last_used_ip'])
+
+        # Audit log for API key usage
+        try:
+            AuditLog.objects.create(
+                user=api_key.user,
+                action='api_call',
+                object_type='APIKey',
+                organization=api_key.organization,
+                ip_address=api_key.last_used_ip,
+                extra_data={'api_key_prefix': api_key.key_prefix},
+            )
+        except Exception:
+            pass  # Never block auth due to audit log failure
 
         # Return user and set organization context
         request.current_organization = api_key.organization
