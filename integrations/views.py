@@ -628,7 +628,7 @@ def rmm_device_detail(request, pk):
     # Get recent alerts for this device
     alerts = RMMAlert.objects.filter(
         organization=org,
-        device_id=device.external_id
+        device=device
     ).order_by('-triggered_at')[:10]
 
     return render(request, 'integrations/rmm_device_detail.html', {

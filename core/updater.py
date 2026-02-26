@@ -577,8 +577,23 @@ class UpdateService:
             bool: True if passwordless sudo works, False otherwise
         """
         try:
-            import shutil
-            systemd_run = shutil.which('systemd-run') or '/usr/bin/systemd-run'
+            import shutil, os
+
+            def _canonical(cmd, default):
+                """
+                Resolve to the real path so sudo's exact-path matching works.
+                On Ubuntu 22.04+, /bin is a symlink to /usr/bin, but sudo
+                checks the literal path in sudoers — so we must use /usr/bin/*.
+                """
+                found = shutil.which(cmd)
+                if found:
+                    try:
+                        return os.path.realpath(found)
+                    except Exception:
+                        return found
+                return default
+
+            systemd_run = _canonical('systemd-run', '/usr/bin/systemd-run')
 
             # Test with systemd-run --version — this is always in the sudoers
             # config and doesn't depend on a specific service name being correct.
@@ -595,7 +610,7 @@ class UpdateService:
 
             # Fallback: try systemctl status with detected service name
             service_name = self.service_name or 'clientst0r-gunicorn.service'
-            systemctl = shutil.which('systemctl') or '/usr/bin/systemctl'
+            systemctl = _canonical('systemctl', '/usr/bin/systemctl')
             result2 = subprocess.run(
                 ['/usr/bin/sudo', '-n', systemctl, 'status', service_name],
                 capture_output=True,

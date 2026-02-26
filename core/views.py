@@ -1297,3 +1297,40 @@ def download_mobile_app(request, app_type):
 
     else:
         raise Http404("Invalid app type")
+
+
+@login_required
+def download_browser_extension(request):
+    """
+    Serve the browser extension as a ZIP download with install instructions.
+    """
+    import os
+    import zipfile
+    import io
+    from django.http import FileResponse, HttpResponse
+
+    ext_dir = os.path.join(settings.BASE_DIR, 'clientst0r-extension')
+
+    if request.GET.get('download') == '1' and os.path.isdir(ext_dir):
+        # Stream a ZIP of the extension directory
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(ext_dir):
+                # Skip __pycache__ and hidden dirs
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__pycache__']
+                for filename in files:
+                    filepath = os.path.join(root, filename)
+                    arcname = os.path.relpath(filepath, os.path.dirname(ext_dir))
+                    zf.write(filepath, arcname)
+        buf.seek(0)
+        response = FileResponse(buf, content_type='application/zip')
+        response['Content-Disposition'] = 'attachment; filename="clientst0r-extension.zip"'
+        return response
+
+    # Show install instructions page
+    ext_exists = os.path.isdir(ext_dir)
+    from config.version import get_version
+    return render(request, 'core/browser_extension.html', {
+        'ext_exists': ext_exists,
+        'version': get_version(),
+    })
