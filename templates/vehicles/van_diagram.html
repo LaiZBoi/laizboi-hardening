@@ -1,4 +1,4 @@
-<svg id="damage-svg-driver" class="damage-diagram-svg" width="900" height="340" viewBox="0 0 900 340" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:280px;">
+<svg id="damage-svg-driver" class="damage-diagram-svg" width="900" height="410" viewBox="0 0 900 410" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:340px;">
   <defs>
     <linearGradient id="vbg-driver" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#d8e4f0"/>
@@ -28,127 +28,112 @@
   </defs>
 
   <!-- Ground shadow -->
-  <ellipse cx="450" cy="320" rx="390" ry="13" fill="#00000020"/>
+  <ellipse cx="450" cy="393" rx="390" ry="12" fill="#00000020"/>
 
-  <!-- ===== MAIN BODY SHAPE ===== -->
-  <!-- Cargo body (rear section: large rectangular box) -->
-  <rect x="235" y="88" width="600" height="178" rx="4" fill="url(#vbg-driver)" stroke="#8898b0" stroke-width="1.5" filter="url(#vdrop)"/>
+  <!-- ===== MAIN CARGO BODY ===== -->
+  <rect x="235" y="72" width="600" height="226" rx="4" fill="url(#vbg-driver)" stroke="#8898b0" stroke-width="1.5" filter="url(#vdrop)"/>
 
   <!-- Cab section -->
-  <!-- Cab front face -->
-  <path d="M 100,218 L 100,185 C 100,165 112,148 128,138 L 165,118 C 182,108 200,98 220,92 L 235,90 L 235,266 L 100,266 Z" fill="url(#vbg-driver)" stroke="#8898b0" stroke-width="1.5"/>
+  <path d="M 88,244 L 88,206 C 88,182 102,161 122,148 L 164,122 C 182,110 202,94 224,80 L 235,78 L 235,298 L 88,298 Z" fill="url(#vbg-driver)" stroke="#8898b0" stroke-width="1.5"/>
 
   <!-- Rear bumper -->
-  <rect x="835" y="215" width="46" height="54" rx="6" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
-  <rect x="840" y="222" width="34" height="8" rx="3" fill="#384050"/>
-  <!-- Rear reflector -->
-  <rect x="840" y="246" width="32" height="6" rx="2" fill="#cc2020" opacity="0.85"/>
+  <rect x="835" y="238" width="46" height="60" rx="6" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
+  <rect x="840" y="246" width="34" height="8" rx="3" fill="#384050"/>
+  <rect x="840" y="272" width="32" height="6" rx="2" fill="#cc2020" opacity="0.85"/>
 
   <!-- Front bumper -->
-  <rect x="68" y="215" width="50" height="54" rx="6" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
-  <rect x="72" y="222" width="38" height="8" rx="3" fill="#384050"/>
-  <!-- Front reflector -->
-  <rect x="72" y="246" width="16" height="6" rx="2" fill="#f0cc00" opacity="0.8"/>
+  <rect x="62" y="238" width="52" height="60" rx="6" fill="#4a5568" stroke="#2d3748" stroke-width="1.5"/>
+  <rect x="66" y="246" width="40" height="8" rx="3" fill="#384050"/>
+  <rect x="66" y="272" width="18" height="6" rx="2" fill="#f0cc00" opacity="0.8"/>
 
   <!-- ===== PANEL DETAILS ===== -->
-  <!-- Rear quarter panel separator line -->
-  <line x1="680" y1="88" x2="680" y2="266" stroke="#8090a8" stroke-width="1.5" opacity="0.6"/>
+  <line x1="680" y1="72" x2="680" y2="298" stroke="#8090a8" stroke-width="1.5" opacity="0.6"/>
 
   <!-- ===== REAR CARGO DOORS ===== -->
-  <!-- Rear door panel overlay (transparent clickable zone + subtle panel) -->
-  <rect x="684" y="90" width="150" height="174" rx="2" fill="#c8d6e8" stroke="#9aaabf" stroke-width="1"/>
-  <rect data-area="Rear Quarter Panel" x="684" y="90" width="150" height="174" rx="2" fill="rgba(255,255,255,0)" stroke="none"/>
-  <!-- Door gap line in cargo door area -->
-  <line x1="760" y1="90" x2="760" y2="264" stroke="#7a8898" stroke-width="1" stroke-dasharray="3,2"/>
+  <rect x="684" y="74" width="150" height="222" rx="2" fill="#c8d6e8" stroke="#9aaabf" stroke-width="1"/>
+  <rect data-area="Rear Quarter Panel" x="684" y="74" width="150" height="222" rx="2" fill="rgba(255,255,255,0)" stroke="none"/>
+  <line x1="760" y1="74" x2="760" y2="298" stroke="#7a8898" stroke-width="1" stroke-dasharray="3,2"/>
 
-  <!-- ===== CARGO/SLIDING DOOR ===== -->
-  <rect x="437" y="90" width="244" height="174" rx="2" fill="#cad6e6" stroke="#9aaabf" stroke-width="1"/>
-  <rect data-area="Cargo/Sliding Door" x="437" y="90" width="244" height="174" rx="2" fill="rgba(255,255,255,0)" stroke="none"/>
-  <!-- Cargo door track line -->
-  <line x1="437" y1="90" x2="437" y2="264" stroke="#7a8898" stroke-width="2"/>
-  <!-- Cargo door handle -->
-  <rect x="452" y="178" width="40" height="9" rx="4" fill="#7a8a9a" stroke="#5a6a7a" stroke-width="1"/>
-  <!-- Door crease -->
-  <line x1="440" y1="168" x2="679" y2="168" stroke="#9aaabf" stroke-width="1" opacity="0.5"/>
+  <!-- ===== CARGO / SLIDING DOOR ===== -->
+  <rect x="437" y="74" width="244" height="222" rx="2" fill="#cad6e6" stroke="#9aaabf" stroke-width="1"/>
+  <rect data-area="Cargo/Sliding Door" x="437" y="74" width="244" height="222" rx="2" fill="rgba(255,255,255,0)" stroke="none"/>
+  <line x1="437" y1="74" x2="437" y2="298" stroke="#7a8898" stroke-width="2"/>
+  <rect x="452" y="196" width="40" height="9" rx="4" fill="#7a8a9a" stroke="#5a6a7a" stroke-width="1"/>
+  <line x1="440" y1="186" x2="679" y2="186" stroke="#9aaabf" stroke-width="1" opacity="0.5"/>
 
   <!-- ===== DRIVER DOOR ===== -->
-  <rect x="238" y="90" width="196" height="174" rx="2" fill="#ccd8e8" stroke="#9aaabf" stroke-width="1"/>
-  <rect data-area="Driver Door" x="238" y="90" width="196" height="174" rx="2" fill="rgba(255,255,255,0)" stroke="none"/>
-  <line x1="238" y1="90" x2="238" y2="264" stroke="#7a8898" stroke-width="2"/>
-  <line x1="432" y1="90" x2="432" y2="264" stroke="#7a8898" stroke-width="2"/>
-  <!-- Driver door handle -->
-  <rect x="400" y="178" width="26" height="9" rx="4" fill="#7a8a9a" stroke="#5a6a7a" stroke-width="1"/>
-  <!-- Door crease -->
-  <line x1="240" y1="168" x2="430" y2="168" stroke="#9aaabf" stroke-width="1" opacity="0.5"/>
+  <rect x="238" y="74" width="196" height="222" rx="2" fill="#ccd8e8" stroke="#9aaabf" stroke-width="1"/>
+  <rect data-area="Driver Door" x="238" y="74" width="196" height="222" rx="2" fill="rgba(255,255,255,0)" stroke="none"/>
+  <line x1="238" y1="74" x2="238" y2="298" stroke="#7a8898" stroke-width="2"/>
+  <line x1="432" y1="74" x2="432" y2="298" stroke="#7a8898" stroke-width="2"/>
+  <rect x="400" y="196" width="26" height="9" rx="4" fill="#7a8a9a" stroke="#5a6a7a" stroke-width="1"/>
+  <line x1="240" y1="186" x2="430" y2="186" stroke="#9aaabf" stroke-width="1" opacity="0.5"/>
 
-  <!-- ===== DRIVER WINDOW ===== -->
-  <rect data-area="Driver Window" x="252" y="96" width="170" height="86" rx="6" fill="url(#vwin-driver)" stroke="#607888" stroke-width="1.5"/>
-  <!-- Window glare highlight -->
-  <path d="M 270,98 L 300,178 L 280,178 L 256,98 Z" fill="rgba(255,255,255,0.12)"/>
+  <!-- ===== DRIVER WINDOW (taller) ===== -->
+  <rect data-area="Driver Window" x="252" y="78" width="170" height="108" rx="6" fill="url(#vwin-driver)" stroke="#607888" stroke-width="1.5"/>
+  <path d="M 270,80 L 302,182 L 280,182 L 256,80 Z" fill="rgba(255,255,255,0.12)"/>
 
-  <!-- ===== WINDSHIELD (small quarter on cab) ===== -->
-  <path data-area="Windshield" d="M 200,96 L 234,94 L 236,182 L 196,182 Z" fill="url(#vwin-driver)" stroke="#607888" stroke-width="1.5"/>
-  <path d="M 204,96 L 234,94 L 234,182 L 204,182 Z" fill="rgba(255,255,255,0.1)"/>
+  <!-- ===== WINDSHIELD ===== -->
+  <path data-area="Windshield" d="M 200,78 L 234,76 L 236,198 L 196,198 Z" fill="url(#vwin-driver)" stroke="#607888" stroke-width="1.5"/>
+  <path d="M 204,78 L 234,76 L 234,198 L 204,198 Z" fill="rgba(255,255,255,0.1)"/>
 
   <!-- ===== HOOD ===== -->
-  <path data-area="Hood" d="M 128,140 L 165,120 C 182,110 200,100 220,95 L 234,93 L 234,182 L 128,182 Z" fill="#c0cede" stroke="#9aaabf" stroke-width="1.5"/>
-  <!-- Hood crease -->
-  <path d="M 164,122 C 168,140 175,162 176,182" stroke="#a0b0c4" fill="none" stroke-width="1" opacity="0.5"/>
+  <path data-area="Hood" d="M 122,150 L 164,124 C 182,112 202,96 224,82 L 234,80 L 234,198 L 122,198 Z" fill="#c0cede" stroke="#9aaabf" stroke-width="1.5"/>
+  <path d="M 162,126 C 166,150 172,174 174,198" stroke="#a0b0c4" fill="none" stroke-width="1" opacity="0.5"/>
 
   <!-- ===== CAB FRONT FACE ===== -->
-  <path d="M 100,185 C 100,165 112,148 128,140 L 128,218 L 100,218 Z" fill="#b8c8dc" stroke="#9aaabf" stroke-width="1"/>
+  <path d="M 88,206 C 88,184 102,163 122,150 L 122,244 L 88,244 Z" fill="#b8c8dc" stroke="#9aaabf" stroke-width="1"/>
 
   <!-- ===== HEADLIGHT ===== -->
-  <path data-area="Headlight (L)" d="M 84,154 C 86,142 96,132 110,130 L 132,128 L 132,155 L 86,155 Z" fill="#f4f0a0" stroke="#c8c040" stroke-width="1.5"/>
-  <ellipse cx="112" cy="143" rx="15" ry="11" fill="white" opacity="0.55"/>
-  <ellipse cx="112" cy="143" rx="8" ry="6" fill="#ffee88" opacity="0.4"/>
+  <path data-area="Headlight (L)" d="M 72,162 C 74,146 86,134 104,132 L 128,130 L 128,162 L 74,162 Z" fill="#f4f0a0" stroke="#c8c040" stroke-width="1.5"/>
+  <ellipse cx="106" cy="148" rx="17" ry="12" fill="white" opacity="0.55"/>
+  <ellipse cx="106" cy="148" rx="9" ry="6" fill="#ffee88" opacity="0.4"/>
 
   <!-- ===== DRL ===== -->
-  <rect data-area="DRL (L)" x="84" y="188" width="28" height="10" rx="3" fill="#f4d840" stroke="#c0a820" stroke-width="1"/>
+  <rect data-area="DRL (L)" x="74" y="210" width="28" height="10" rx="3" fill="#f4d840" stroke="#c0a820" stroke-width="1"/>
 
   <!-- ===== TAIL LIGHT ===== -->
-  <rect data-area="Taillight (L)" x="824" y="100" width="20" height="68" rx="4" fill="#cc1818" stroke="#991010" stroke-width="1.5"/>
-  <rect x="826" y="102" width="16" height="30" rx="2" fill="#ff3030" opacity="0.7"/>
-  <rect x="826" y="134" width="16" height="16" rx="2" fill="#ff8800" opacity="0.65"/>
-  <rect x="826" y="152" width="16" height="14" rx="2" fill="#ff4444" opacity="0.5"/>
+  <rect data-area="Taillight (L)" x="824" y="84" width="20" height="92" rx="4" fill="#cc1818" stroke="#991010" stroke-width="1.5"/>
+  <rect x="826" y="86" width="16" height="40" rx="2" fill="#ff3030" opacity="0.7"/>
+  <rect x="826" y="128" width="16" height="24" rx="2" fill="#ff8800" opacity="0.65"/>
+  <rect x="826" y="154" width="16" height="18" rx="2" fill="#ff4444" opacity="0.5"/>
 
   <!-- ===== SIDE MIRROR ===== -->
-  <ellipse data-area="Driver Side Mirror" cx="194" cy="148" rx="20" ry="13" fill="#9aaabf" stroke="#7a8a9f" stroke-width="1.5"/>
-  <ellipse cx="192" cy="146" rx="13" ry="9" fill="url(#vwin-driver)" opacity="0.75"/>
+  <ellipse data-area="Driver Side Mirror" cx="186" cy="156" rx="22" ry="14" fill="#9aaabf" stroke="#7a8a9f" stroke-width="1.5"/>
+  <ellipse cx="184" cy="154" rx="14" ry="10" fill="url(#vwin-driver)" opacity="0.75"/>
 
   <!-- ===== FUEL CAP ===== -->
-  <circle data-area="Fuel Cap" cx="755" cy="138" r="12" fill="rgba(255,255,255,0)" stroke="none"/>
-  <circle cx="755" cy="138" r="9" fill="#8090a4" stroke="#606878" stroke-width="1.5"/>
-  <circle cx="755" cy="138" r="5" fill="#6a7888"/>
+  <circle data-area="Fuel Cap" cx="755" cy="148" r="14" fill="rgba(255,255,255,0)" stroke="none"/>
+  <circle cx="755" cy="148" r="10" fill="#8090a4" stroke="#606878" stroke-width="1.5"/>
+  <circle cx="755" cy="148" r="5.5" fill="#6a7888"/>
 
-  <!-- ===== ROOF (clickable zone) ===== -->
-  <rect data-area="Roof" x="235" y="60" width="600" height="32" fill="rgba(255,255,255,0)" stroke="none"/>
-  <!-- Roof rail visual -->
-  <rect x="235" y="72" width="600" height="18" rx="3" fill="#ccdaea" stroke="#aabece" stroke-width="1"/>
+  <!-- ===== ROOF ===== -->
+  <rect data-area="Roof" x="235" y="44" width="600" height="30" fill="rgba(255,255,255,0)" stroke="none"/>
+  <rect x="235" y="56" width="600" height="18" rx="3" fill="#ccdaea" stroke="#aabece" stroke-width="1"/>
 
   <!-- ===== BODY CHARACTER LINE ===== -->
-  <path d="M 200,158 L 834,158" stroke="#a0b4c8" stroke-width="1.5" opacity="0.4"/>
+  <path d="M 200,178 L 834,178" stroke="#a0b4c8" stroke-width="1.5" opacity="0.4"/>
 
   <!-- ===== WHEELS ===== -->
   <!-- Front wheel -->
-  <circle cx="192" cy="278" r="58" fill="url(#vtire1)" stroke="#181818" stroke-width="2.5"/>
-  <circle cx="192" cy="278" r="42" fill="#2a2a2a" stroke="#1a1a1a" stroke-width="1"/>
-  <circle cx="192" cy="278" r="31" fill="url(#vhub1)"/>
-  <circle cx="192" cy="278" r="9" fill="#aaa"/>
-  <circle cx="192" cy="252" r="4.5" fill="#888"/><circle cx="216" cy="264" r="4.5" fill="#888"/>
-  <circle cx="216" cy="292" r="4.5" fill="#888"/><circle cx="192" cy="304" r="4.5" fill="#888"/>
-  <circle cx="168" cy="292" r="4.5" fill="#888"/><circle cx="168" cy="264" r="4.5" fill="#888"/>
+  <circle cx="192" cy="342" r="52" fill="url(#vtire1)" stroke="#181818" stroke-width="2.5"/>
+  <circle cx="192" cy="342" r="38" fill="#2a2a2a" stroke="#1a1a1a" stroke-width="1"/>
+  <circle cx="192" cy="342" r="28" fill="url(#vhub1)"/>
+  <circle cx="192" cy="342" r="8" fill="#aaa"/>
+  <circle cx="192" cy="318" r="4" fill="#888"/><circle cx="214" cy="331" r="4" fill="#888"/>
+  <circle cx="214" cy="353" r="4" fill="#888"/><circle cx="192" cy="366" r="4" fill="#888"/>
+  <circle cx="170" cy="353" r="4" fill="#888"/><circle cx="170" cy="331" r="4" fill="#888"/>
 
   <!-- Rear wheel -->
-  <circle cx="655" cy="278" r="58" fill="url(#vtire1)" stroke="#181818" stroke-width="2.5"/>
-  <circle cx="655" cy="278" r="42" fill="#2a2a2a" stroke="#1a1a1a" stroke-width="1"/>
-  <circle cx="655" cy="278" r="31" fill="url(#vhub1)"/>
-  <circle cx="655" cy="278" r="9" fill="#aaa"/>
-  <circle cx="655" cy="252" r="4.5" fill="#888"/><circle cx="679" cy="264" r="4.5" fill="#888"/>
-  <circle cx="679" cy="292" r="4.5" fill="#888"/><circle cx="655" cy="304" r="4.5" fill="#888"/>
-  <circle cx="631" cy="292" r="4.5" fill="#888"/><circle cx="631" cy="264" r="4.5" fill="#888"/>
+  <circle cx="655" cy="342" r="52" fill="url(#vtire1)" stroke="#181818" stroke-width="2.5"/>
+  <circle cx="655" cy="342" r="38" fill="#2a2a2a" stroke="#1a1a1a" stroke-width="1"/>
+  <circle cx="655" cy="342" r="28" fill="url(#vhub1)"/>
+  <circle cx="655" cy="342" r="8" fill="#aaa"/>
+  <circle cx="655" cy="318" r="4" fill="#888"/><circle cx="677" cy="331" r="4" fill="#888"/>
+  <circle cx="677" cy="353" r="4" fill="#888"/><circle cx="655" cy="366" r="4" fill="#888"/>
+  <circle cx="633" cy="353" r="4" fill="#888"/><circle cx="633" cy="331" r="4" fill="#888"/>
 
   <!-- Wheel arch shadows -->
-  <path d="M 130,266 A 68,68 0 0,1 254,266" fill="none" stroke="#606878" stroke-width="3"/>
-  <path d="M 593,266 A 68,68 0 0,1 717,266" fill="none" stroke="#606878" stroke-width="3"/>
+  <path d="M 132,298 A 64,64 0 0,1 252,298" fill="none" stroke="#606878" stroke-width="3"/>
+  <path d="M 595,298 A 64,64 0 0,1 715,298" fill="none" stroke="#606878" stroke-width="3"/>
 </svg>
