@@ -63,6 +63,17 @@ class ServiceVehicleForm(forms.ModelForm):
 class VehicleInventoryItemForm(forms.ModelForm):
     """Form for managing vehicle inventory"""
 
+    min_quantity = forms.IntegerField(
+        required=False, initial=0, min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control'}),
+        help_text="Minimum quantity alert threshold",
+    )
+    reorder_quantity = forms.IntegerField(
+        required=False, initial=0, min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'How many to order when restocking'}),
+        help_text="How many to order when restocking",
+    )
+
     class Meta:
         model = VehicleInventoryItem
         fields = [
@@ -75,14 +86,18 @@ class VehicleInventoryItemForm(forms.ModelForm):
             'category': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Cables, Tools, Hardware'}),
             'quantity': forms.NumberInput(attrs={'class': 'form-control'}),
             'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ea, ft, box, etc.'}),
-            'min_quantity': forms.NumberInput(attrs={'class': 'form-control'}),
-            'reorder_quantity': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'How many to order when restocking'}),
             'unit_cost': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
             'location_in_vehicle': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Toolbox, Rear compartment'}),
             'qr_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Auto-generated on save (or enter custom)'}),
             'reorder_link': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://amazon.com/...'}),
         }
+
+    def clean_min_quantity(self):
+        return self.cleaned_data.get('min_quantity') or 0
+
+    def clean_reorder_quantity(self):
+        return self.cleaned_data.get('reorder_quantity') or 0
 
 
 class VehicleDamageReportForm(forms.ModelForm):
