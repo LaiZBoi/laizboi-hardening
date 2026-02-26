@@ -1,0 +1,41 @@
+name: Initialize Wiki v3
+on:
+  workflow_dispatch:
+
+jobs:
+  init-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Initialize wiki using PAT
+        env:
+          WIKI_PAT: ${{ secrets.WIKI_PAT }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          WIKI_URL="https://agit8or1:${WIKI_PAT}@github.com/agit8or1/clientst0r.wiki.git"
+          
+          # Check if wiki already exists
+          if git ls-remote "$WIKI_URL" >/dev/null 2>&1; then
+            echo "Wiki already initialized"
+            exit 0
+          fi
+          
+          echo "Wiki not found, initializing..."
+          mkdir wiki-init && cd wiki-init
+          git init
+          git checkout -b master
+          
+          cat > Home.md << 'EOF'
+# ClientSt0r
+
+Welcome to the ClientSt0r wiki. This wiki will be populated with the full user guide documentation.
+EOF
+          
+          git add Home.md
+          git commit -m "Initialize wiki"
+          git remote add origin "${WIKI_URL}"
+          
+          # Try push
+          git push -u origin master 2>&1
+          echo "Push exit code: $?"
