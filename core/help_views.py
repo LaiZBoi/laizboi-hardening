@@ -1561,6 +1561,86 @@ def help_reports(request):
     </div>
     <p>Dashboards are shared with all members of the organization. Navigate to <em>Reports → Dashboards</em> to create or manage them.</p>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="300" rx="6" fill="#0d1117" stroke="#30363d"/>
+        <!-- Page title bar -->
+        <rect width="700" height="40" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="20" width="700" height="20" fill="#161b22"/>
+        <text x="16" y="26" fill="#e6edf3" font-size="14" font-weight="bold" font-family="sans-serif">Reports Dashboard</text>
+        <rect x="580" y="10" width="106" height="22" rx="4" fill="#1f6feb"/>
+        <text x="633" y="25" fill="#fff" font-size="11" font-family="sans-serif" text-anchor="middle">+ New Dashboard</text>
+
+        <!-- Widget row 1 -->
+        <!-- Asset count widget -->
+        <rect x="12" y="52" width="156" height="100" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="28" y="72" fill="#8b949e" font-size="10" font-family="sans-serif">Total Assets</text>
+        <text x="28" y="104" fill="#e6edf3" font-size="32" font-weight="bold" font-family="sans-serif">247</text>
+        <text x="28" y="122" fill="#3fb950" font-size="10" font-family="sans-serif">↑ 12 this month</text>
+        <text x="28" y="140" fill="#58a6ff" font-size="9" font-family="sans-serif">Servers · Switches · Laptops</text>
+
+        <!-- Monitor status widget -->
+        <rect x="180" y="52" width="156" height="100" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="196" y="72" fill="#8b949e" font-size="10" font-family="sans-serif">WAN Monitors</text>
+        <text x="196" y="96" fill="#3fb950" font-size="22" font-weight="bold" font-family="sans-serif">18</text>
+        <text x="228" y="96" fill="#8b949e" font-size="12" font-family="sans-serif">/ 19</text>
+        <rect x="196" y="102" width="100" height="8" rx="4" fill="#21262d"/>
+        <rect x="196" y="102" width="94" height="8" rx="4" fill="#3fb950"/>
+        <text x="196" y="124" fill="#3fb950" font-size="10" font-family="sans-serif">18 UP</text>
+        <text x="248" y="124" fill="#f85149" font-size="10" font-family="sans-serif">1 DOWN</text>
+        <text x="196" y="140" fill="#8b949e" font-size="9" font-family="sans-serif">99.4% uptime (30 days)</text>
+
+        <!-- Vault health widget -->
+        <rect x="348" y="52" width="156" height="100" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="364" y="72" fill="#8b949e" font-size="10" font-family="sans-serif">Vault Health</text>
+        <text x="364" y="100" fill="#f85149" font-size="22" font-weight="bold" font-family="sans-serif">3</text>
+        <text x="364" y="118" fill="#f85149" font-size="10" font-family="sans-serif">Breached credentials</text>
+        <text x="364" y="134" fill="#d29922" font-size="10" font-family="sans-serif">5 expiring within 30 days</text>
+        <text x="364" y="148" fill="#3fb950" font-size="9" font-family="sans-serif">412 total entries healthy</text>
+
+        <!-- Warranty widget -->
+        <rect x="516" y="52" width="172" height="100" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="532" y="72" fill="#8b949e" font-size="10" font-family="sans-serif">Warranty Alerts</text>
+        <text x="532" y="96" fill="#d29922" font-size="22" font-weight="bold" font-family="sans-serif">7</text>
+        <text x="532" y="114" fill="#d29922" font-size="10" font-family="sans-serif">expiring within 30 days</text>
+        <rect x="532" y="122" width="100" height="8" rx="4" fill="#21262d"/>
+        <rect x="532" y="122" width="35" height="8" rx="4" fill="#d29922"/>
+        <text x="532" y="144" fill="#8b949e" font-size="9" font-family="sans-serif">7 of 20 expiring assets flagged</text>
+
+        <!-- Activity feed widget -->
+        <rect x="12" y="164" width="328" height="124" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="28" y="182" fill="#8b949e" font-size="10" font-family="sans-serif">Recent Activity</text>
+        <!-- Activity rows -->
+        <circle cx="36" cy="202" r="6" fill="#1f6feb"/>
+        <text x="48" y="206" fill="#c9d1d9" font-size="10" font-family="sans-serif">j.smith created asset Core Switch</text>
+        <text x="48" y="218" fill="#3d444d" font-size="9" font-family="sans-serif">2 minutes ago</text>
+        <circle cx="36" cy="232" r="6" fill="#3fb950"/>
+        <text x="48" y="236" fill="#c9d1d9" font-size="10" font-family="sans-serif">s.lee updated password Cisco Router</text>
+        <text x="48" y="248" fill="#3d444d" font-size="9" font-family="sans-serif">15 minutes ago</text>
+        <circle cx="36" cy="262" r="6" fill="#f85149"/>
+        <text x="48" y="266" fill="#c9d1d9" font-size="10" font-family="sans-serif">monitor Main Site DOWN detected</text>
+        <text x="48" y="278" fill="#3d444d" font-size="9" font-family="sans-serif">1 hour ago</text>
+
+        <!-- Fleet widget -->
+        <rect x="352" y="164" width="336" height="124" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="368" y="182" fill="#8b949e" font-size="10" font-family="sans-serif">Fleet Status</text>
+        <text x="368" y="210" fill="#e6edf3" font-size="12" font-family="sans-serif">Ford Transit (Van 01)</text>
+        <rect x="500" y="198" width="54" height="18" rx="9" fill="#1f6feb"/>
+        <text x="527" y="211" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Active</text>
+        <text x="368" y="234" fill="#e6edf3" font-size="12" font-family="sans-serif">Toyota Hilux (Van 02)</text>
+        <rect x="500" y="222" width="80" height="18" rx="9" fill="#da363344" stroke="#f85149" stroke-width="1"/>
+        <text x="540" y="235" fill="#f85149" font-size="10" font-family="sans-serif" text-anchor="middle">Maintenance</text>
+        <text x="368" y="258" fill="#e6edf3" font-size="12" font-family="sans-serif">Mercedes Sprinter</text>
+        <rect x="500" y="246" width="54" height="18" rx="9" fill="#1f6feb"/>
+        <text x="527" y="259" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Active</text>
+        <!-- Annotation -->
+        <line x1="420" y1="52" x2="440" y2="30" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="420" y="20" width="130" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="485" y="31" fill="#79c0ff" font-size="10" font-family="sans-serif" text-anchor="middle">Drag widgets to rearrange</text>
+      </svg>
+      <p class="help-screenshot-caption">Dashboard showing asset count, WAN monitor status, vault health, warranty alerts, recent activity, and fleet status widgets. Each widget updates in real time.</p>
+    </div>
+
     <h5 class="mt-4" id="report-templates"><i class="fas fa-file-alt"></i> Report Templates</h5>
     <p>Report templates define what data to include, how to format it, and where to send it:</p>
     <div class="table-responsive mt-2">
@@ -1586,6 +1666,50 @@ def help_reports(request):
     </ul>
     <p>Generate a report at <em>Reports → Templates → (select) → Generate</em>. Results can be downloaded immediately or saved to <em>Generated Reports</em>.</p>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="200" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Header -->
+        <rect width="700" height="40" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="20" width="700" height="20" fill="#161b22"/>
+        <text x="16" y="26" fill="#e6edf3" font-size="13" font-weight="bold" font-family="sans-serif">Report Templates</text>
+        <rect x="568" y="10" width="118" height="22" rx="4" fill="#1f6feb"/>
+        <text x="627" y="25" fill="#fff" font-size="11" font-family="sans-serif" text-anchor="middle">+ New Template</text>
+        <!-- Template rows -->
+        <rect x="12" y="50" width="676" height="36" rx="4" fill="#0d1117" stroke="#30363d"/>
+        <rect x="24" y="60" width="10" height="16" rx="2" fill="#3fb950"/>
+        <text x="42" y="72" fill="#e6edf3" font-size="12" font-family="sans-serif">Asset Inventory</text>
+        <text x="220" y="72" fill="#8b949e" font-size="11" font-family="sans-serif">Assets · All fields · CSV</text>
+        <rect x="520" y="59" width="70" height="18" rx="4" fill="#1f6feb"/>
+        <text x="555" y="72" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">▶ Generate</text>
+        <rect x="600" y="59" width="70" height="18" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="635" y="72" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">✎ Edit</text>
+
+        <rect x="12" y="92" width="676" height="36" rx="4" fill="#161b22" stroke="#30363d"/>
+        <rect x="24" y="102" width="10" height="16" rx="2" fill="#d29922"/>
+        <text x="42" y="114" fill="#e6edf3" font-size="12" font-family="sans-serif">Expiring Warranties</text>
+        <text x="220" y="114" fill="#8b949e" font-size="11" font-family="sans-serif">Assets · Next 30 days · PDF</text>
+        <rect x="520" y="101" width="70" height="18" rx="4" fill="#1f6feb"/>
+        <text x="555" y="114" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">▶ Generate</text>
+        <rect x="600" y="101" width="70" height="18" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="635" y="114" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">✎ Edit</text>
+
+        <rect x="12" y="134" width="676" height="36" rx="4" fill="#0d1117" stroke="#30363d"/>
+        <rect x="24" y="144" width="10" height="16" rx="2" fill="#f85149"/>
+        <text x="42" y="156" fill="#e6edf3" font-size="12" font-family="sans-serif">Breached Credentials</text>
+        <text x="220" y="156" fill="#8b949e" font-size="11" font-family="sans-serif">Vault · HIBP hits · CSV</text>
+        <rect x="520" y="143" width="70" height="18" rx="4" fill="#1f6feb"/>
+        <text x="555" y="156" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">▶ Generate</text>
+        <rect x="600" y="143" width="70" height="18" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="635" y="156" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">✎ Edit</text>
+        <!-- Annotation -->
+        <line x1="555" y1="77" x2="620" y2="48" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="590" y="38" width="100" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="640" y="49" fill="#79c0ff" font-size="10" font-family="sans-serif" text-anchor="middle">Run instantly or save</text>
+      </svg>
+      <p class="help-screenshot-caption">Report templates list. Click <strong>Generate</strong> to run any template immediately — results download as CSV or PDF. Edit to change filters, columns, or format.</p>
+    </div>
+
     <h5 class="mt-4" id="scheduled-reports"><i class="fas fa-clock"></i> Scheduled Reports</h5>
     <p>Automate report delivery on a recurring schedule:</p>
     <ul>
@@ -1605,6 +1729,62 @@ def help_reports(request):
         <li><strong>Vault usage</strong> — new entries, reveals, breach rate</li>
         <li><strong>Audit events</strong> — activity volume by type and user</li>
     </ul>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="220" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <text x="16" y="28" fill="#e6edf3" font-size="13" font-weight="bold" font-family="sans-serif">Analytics Overview</text>
+        <!-- Asset growth chart -->
+        <rect x="12" y="40" width="330" height="168" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="28" y="58" fill="#8b949e" font-size="10" font-family="sans-serif">Asset Growth (last 6 months)</text>
+        <!-- Y axis labels -->
+        <text x="28" y="80" fill="#3d444d" font-size="8" font-family="monospace">300</text>
+        <text x="28" y="120" fill="#3d444d" font-size="8" font-family="monospace">200</text>
+        <text x="28" y="160" fill="#3d444d" font-size="8" font-family="monospace">100</text>
+        <!-- Grid lines -->
+        <line x1="50" y1="76" x2="330" y2="76" stroke="#21262d" stroke-width="0.5"/>
+        <line x1="50" y1="116" x2="330" y2="116" stroke="#21262d" stroke-width="0.5"/>
+        <line x1="50" y1="156" x2="330" y2="156" stroke="#21262d" stroke-width="0.5"/>
+        <!-- Bar chart -->
+        <rect x="60" y="144" width="28" height="16" rx="2" fill="#1f6feb88"/>
+        <rect x="105" y="136" width="28" height="24" rx="2" fill="#1f6feb88"/>
+        <rect x="150" y="126" width="28" height="34" rx="2" fill="#1f6feb88"/>
+        <rect x="195" y="118" width="28" height="42" rx="2" fill="#1f6feb88"/>
+        <rect x="240" y="106" width="28" height="54" rx="2" fill="#1f6feb"/>
+        <rect x="285" y="90" width="28" height="70" rx="2" fill="#1f6feb"/>
+        <!-- X labels -->
+        <text x="66" y="172" fill="#3d444d" font-size="8" font-family="sans-serif">Sep</text>
+        <text x="111" y="172" fill="#3d444d" font-size="8" font-family="sans-serif">Oct</text>
+        <text x="156" y="172" fill="#3d444d" font-size="8" font-family="sans-serif">Nov</text>
+        <text x="201" y="172" fill="#3d444d" font-size="8" font-family="sans-serif">Dec</text>
+        <text x="246" y="172" fill="#3d444d" font-size="8" font-family="sans-serif">Jan</text>
+        <text x="289" y="172" fill="#3fb950" font-size="8" font-weight="bold" font-family="sans-serif">Feb</text>
+        <text x="28" y="196" fill="#3fb950" font-size="9" font-family="sans-serif">247 total · ↑12 this month</text>
+
+        <!-- Monitor uptime chart -->
+        <rect x="354" y="40" width="334" height="168" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="370" y="58" fill="#8b949e" font-size="10" font-family="sans-serif">Monitor Uptime Trend</text>
+        <!-- Line chart grid -->
+        <line x1="390" y1="76" x2="672" y2="76" stroke="#21262d" stroke-width="0.5"/>
+        <line x1="390" y1="106" x2="672" y2="106" stroke="#21262d" stroke-width="0.5"/>
+        <line x1="390" y1="136" x2="672" y2="136" stroke="#21262d" stroke-width="0.5"/>
+        <line x1="390" y1="166" x2="672" y2="166" stroke="#21262d" stroke-width="0.5"/>
+        <!-- Y axis -->
+        <text x="368" y="80" fill="#3d444d" font-size="8" font-family="monospace">100</text>
+        <text x="368" y="110" fill="#3d444d" font-size="8" font-family="monospace">99</text>
+        <text x="368" y="140" fill="#3d444d" font-size="8" font-family="monospace">98</text>
+        <!-- Uptime line (near 100%) -->
+        <polyline points="400,82 440,80 480,79 520,85 560,80 600,82 640,78 672,80"
+                  fill="none" stroke="#3fb950" stroke-width="2" stroke-linejoin="round"/>
+        <!-- Dip point annotation -->
+        <circle cx="520" cy="85" r="4" fill="#f85149"/>
+        <line x1="520" y1="85" x2="560" y2="60" stroke="#f85149" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="520" y="50" width="90" height="14" rx="7" fill="#da363344"/>
+        <text x="565" y="61" fill="#f85149" font-size="9" font-family="sans-serif" text-anchor="middle">Incident: 1h outage</text>
+        <text x="370" y="196" fill="#3fb950" font-size="9" font-family="sans-serif">Avg 99.4% · 19 monitors tracked</text>
+      </svg>
+      <p class="help-screenshot-caption">Analytics charts showing asset growth over 6 months (bar chart) and WAN monitor uptime trend (line chart). Incident dips are annotated with the event details.</p>
+    </div>
     """
     return render(request, 'core/help/section.html', {
         'title': 'Reports & Analytics',
@@ -1655,6 +1835,57 @@ def help_workflows(request):
         <li>A required flag (must complete before moving on)</li>
     </ul>
     <p>Manage processes at <em>Processes</em> in the navigation.</p>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="260" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Header -->
+        <rect width="700" height="40" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect y="20" width="700" height="20" fill="#161b22"/>
+        <text x="16" y="26" fill="#e6edf3" font-size="13" font-weight="bold" font-family="sans-serif">Employee Onboarding</text>
+        <rect x="560" y="10" width="126" height="22" rx="4" fill="#1f6feb"/>
+        <text x="623" y="25" fill="#fff" font-size="11" font-family="sans-serif" text-anchor="middle">▶ Execute Process</text>
+        <!-- Progress bar -->
+        <text x="16" y="58" fill="#8b949e" font-size="10" font-family="sans-serif">Progress: 3 / 6 stages complete</text>
+        <rect x="16" y="62" width="668" height="8" rx="4" fill="#21262d"/>
+        <rect x="16" y="62" width="334" height="8" rx="4" fill="#1f6feb"/>
+        <!-- Stage 1 - complete -->
+        <rect x="12" y="82" width="676" height="44" rx="4" fill="#161b22" stroke="#30363d"/>
+        <rect x="12" y="82" width="4" height="44" rx="2" fill="#3fb950"/>
+        <circle cx="34" cy="104" r="10" fill="#1a7f37" stroke="#3fb950"/>
+        <text x="34" y="108" fill="#fff" font-size="12" font-family="sans-serif" text-anchor="middle">✓</text>
+        <text x="54" y="99" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">1. Create AD Account</text>
+        <text x="54" y="115" fill="#3fb950" font-size="10" font-family="sans-serif">Completed by j.admin · 9:02 AM</text>
+        <text x="580" y="108" fill="#3d444d" font-size="10" font-family="sans-serif">IT Admin</text>
+        <!-- Stage 2 - complete -->
+        <rect x="12" y="132" width="676" height="44" rx="4" fill="#161b22" stroke="#30363d"/>
+        <rect x="12" y="132" width="4" height="44" rx="2" fill="#3fb950"/>
+        <circle cx="34" cy="154" r="10" fill="#1a7f37" stroke="#3fb950"/>
+        <text x="34" y="158" fill="#fff" font-size="12" font-family="sans-serif" text-anchor="middle">✓</text>
+        <text x="54" y="149" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">2. Provision Laptop</text>
+        <text x="54" y="165" fill="#3fb950" font-size="10" font-family="sans-serif">Completed by j.admin · 10:45 AM</text>
+        <text x="580" y="158" fill="#3d444d" font-size="10" font-family="sans-serif">IT Admin</text>
+        <!-- Stage 3 - in progress -->
+        <rect x="12" y="182" width="676" height="44" rx="4" fill="#1f3a5f" stroke="#1f6feb"/>
+        <rect x="12" y="182" width="4" height="44" rx="2" fill="#1f6feb"/>
+        <circle cx="34" cy="204" r="10" fill="#1f6feb" stroke="#58a6ff"/>
+        <text x="34" y="208" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">3</text>
+        <text x="54" y="199" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">3. Set Up Email &amp; Teams</text>
+        <text x="54" y="215" fill="#79c0ff" font-size="10" font-family="sans-serif">In Progress — assigned to s.helpdesk</text>
+        <rect x="580" y="193" width="96" height="18" rx="4" fill="#1f6feb"/>
+        <text x="628" y="206" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">Mark Complete</text>
+        <!-- Stage 4 - pending -->
+        <rect x="12" y="232" width="676" height="20" rx="4" fill="#0d1117" stroke="#21262d" stroke-width="0.5" opacity="0.7"/>
+        <circle cx="34" cy="242" r="8" fill="#21262d" stroke="#30363d"/>
+        <text x="34" y="246" fill="#3d444d" font-size="9" font-family="sans-serif" text-anchor="middle">4</text>
+        <text x="54" y="246" fill="#6e7681" font-size="11" font-family="sans-serif">4. Security Training (pending)</text>
+        <!-- Annotation -->
+        <line x1="628" y1="182" x2="660" y2="162" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="620" y="150" width="72" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="656" y="161" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">Active stage</text>
+      </svg>
+      <p class="help-screenshot-caption">Process execution view. Green stages are complete (logged with timestamp and user), the blue stage is active, and grey stages are pending. Click <strong>Mark Complete</strong> to advance.</p>
+    </div>
 
     <h5 class="mt-4" id="executing"><i class="fas fa-play-circle"></i> Executing a Process</h5>
     <ol>
@@ -1722,6 +1953,50 @@ def help_documentation(request):
     </div>
     <p>Upload existing files (PDF, DOCX, images) at <em>Docs → Upload</em>. Files are served through authenticated views only.</p>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="240" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <!-- Sidebar -->
+        <rect width="180" height="240" rx="6" fill="#161b22" stroke="#30363d"/>
+        <rect width="180" height="184" y="56" fill="#161b22"/>
+        <text x="14" y="24" fill="#8b949e" font-size="10" font-family="sans-serif">CATEGORIES</text>
+        <text x="14" y="46" fill="#c9d1d9" font-size="11" font-family="sans-serif">📁 Network</text>
+        <text x="14" y="66" fill="#c9d1d9" font-size="11" font-family="sans-serif">📁 Runbooks</text>
+        <rect x="10" y="72" width="160" height="20" rx="4" fill="#1f6feb22"/>
+        <text x="22" y="86" fill="#58a6ff" font-size="11" font-family="sans-serif">📄 Outage Runbook</text>
+        <text x="14" y="106" fill="#c9d1d9" font-size="11" font-family="sans-serif">📁 Client Reports</text>
+        <text x="14" y="126" fill="#c9d1d9" font-size="11" font-family="sans-serif">📁 Change Requests</text>
+        <text x="14" y="156" fill="#8b949e" font-size="10" font-family="sans-serif">TAGS</text>
+        <rect x="14" y="164" width="48" height="16" rx="8" fill="#1f6feb33" stroke="#1f6feb66"/>
+        <text x="38" y="176" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">network</text>
+        <rect x="68" y="164" width="52" height="16" rx="8" fill="#3fb95033" stroke="#3fb95066"/>
+        <text x="94" y="176" fill="#3fb950" font-size="9" font-family="sans-serif" text-anchor="middle">runbook</text>
+        <rect x="126" y="164" width="44" height="16" rx="8" fill="#d2992233" stroke="#d2992266"/>
+        <text x="148" y="176" fill="#d29922" font-size="9" font-family="sans-serif" text-anchor="middle">urgent</text>
+
+        <!-- Main doc view -->
+        <rect x="188" y="10" width="500" height="220" rx="4" fill="#0d1117" stroke="#21262d"/>
+        <text x="204" y="34" fill="#e6edf3" font-size="16" font-weight="bold" font-family="sans-serif">Network Outage Runbook</text>
+        <text x="204" y="52" fill="#3d444d" font-size="10" font-family="sans-serif">Last edited by j.admin · 2 days ago · Tags: network, runbook, urgent</text>
+        <line x1="204" y1="60" x2="680" y2="60" stroke="#21262d"/>
+        <!-- Doc content -->
+        <text x="204" y="80" fill="#8b949e" font-size="11" font-weight="bold" font-family="sans-serif">## 1. Immediate Response</text>
+        <text x="204" y="98" fill="#c9d1d9" font-size="10" font-family="sans-serif">1. Check WAN monitor dashboard for affected circuits</text>
+        <text x="204" y="114" fill="#c9d1d9" font-size="10" font-family="sans-serif">2. Ping default gateway from affected site</text>
+        <text x="204" y="130" fill="#c9d1d9" font-size="10" font-family="sans-serif">3. Contact ISP: 1-800-XXX-XXXX · Circuit ID: XXXX-XXXX</text>
+        <text x="204" y="156" fill="#8b949e" font-size="11" font-weight="bold" font-family="sans-serif">## 2. Escalation Path</text>
+        <text x="204" y="174" fill="#c9d1d9" font-size="10" font-family="sans-serif">Network Engineer → IT Manager → CTO</text>
+        <!-- Code block -->
+        <rect x="204" y="186" width="460" height="32" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="216" y="202" fill="#79c0ff" font-size="10" font-family="monospace">ping 8.8.8.8 -c 4  # test external connectivity</text>
+        <!-- Annotation -->
+        <line x1="350" y1="60" x2="420" y2="38" stroke="#f0b429" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="394" y="26" width="130" height="14" rx="7" fill="#f0b42944"/>
+        <text x="459" y="37" fill="#f0b429" font-size="10" font-family="sans-serif" text-anchor="middle">Markdown or WYSIWYG</text>
+      </svg>
+      <p class="help-screenshot-caption">Document view with category sidebar. Runbooks use Markdown for code snippets and structured steps. Tags are shown as color-coded chips for quick filtering.</p>
+    </div>
+
     <h5 class="mt-4" id="templates"><i class="fas fa-copy"></i> Document Templates</h5>
     <p>Templates are reusable document skeletons — create once, generate new documents instantly:</p>
     <ul>
@@ -1751,6 +2026,56 @@ def help_documentation(request):
         <li><strong>Export</strong> — PNG, SVG, or JSON format</li>
         <li>Diagrams can be embedded in documents and linked from asset records</li>
     </ul>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="240" rx="6" fill="#1a1f2e" stroke="#30363d"/>
+        <text x="16" y="26" fill="#e6edf3" font-size="13" font-weight="bold" font-family="sans-serif">Office Network Topology</text>
+        <rect x="580" y="10" width="108" height="22" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="634" y="25" fill="#8b949e" font-size="11" font-family="sans-serif" text-anchor="middle">Export ▾</text>
+
+        <!-- Internet cloud -->
+        <ellipse cx="350" cy="60" rx="60" ry="25" fill="#1f3a5f" stroke="#1f6feb"/>
+        <text x="350" y="55" fill="#79c0ff" font-size="10" font-family="sans-serif" text-anchor="middle">☁ Internet</text>
+        <text x="350" y="68" fill="#58a6ff" font-size="9" font-family="monospace" text-anchor="middle">203.0.113.1</text>
+
+        <!-- Firewall -->
+        <line x1="350" y1="85" x2="350" y2="108" stroke="#e3b341" stroke-width="2"/>
+        <rect x="310" y="108" width="80" height="34" rx="4" fill="#3a2a1a" stroke="#e3b341"/>
+        <text x="350" y="122" fill="#e3b341" font-size="10" font-family="sans-serif" text-anchor="middle">🔥 Firewall</text>
+        <text x="350" y="136" fill="#d29922" font-size="8" font-family="monospace" text-anchor="middle">10.0.0.1</text>
+
+        <!-- Core switch -->
+        <line x1="350" y1="142" x2="350" y2="162" stroke="#58a6ff" stroke-width="2"/>
+        <rect x="295" y="162" width="110" height="30" rx="4" fill="#1f3a5f" stroke="#1f6feb"/>
+        <text x="350" y="180" fill="#79c0ff" font-size="10" font-family="sans-serif" text-anchor="middle">⇄ Core Switch</text>
+
+        <!-- Servers -->
+        <line x1="310" y1="177" x2="200" y2="200" stroke="#3fb950" stroke-width="1.5"/>
+        <rect x="140" y="200" width="120" height="30" rx="4" fill="#1a3a2a" stroke="#3fb950"/>
+        <text x="200" y="218" fill="#3fb950" font-size="10" font-family="sans-serif" text-anchor="middle">🖥 Server Farm</text>
+
+        <!-- Workstations -->
+        <line x1="390" y1="177" x2="500" y2="200" stroke="#8957e5" stroke-width="1.5"/>
+        <rect x="440" y="200" width="120" height="30" rx="4" fill="#2d1f3f" stroke="#8957e5"/>
+        <text x="500" y="218" fill="#bc8cff" font-size="10" font-family="sans-serif" text-anchor="middle">💻 Workstations</text>
+
+        <!-- WiFi AP -->
+        <line x1="350" y1="192" x2="350" y2="210" stroke="#c9d1d9" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="310" y="210" width="80" height="26" rx="4" fill="#2d333b" stroke="#6e7681"/>
+        <text x="350" y="226" fill="#c9d1d9" font-size="9" font-family="sans-serif" text-anchor="middle">📶 WiFi AP</text>
+
+        <!-- Labels on lines -->
+        <text x="255" y="195" fill="#3fb950" font-size="8" font-family="sans-serif">1Gbps</text>
+        <text x="435" y="195" fill="#8957e5" font-size="8" font-family="sans-serif">1Gbps</text>
+        <text x="355" y="152" fill="#e3b341" font-size="8" font-family="sans-serif">WAN</text>
+        <!-- Annotation -->
+        <line x1="200" y1="200" x2="160" y2="170" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="100" y="156" width="110" height="18" rx="9" fill="#1f6feb44"/>
+        <text x="155" y="169" fill="#79c0ff" font-size="10" font-family="sans-serif" text-anchor="middle">Click to edit node</text>
+      </svg>
+      <p class="help-screenshot-caption">Network diagram canvas showing firewall → core switch → servers/workstations/WiFi topology. Nodes are drag-and-drop; click any node to edit its properties or add links.</p>
+    </div>
 
     <h5 class="mt-4" id="ai-assistant"><i class="fas fa-robot"></i> AI Writing Assistant</h5>
     <p>The built-in AI assistant helps write and improve documentation at <em>Docs → AI Assistant</em>:</p>
@@ -1806,6 +2131,65 @@ def help_locations(request):
     </div>
     <p>Locations provide a physical grouping for assets — assets can be further organized by rack or room within a location.</p>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="240" rx="6" fill="#0d1117" stroke="#30363d"/>
+        <!-- Page header -->
+        <text x="16" y="28" fill="#e6edf3" font-size="14" font-weight="bold" font-family="sans-serif">Locations</text>
+        <rect x="598" y="10" width="90" height="26" rx="4" fill="#238636" stroke="#2ea043"/>
+        <text x="643" y="27" fill="#fff" font-size="11" font-family="sans-serif" text-anchor="middle">+ Add Location</text>
+
+        <!-- Location card 1 -->
+        <rect x="12" y="44" width="210" height="90" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="26" y="64" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Head Office</text>
+        <text x="26" y="80" fill="#8b949e" font-size="10" font-family="sans-serif">123 Main St, Springfield</text>
+        <rect x="26" y="90" width="50" height="16" rx="8" fill="#1f6feb33" stroke="#1f6feb66"/>
+        <text x="51" y="102" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">42 assets</text>
+        <rect x="84" y="90" width="60" height="16" rx="8" fill="#3fb95033" stroke="#3fb95066"/>
+        <text x="114" y="102" fill="#3fb950" font-size="9" font-family="sans-serif" text-anchor="middle">2 WAN links</text>
+        <rect x="26" y="114" width="72" height="14" rx="3" fill="#21262d"/>
+        <text x="62" y="125" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">View Details</text>
+
+        <!-- Location card 2 -->
+        <rect x="238" y="44" width="210" height="90" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="252" y="64" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Data Center 1</text>
+        <text x="252" y="80" fill="#8b949e" font-size="10" font-family="sans-serif">456 Park Ave, Denver</text>
+        <rect x="252" y="90" width="50" height="16" rx="8" fill="#1f6feb33" stroke="#1f6feb66"/>
+        <text x="277" y="102" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">89 assets</text>
+        <rect x="310" y="90" width="60" height="16" rx="8" fill="#3fb95033" stroke="#3fb95066"/>
+        <text x="340" y="102" fill="#3fb950" font-size="9" font-family="sans-serif" text-anchor="middle">3 WAN links</text>
+        <rect x="252" y="114" width="72" height="14" rx="3" fill="#21262d"/>
+        <text x="288" y="125" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">View Details</text>
+
+        <!-- Location card 3 -->
+        <rect x="464" y="44" width="210" height="90" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="478" y="64" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Remote Site A</text>
+        <text x="478" y="80" fill="#8b949e" font-size="10" font-family="sans-serif">789 Oak Rd, Austin</text>
+        <rect x="478" y="90" width="50" height="16" rx="8" fill="#1f6feb33" stroke="#1f6feb66"/>
+        <text x="503" y="102" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">17 assets</text>
+        <rect x="536" y="90" width="60" height="16" rx="8" fill="#d2992233" stroke="#d2992266"/>
+        <text x="566" y="102" fill="#d29922" font-size="9" font-family="sans-serif" text-anchor="middle">1 WAN link</text>
+        <rect x="478" y="114" width="72" height="14" rx="3" fill="#21262d"/>
+        <text x="514" y="125" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">View Details</text>
+
+        <!-- Location detail panel at bottom -->
+        <rect x="12" y="150" width="676" height="78" rx="6" fill="#161b22" stroke="#30363d"/>
+        <text x="26" y="170" fill="#e6edf3" font-size="12" font-weight="bold" font-family="sans-serif">Head Office — Detail</text>
+        <text x="26" y="186" fill="#8b949e" font-size="10" font-family="sans-serif">Address: 123 Main St, Springfield · Notes: Main reception on ground floor, server room L2</text>
+        <text x="26" y="202" fill="#c9d1d9" font-size="10" font-family="sans-serif">42 assets assigned · 2 WAN connections · Floor plan: attached</text>
+        <rect x="530" y="158" width="70" height="20" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="565" y="172" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">Edit</text>
+        <rect x="608" y="158" width="70" height="20" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="643" y="172" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">Floor Plan</text>
+
+        <!-- Annotation -->
+        <line x1="114" y1="102" x2="130" y2="142" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="100" y="140" width="100" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="150" y="151" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">Asset count badge</text>
+      </svg>
+      <p class="help-screenshot-caption">Location list showing site cards with address, asset count, and WAN links. Click a card to open the detail view showing full contact info, assigned assets, WAN connections, and floor plan.</p>
+    </div>
+
     <h5 class="mt-4" id="wan-connections"><i class="fas fa-globe"></i> WAN Connections</h5>
     <p>Each location can have one or more <strong>WAN connections</strong> — the internet links serving that site. Access them from the location detail page.</p>
     <div class="table-responsive mt-2">
@@ -1829,6 +2213,65 @@ def help_locations(request):
         WAN connections here are for documentation and ISP contract tracking only.
     </div>
 
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 210" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="210" rx="6" fill="#0d1117" stroke="#30363d"/>
+        <!-- Section header -->
+        <text x="16" y="28" fill="#e6edf3" font-size="13" font-weight="bold" font-family="sans-serif">WAN Connections — Head Office</text>
+        <rect x="586" y="10" width="102" height="24" rx="4" fill="#238636" stroke="#2ea043"/>
+        <text x="637" y="26" fill="#fff" font-size="11" font-family="sans-serif" text-anchor="middle">+ Add Connection</text>
+
+        <!-- Table header -->
+        <rect x="12" y="44" width="676" height="24" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="26" y="61" fill="#8b949e" font-size="10" font-family="sans-serif">Name</text>
+        <text x="154" y="61" fill="#8b949e" font-size="10" font-family="sans-serif">ISP</text>
+        <text x="264" y="61" fill="#8b949e" font-size="10" font-family="sans-serif">Type</text>
+        <text x="340" y="61" fill="#8b949e" font-size="10" font-family="sans-serif">Down / Up</text>
+        <text x="444" y="61" fill="#8b949e" font-size="10" font-family="sans-serif">Circuit ID</text>
+        <text x="570" y="61" fill="#8b949e" font-size="10" font-family="sans-serif">Status</text>
+
+        <!-- Row 1 — Primary Fibre -->
+        <rect x="12" y="68" width="676" height="34" rx="0" fill="#161b22" stroke="#21262d"/>
+        <text x="26" y="89" fill="#e6edf3" font-size="11" font-family="sans-serif">Primary Fibre</text>
+        <text x="154" y="89" fill="#c9d1d9" font-size="11" font-family="sans-serif">Comcast</text>
+        <text x="264" y="89" fill="#c9d1d9" font-size="11" font-family="sans-serif">Fibre</text>
+        <text x="340" y="89" fill="#c9d1d9" font-size="11" font-family="sans-serif">1Gbps / 500Mbps</text>
+        <text x="444" y="89" fill="#8b949e" font-size="10" font-family="monospace">CMC-2024-8891</text>
+        <rect x="564" y="76" width="52" height="18" rx="9" fill="#1a3a2a" stroke="#3fb950"/>
+        <text x="590" y="89" fill="#3fb950" font-size="10" font-family="sans-serif" text-anchor="middle">Active</text>
+
+        <!-- Row 2 — 4G Failover -->
+        <rect x="12" y="102" width="676" height="34" rx="0" fill="#0d1117" stroke="#21262d"/>
+        <text x="26" y="123" fill="#e6edf3" font-size="11" font-family="sans-serif">4G Failover</text>
+        <text x="154" y="123" fill="#c9d1d9" font-size="11" font-family="sans-serif">Verizon</text>
+        <text x="264" y="123" fill="#c9d1d9" font-size="11" font-family="sans-serif">4G LTE</text>
+        <text x="340" y="123" fill="#c9d1d9" font-size="11" font-family="sans-serif">50Mbps / 20Mbps</text>
+        <text x="444" y="123" fill="#8b949e" font-size="10" font-family="monospace">VZN-LTE-0047</text>
+        <rect x="557" y="110" width="66" height="18" rx="9" fill="#3a2a1a" stroke="#e3b341"/>
+        <text x="590" y="123" fill="#e3b341" font-size="10" font-family="sans-serif" text-anchor="middle">Standby</text>
+
+        <!-- Row 3 — MPLS -->
+        <rect x="12" y="136" width="676" height="34" rx="0" fill="#161b22" stroke="#21262d"/>
+        <text x="26" y="157" fill="#e6edf3" font-size="11" font-family="sans-serif">MPLS to DC1</text>
+        <text x="154" y="157" fill="#c9d1d9" font-size="11" font-family="sans-serif">AT&amp;T</text>
+        <text x="264" y="157" fill="#c9d1d9" font-size="11" font-family="sans-serif">MPLS</text>
+        <text x="340" y="157" fill="#c9d1d9" font-size="11" font-family="sans-serif">100Mbps / 100Mbps</text>
+        <text x="444" y="157" fill="#8b949e" font-size="10" font-family="monospace">ATT-MPLS-5523</text>
+        <rect x="564" y="144" width="52" height="18" rx="9" fill="#1a3a2a" stroke="#3fb950"/>
+        <text x="590" y="157" fill="#3fb950" font-size="10" font-family="sans-serif" text-anchor="middle">Active</text>
+
+        <!-- Contract expiry note -->
+        <rect x="12" y="180" width="676" height="22" rx="4" fill="#1f2d3a" stroke="#1f6feb44"/>
+        <text x="24" y="195" fill="#79c0ff" font-size="10" font-family="sans-serif">ℹ Contract expiry reminders: Primary Fibre expires in 47 days — review renewal options</text>
+
+        <!-- Annotation -->
+        <line x1="590" y1="89" x2="640" y2="66" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="620" y="54" width="68" height="14" rx="7" fill="#1a3a2a44"/>
+        <text x="654" y="65" fill="#3fb950" font-size="9" font-family="sans-serif" text-anchor="middle">Status badge</text>
+      </svg>
+      <p class="help-screenshot-caption">WAN connections for a location. Each row shows ISP name, connection type, bandwidth, circuit ID for support calls, and live status. A banner alerts when contracts are nearing expiry.</p>
+    </div>
+
     <h5 class="mt-4" id="floor-plans"><i class="fas fa-drafting-compass"></i> Floor Plans</h5>
     <p>Attach a floor plan image to a location to map where equipment is physically installed:</p>
     <ul>
@@ -1837,6 +2280,83 @@ def help_locations(request):
         <li><strong>Import</strong> — import from a structured JSON format</li>
     </ul>
     <p>Floor plans are visible on the location detail page and can be linked from individual asset records.</p>
+
+    <div class="help-screenshot mt-3 mb-4">
+      <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" class="help-svg-screenshot">
+        <rect width="700" height="240" rx="6" fill="#0d1117" stroke="#30363d"/>
+        <text x="16" y="26" fill="#e6edf3" font-size="13" font-weight="bold" font-family="sans-serif">Floor Plan — Head Office, Level 2</text>
+        <rect x="590" y="8" width="100" height="22" rx="4" fill="#21262d" stroke="#30363d"/>
+        <text x="640" y="23" fill="#8b949e" font-size="11" font-family="sans-serif" text-anchor="middle">Upload Image</text>
+
+        <!-- Floor plan bounding box -->
+        <rect x="16" y="38" width="480" height="192" rx="4" fill="#161b22" stroke="#30363d"/>
+
+        <!-- Rooms -->
+        <!-- Server Room -->
+        <rect x="30" y="52" width="120" height="80" rx="2" fill="#1f3a5f" stroke="#1f6feb" stroke-width="1.5"/>
+        <text x="90" y="90" fill="#79c0ff" font-size="10" font-family="sans-serif" text-anchor="middle">Server Room</text>
+        <!-- Assets inside server room -->
+        <rect x="40" y="98" width="22" height="14" rx="2" fill="#1f6feb66" stroke="#1f6feb"/>
+        <text x="51" y="109" fill="#79c0ff" font-size="8" font-family="sans-serif" text-anchor="middle">SRV-1</text>
+        <rect x="68" y="98" width="22" height="14" rx="2" fill="#1f6feb66" stroke="#1f6feb"/>
+        <text x="79" y="109" fill="#79c0ff" font-size="8" font-family="sans-serif" text-anchor="middle">SW-01</text>
+        <rect x="96" y="98" width="22" height="14" rx="2" fill="#1f6feb66" stroke="#1f6feb"/>
+        <text x="107" y="109" fill="#79c0ff" font-size="8" font-family="sans-serif" text-anchor="middle">FW-01</text>
+
+        <!-- Meeting Room A -->
+        <rect x="160" y="52" width="110" height="70" rx="2" fill="#1a2a1a" stroke="#3fb950" stroke-width="1.5"/>
+        <text x="215" y="90" fill="#3fb950" font-size="10" font-family="sans-serif" text-anchor="middle">Meeting A</text>
+
+        <!-- Open Office -->
+        <rect x="280" y="52" width="200" height="120" rx="2" fill="#2d1f3f" stroke="#8957e5" stroke-width="1.5"/>
+        <text x="380" y="105" fill="#bc8cff" font-size="11" font-family="sans-serif" text-anchor="middle">Open Office</text>
+        <!-- Desks grid -->
+        <rect x="294" y="64" width="28" height="18" rx="2" fill="#8957e544" stroke="#8957e5"/>
+        <rect x="330" y="64" width="28" height="18" rx="2" fill="#8957e544" stroke="#8957e5"/>
+        <rect x="366" y="64" width="28" height="18" rx="2" fill="#8957e544" stroke="#8957e5"/>
+        <rect x="402" y="64" width="28" height="18" rx="2" fill="#8957e544" stroke="#8957e5"/>
+        <rect x="438" y="64" width="28" height="18" rx="2" fill="#8957e544" stroke="#8957e5"/>
+
+        <!-- Corridor -->
+        <rect x="30" y="140" width="450" height="20" rx="0" fill="#0d1117"/>
+        <text x="255" y="154" fill="#3d444d" font-size="9" font-family="sans-serif" text-anchor="middle">— corridor —</text>
+
+        <!-- Breakroom -->
+        <rect x="30" y="168" width="110" height="56" rx="2" fill="#2a1a1a" stroke="#e3b341" stroke-width="1.5"/>
+        <text x="85" y="200" fill="#e3b341" font-size="10" font-family="sans-serif" text-anchor="middle">Break Room</text>
+
+        <!-- Bathroom -->
+        <rect x="150" y="168" width="80" height="56" rx="2" fill="#1a1a2a" stroke="#6e7681" stroke-width="1.5"/>
+        <text x="190" y="200" fill="#6e7681" font-size="10" font-family="sans-serif" text-anchor="middle">WC</text>
+
+        <!-- Storage -->
+        <rect x="240" y="168" width="240" height="56" rx="2" fill="#21262d" stroke="#30363d" stroke-width="1.5"/>
+        <text x="360" y="200" fill="#8b949e" font-size="10" font-family="sans-serif" text-anchor="middle">Storage / IDF Closet</text>
+
+        <!-- Legend panel -->
+        <rect x="510" y="38" width="180" height="192" rx="4" fill="#161b22" stroke="#30363d"/>
+        <text x="524" y="58" fill="#8b949e" font-size="10" font-family="sans-serif">LEGEND</text>
+        <rect x="524" y="66" width="12" height="10" rx="2" fill="#1f3a5f" stroke="#1f6feb"/>
+        <text x="542" y="76" fill="#c9d1d9" font-size="10" font-family="sans-serif">Server / Network</text>
+        <rect x="524" y="84" width="12" height="10" rx="2" fill="#2d1f3f" stroke="#8957e5"/>
+        <text x="542" y="94" fill="#c9d1d9" font-size="10" font-family="sans-serif">Workstations</text>
+        <rect x="524" y="102" width="12" height="10" rx="2" fill="#1a2a1a" stroke="#3fb950"/>
+        <text x="542" y="112" fill="#c9d1d9" font-size="10" font-family="sans-serif">Meeting Rooms</text>
+        <rect x="524" y="120" width="12" height="10" rx="2" fill="#2a1a1a" stroke="#e3b341"/>
+        <text x="542" y="130" fill="#c9d1d9" font-size="10" font-family="sans-serif">Kitchen / Break</text>
+        <line x1="524" y1="150" x2="682" y2="150" stroke="#21262d"/>
+        <text x="524" y="166" fill="#8b949e" font-size="10" font-family="sans-serif">ASSETS ON FLOOR</text>
+        <text x="524" y="182" fill="#58a6ff" font-size="11" font-family="sans-serif">SRV-1 · SW-01 · FW-01</text>
+        <text x="524" y="196" fill="#8b949e" font-size="10" font-family="sans-serif">Click asset to open record</text>
+        <text x="524" y="212" fill="#3fb950" font-size="10" font-family="sans-serif">3 assets pinned</text>
+
+        <!-- Annotation -->
+        <line x1="79" y1="109" x2="79" y2="140" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="3,2"/>
+        <rect x="44" y="138" width="110" height="14" rx="7" fill="#1f6feb44"/>
+        <text x="99" y="149" fill="#79c0ff" font-size="9" font-family="sans-serif" text-anchor="middle">Click asset → detail</text>
+      </svg>
+      <p class="help-screenshot-caption">Floor plan view showing room layout with assets pinned to their physical location. Click any asset badge to jump directly to its asset record. Rooms are color-coded by type.</p>
+    </div>
     """
     return render(request, 'core/help/section.html', {
         'title': 'Locations & WAN',
