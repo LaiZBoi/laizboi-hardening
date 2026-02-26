@@ -4,7 +4,7 @@ URL Configuration for Client St0r
 from django.contrib import admin
 from django.contrib.auth.views import LogoutView
 from django.urls import path, include
-from django.views.generic import RedirectView
+from django.views.generic import RedirectView, TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.decorators.csrf import csrf_exempt
@@ -13,6 +13,9 @@ from two_factor.urls import urlpatterns as tf_urls
 urlpatterns = [
     # Favicon
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.svg', permanent=True)),
+
+    # PWA offline fallback page (no login required, cached by service worker)
+    path('offline/', TemplateView.as_view(template_name='core/offline.html'), name='offline'),
 
     # Admin
     path('admin/', admin.site.urls),

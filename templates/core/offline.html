@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline — Client St0r</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-align: center;
+            padding: 20px;
+        }
+        .container { max-width: 400px; }
+        .icon { font-size: 64px; margin-bottom: 24px; }
+        h1 { font-size: 28px; color: #e6edf3; margin-bottom: 12px; }
+        p { color: #8b949e; line-height: 1.6; margin-bottom: 24px; }
+        button {
+            background: #238636;
+            color: #fff;
+            border: none;
+            padding: 12px 28px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover { background: #2ea043; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">📡</div>
+        <h1>You're offline</h1>
+        <p>Client St0r can't reach the server right now. Check your network connection and try again.</p>
+        <button onclick="location.reload()">Try again</button>
+    </div>
+</body>
+</html>

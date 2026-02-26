@@ -4,9 +4,10 @@
 const CACHE_NAME = 'clientst0r-v3';
 const OFFLINE_URL = '/offline/';
 
-// Assets to cache immediately on install
+// Assets to cache immediately on install.
+// Only include public, unauthenticated URLs — cache.addAll() fails atomically
+// if any URL returns non-200, so never include login-protected pages here.
 const PRECACHE_ASSETS = [
-    '/',
     '/static/css/custom.css',
     '/static/css/mobile.css',
     '/static/css/themes.css',
@@ -22,7 +23,12 @@ self.addEventListener('install', (event) => {
         caches.open(CACHE_NAME)
             .then((cache) => {
                 console.log('[Service Worker] Precaching assets');
-                return cache.addAll(PRECACHE_ASSETS);
+                // Use allSettled so one failed asset never aborts the whole install
+                return Promise.allSettled(
+                    PRECACHE_ASSETS.map(url => cache.add(url).catch(err => {
+                        console.warn('[Service Worker] Failed to cache:', url, err);
+                    }))
+                );
             })
             .then(() => self.skipWaiting())
     );
