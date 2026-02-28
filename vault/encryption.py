@@ -22,12 +22,17 @@ def get_master_key():
     if not key_b64:
         raise EncryptionError("APP_MASTER_KEY not configured")
 
-    # Add padding if needed for base64 decoding
-    # Base64 strings must be a multiple of 4 characters
-    key_b64 = key_b64.strip()  # Remove any whitespace
-    padding_needed = len(key_b64) % 4
-    if padding_needed:
-        key_b64 += '=' * (4 - padding_needed)
+    key_b64 = key_b64.strip()  # Remove any whitespace/newlines
+
+    # Normalise URL-safe base64 → standard base64.
+    # Fernet.generate_key() uses urlsafe_b64encode (- and _ instead of + and /).
+    # base64.b64decode silently strips those chars, producing the wrong byte count.
+    key_b64 = key_b64.replace('-', '+').replace('_', '/')
+
+    # Re-pad correctly: strip any existing = then add the right amount.
+    key_b64 = key_b64.rstrip('=')
+    padding = (4 - len(key_b64) % 4) % 4
+    key_b64 = key_b64 + '=' * padding
 
     try:
         key = base64.b64decode(key_b64)

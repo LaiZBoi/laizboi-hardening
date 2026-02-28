@@ -233,9 +233,17 @@ def settings_smtp(request):
         # Only update password if provided
         smtp_password = request.POST.get('smtp_password', '').strip()
         if smtp_password:
-            # Encrypt password before storing
-            from vault.encryption import encrypt
-            settings.smtp_password = encrypt(smtp_password)
+            from vault.encryption import encrypt, EncryptionError
+            try:
+                settings.smtp_password = encrypt(smtp_password)
+            except EncryptionError:
+                messages.error(
+                    request,
+                    'Could not save SMTP password: your APP_MASTER_KEY is invalid or missing. '
+                    'Run the fix script: ./scripts/fix_gunicorn_env.sh — or regenerate the key: '
+                    'python3 -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())"'
+                )
+                return redirect('core:settings_smtp')
 
         settings.smtp_use_tls = request.POST.get('smtp_use_tls') == 'on'
         settings.smtp_use_ssl = request.POST.get('smtp_use_ssl') == 'on'
@@ -2839,9 +2847,17 @@ def settings_sms(request):
         # Only update auth token if provided
         sms_auth_token = request.POST.get('sms_auth_token', '').strip()
         if sms_auth_token:
-            # Encrypt auth token before storing
-            from vault.encryption import encrypt
-            settings_obj.sms_auth_token = encrypt(sms_auth_token)
+            from vault.encryption import encrypt, EncryptionError
+            try:
+                settings_obj.sms_auth_token = encrypt(sms_auth_token)
+            except EncryptionError:
+                messages.error(
+                    request,
+                    'Could not save SMS auth token: your APP_MASTER_KEY is invalid or missing. '
+                    'Run: python3 -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())" '
+                    'and update APP_MASTER_KEY in your .env file.'
+                )
+                return redirect('core:settings_sms')
 
         settings_obj.updated_by = request.user
         settings_obj.save()

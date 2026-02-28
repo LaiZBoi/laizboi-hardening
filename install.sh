@@ -583,7 +583,7 @@ fi
 # Step 4: Generate secrets
 print_info "Step 4/11: Generating secure secrets..."
 
-APP_MASTER_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+APP_MASTER_KEY=$(python3 -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())")
 SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))")
 API_KEY_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))")
 # Generate random secure database password (32 chars, alphanumeric + special chars)
