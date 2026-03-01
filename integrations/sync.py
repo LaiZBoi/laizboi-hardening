@@ -793,13 +793,29 @@ class RMMSync:
         """
         from assets.models import Asset
 
-        # Skip if already mapped
-        if device.linked_asset:
-            return
-
         # Use the device's actual organization (not the connection default org),
         # so assets are scoped to the correct client when import_organizations=True.
         device_org = device.organization or self.organization
+
+        # If already linked, verify the link is still valid (serial or hostname must match).
+        # Links established via the now-removed IP-address matching are invalid when the
+        # device's serial / hostname doesn't agree with the linked asset — clear them so
+        # the device gets re-evaluated below.
+        if device.linked_asset:
+            linked = device.linked_asset
+            serial_match = (device.serial_number and linked.serial_number and
+                            device.serial_number == linked.serial_number)
+            hostname_match = (device.hostname and linked.hostname and
+                              device.hostname.lower() == linked.hostname.lower())
+            if serial_match or hostname_match:
+                return  # Link is legitimate — keep it
+            # Link looks wrong — clear it so we can re-evaluate
+            logger.info(
+                f"Clearing stale asset link for RMM device {device.external_id}: "
+                f"linked asset {linked.id} does not match by serial or hostname"
+            )
+            device.linked_asset = None
+            device.save(update_fields=['linked_asset'])
 
         # Try to find existing asset by serial number
         asset = None
