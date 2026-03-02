@@ -1,11 +1,44 @@
 """
 2FA enforcement middleware and language middleware
 """
+import time
+from django.contrib.auth import logout
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.conf import settings
 from django.utils import translation
 from django_otp import user_has_device
+
+
+class SessionIdleTimeoutMiddleware:
+    """
+    Expire authenticated sessions after a period of inactivity.
+
+    Idle timeout is controlled by SESSION_IDLE_TIMEOUT (seconds, default 3600).
+    On expiry the user is logged out and redirected to the login page.
+    """
+
+    EXEMPT_PATHS = ['/account/login/', '/account/logout/', '/static/', '/media/']
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.idle_timeout = getattr(settings, 'SESSION_IDLE_TIMEOUT', 3600)
+
+    def __call__(self, request):
+        if request.user.is_authenticated and not any(
+            request.path.startswith(p) for p in self.EXEMPT_PATHS
+        ):
+            now = time.time()
+            last_activity = request.session.get('_last_activity')
+
+            if last_activity and (now - last_activity) > self.idle_timeout:
+                logout(request)
+                login_url = getattr(settings, 'LOGIN_URL', '/account/login/')
+                return redirect(f'{login_url}?next={request.path}')
+
+            request.session['_last_activity'] = now
+
+        return self.get_response(request)
 
 
 class UserLanguageMiddleware:

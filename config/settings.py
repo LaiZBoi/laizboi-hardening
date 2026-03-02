@@ -111,6 +111,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'axes.middleware.AxesMiddleware',
     'core.middleware.CurrentOrganizationMiddleware',
+    'accounts.middleware.SessionIdleTimeoutMiddleware',
     'accounts.middleware.Enforce2FAMiddleware',
     'accounts.middleware.UserLanguageMiddleware',
     'core.ai_abuse_control.AIAbuseControlMiddleware',  # AI endpoint protection
@@ -264,6 +265,9 @@ else:
     SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True').lower() == 'true'
     CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True').lower() == 'true'
 
+SESSION_COOKIE_AGE = int(os.getenv('SESSION_COOKIE_AGE', 28800))  # 8 hours default
+SESSION_EXPIRE_AT_BROWSER_CLOSE = os.getenv('SESSION_EXPIRE_AT_BROWSER_CLOSE', 'True').lower() == 'true'
+SESSION_IDLE_TIMEOUT = int(os.getenv('SESSION_IDLE_TIMEOUT', 3600))  # 1 hour idle timeout
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False  # Must be False so JS can read csrftoken cookie for AJAX POST requests

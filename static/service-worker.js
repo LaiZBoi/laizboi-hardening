@@ -1,49 +1,57 @@
-const CACHE_NAME = 'clientst0r-v3';
-const urlsToCache = [
-  '/',
+const CACHE_NAME = 'clientst0r-v4';
+const STATIC_ASSETS = [
   '/static/manifest.json',
   '/static/icons/icon-192x192.png',
   '/static/icons/icon-512x512.png'
 ];
 
-// Install service worker and cache resources
+// Install: cache only static assets (never HTML pages)
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
+    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
   );
 });
 
-// Fetch resources from cache when offline
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      }
+// Activate: clean up old caches
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(cacheNames =>
+      Promise.all(
+        cacheNames
+          .filter(name => name !== CACHE_NAME)
+          .map(name => caches.delete(name))
+      )
     )
   );
 });
 
-// Update service worker and clean old caches
-self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+// Fetch strategy:
+//   - Navigation requests (HTML pages): network-first, never cache.
+//     This ensures Django's auth/session checks always run.
+//   - Static assets: cache-first with network fallback.
+self.addEventListener('fetch', event => {
+  const { request } = event;
+
+  // Always go to the network for navigation (page loads) so session
+  // expiry is enforced server-side on every page visit.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() =>
+        // Offline fallback: serve cached root if available, otherwise a
+        // plain error page so the user knows they are offline.
+        caches.match('/').then(
+          cached => cached || new Response(
+            '<h1>You are offline</h1><p>Please check your connection and try again.</p>',
+            { headers: { 'Content-Type': 'text/html' } }
+          )
+        )
+      )
+    );
+    return;
+  }
+
+  // Static assets: cache-first
+  event.respondWith(
+    caches.match(request).then(cached => cached || fetch(request))
   );
 });
