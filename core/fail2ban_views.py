@@ -74,8 +74,10 @@ def is_fail2ban_installed():
             text=True,
             timeout=5
         )
-        # If this succeeds, sudo is configured for our needs
-        sudo_configured = test_result.returncode == 0
+        # rc=0: service active, rc=3: service inactive — both mean sudo is working
+        # rc=1 + "password is required" in stderr means sudo is NOT configured
+        sudo_configured = test_result.returncode in (0, 3) and \
+            'password is required' not in test_result.stderr.lower()
     except Exception:
         sudo_configured = False
 
