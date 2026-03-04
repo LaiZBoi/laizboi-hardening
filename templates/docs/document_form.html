@@ -796,8 +796,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Get selected output format
-        const outputFormat = document.querySelector('input[name="outputFormat"]:checked').value;
+        // Get selected output format — auto-select html when editor is in HTML mode
+        const outputFormat = (contentType === 'html') ? 'html' : document.querySelector('input[name="outputFormat"]:checked').value;
 
         // Show loading
         document.getElementById('ai-enhance-loading').style.display = 'block';
