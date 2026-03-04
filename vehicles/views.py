@@ -854,6 +854,18 @@ def assignment_end(request, pk):
 # QR Code & Mobile Scanner Views
 # ============================================================================
 
+def _qr_base_url(request):
+    """Return the site URL from SystemSetting, falling back to request host."""
+    try:
+        from core.models import SystemSetting
+        settings_obj = SystemSetting.objects.first()
+        if settings_obj and settings_obj.site_url:
+            return settings_obj.site_url.rstrip('/')
+    except Exception:
+        pass
+    return request.build_absolute_uri('/').rstrip('/')
+
+
 @login_required
 def inventory_qr_image(request, pk):
     """
@@ -872,7 +884,7 @@ def inventory_qr_image(request, pk):
     from django.http import HttpResponse
 
     # Generate QR code data (URL to scan page)
-    qr_url = request.build_absolute_uri(item.get_qr_code_url())
+    qr_url = _qr_base_url(request) + item.get_qr_code_url()
 
     # Create QR code
     qr = qrcode.QRCode(
@@ -1372,7 +1384,7 @@ def shop_inventory_qr_image(request, pk):
     from io import BytesIO
     from django.http import HttpResponse
 
-    qr_url = request.build_absolute_uri(item.get_qr_code_url())
+    qr_url = _qr_base_url(request) + item.get_qr_code_url()
 
     qr = qrcode.QRCode(
         version=1,
