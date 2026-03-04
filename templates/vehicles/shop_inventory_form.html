@@ -75,6 +75,13 @@
                     <div class="mb-3">
                         <label class="form-label">Reorder Link <small class="text-muted">(Amazon, eBay, etc.)</small></label>
                         {{ form.reorder_link }}
+                        {% if item and item.reorder_link %}
+                        <div class="mt-1">
+                            <a href="{{ item.reorder_link }}" target="_blank" class="btn btn-sm btn-outline-success">
+                                <i class="fas fa-external-link-alt"></i> Open Link
+                            </a>
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Description</label>

@@ -104,7 +104,7 @@
                     <td>{{ item.quantity }} {{ item.unit }}</td>
                     <td>{{ item.min_quantity }}</td>
                     <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
-                    <td><a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
+                    <td>{% if item.reorder_link %}<a href="{{ item.reorder_link }}" target="_blank" class="btn btn-sm btn-outline-success" title="Reorder"><i class="fas fa-shopping-cart"></i></a> {% endif %}<a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -144,7 +144,7 @@
                     <td>{{ item.location_in_vehicle|default:"—" }}</td>
                     <td>{{ item.quantity }} {{ item.unit }}</td>
                     <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
-                    <td><a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
+                    <td>{% if item.reorder_link %}<a href="{{ item.reorder_link }}" target="_blank" class="btn btn-sm btn-outline-success" title="Reorder"><i class="fas fa-shopping-cart"></i></a> {% endif %}<a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -216,7 +216,7 @@
                     <td>{{ item.quantity }} {{ item.unit }}</td>
                     <td>{{ item.min_quantity }}</td>
                     <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
-                    <td><a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
+                    <td>{% if item.reorder_link %}<a href="{{ item.reorder_link }}" target="_blank" class="btn btn-sm btn-outline-success" title="Reorder"><i class="fas fa-shopping-cart"></i></a> {% endif %}<a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -245,7 +245,7 @@
                     <td>{{ item.category|default:"—" }}</td>
                     <td>{{ item.quantity }} {{ item.unit }}</td>
                     <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
-                    <td><a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
+                    <td>{% if item.reorder_link %}<a href="{{ item.reorder_link }}" target="_blank" class="btn btn-sm btn-outline-success" title="Reorder"><i class="fas fa-shopping-cart"></i></a> {% endif %}<a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
                 </tr>
                 {% endfor %}
             </tbody>

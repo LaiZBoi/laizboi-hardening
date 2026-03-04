@@ -81,6 +81,7 @@
                         {% endif %}
                     </td>
                     <td>
+                        {% if item.reorder_link %}<a href="{{ item.reorder_link }}" target="_blank" class="btn btn-sm btn-outline-success" title="Reorder"><i class="fas fa-shopping-cart"></i></a> {% endif %}
                         <a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary">
                             <i class="fas fa-edit"></i>
                         </a>
