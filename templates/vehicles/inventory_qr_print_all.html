@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory QR Codes - Client St0r{% endblock %}
+
+{% block extra_css %}
+<style>
+    @media print {
+        .no-print { display: none !important; }
+        .navbar, .breadcrumb, footer { display: none !important; }
+        body { background: white; }
+        .section-header { page-break-before: auto; }
+    }
+    .qr-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+        margin: 15px 0;
+    }
+    .qr-item {
+        border: 2px solid #dee2e6;
+        padding: 12px;
+        text-align: center;
+        background: white;
+        border-radius: 8px;
+        page-break-inside: avoid;
+    }
+    .qr-item img { max-width: 100%; height: auto; margin-bottom: 8px; }
+    .qr-item-name { font-weight: bold; font-size: 13px; margin-bottom: 4px; }
+    .qr-item-code { font-family: monospace; font-size: 10px; color: #6c757d; }
+    .qr-item-details { font-size: 11px; color: #495057; margin-top: 4px; }
+    .qr-item-details div { margin-bottom: 2px; }
+    .section-header { background: #f8f9fa; border-left: 4px solid #0d6efd; padding: 10px 15px; margin: 20px 0 10px; border-radius: 4px; }
+    .section-header.shop { border-left-color: #198754; }
+    @media print {
+        .qr-grid { grid-template-columns: repeat(4, 1fr); }
+        .qr-item { border: 1px solid #000; }
+        .section-header { border-left-width: 3px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="no-print">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicles_dashboard' %}">Vehicles</a></li>
+            <li class="breadcrumb-item active">Inventory QR Codes</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="fas fa-qrcode"></i> Inventory QR Codes</h2>
+        <div>
+            <button onclick="window.print()" class="btn btn-primary">
+                <i class="fas fa-print"></i> Print All
+            </button>
+            <a href="{% url 'vehicles:inventory_global_list' %}" class="btn btn-secondary">
+                <i class="fas fa-times"></i> Close
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter by vehicle -->
+    <form method="get" class="mb-3 d-flex gap-2">
+        <select name="vehicle" class="form-select" style="max-width:300px">
+            <option value="">All vehicles</option>
+            {% for v in vehicles %}
+            <option value="{{ v.pk }}" {% if selected_vehicle.pk == v.pk %}selected{% endif %}>{{ v.display_name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-outline-secondary">Filter</button>
+        {% if selected_vehicle %}
+        <a href="{% url 'vehicles:inventory_qr_print_all' %}" class="btn btn-outline-danger">Clear</a>
+        {% endif %}
+    </form>
+
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        <strong>Printing Tips:</strong>
+        Use <strong>landscape orientation</strong>, print on adhesive label sheets, cut out and attach to items.
+        Scanning any QR code lets you update quantity right from your phone.
+        QR codes are <strong>generated once</strong> and never change — reprint any time.
+    </div>
+</div>
+
+<!-- Print header (only visible when printing) -->
+<div class="text-center mb-3" style="display:none;" id="print-title">
+    <h3>Inventory QR Codes{% if selected_vehicle %} — {{ selected_vehicle.display_name }}{% endif %}</h3>
+    <p class="text-muted">Generated {{ request.user.get_full_name|default:request.user.username }}</p>
+</div>
+<script>document.getElementById('print-title').style.display='block'</script>
+<noscript><div class="text-center mb-3"><h3>Inventory QR Codes</h3></div></noscript>
+
+<!-- Vehicle Inventory -->
+{% if vehicle_items %}
+<div class="section-header">
+    <i class="fas fa-truck"></i> <strong>Vehicle Inventory</strong>
+    <span class="text-muted ms-2">({{ vehicle_items|length }} items)</span>
+</div>
+<div class="qr-grid">
+    {% for item in vehicle_items %}
+    <div class="qr-item">
+        <img src="{% url 'vehicles:inventory_qr_image' item.pk %}" alt="QR: {{ item.name }}" loading="lazy">
+        <div class="qr-item-name">{{ item.name }}</div>
+        <div class="qr-item-code">{{ item.qr_code }}</div>
+        <div class="qr-item-details">
+            <div><strong>Vehicle:</strong> {{ item.vehicle.display_name }}</div>
+            <div><strong>Qty:</strong> {{ item.quantity }} {{ item.unit }}</div>
+            {% if item.category %}<div><strong>Cat:</strong> {{ item.category }}</div>{% endif %}
+            {% if item.location_in_vehicle %}<div><strong>Location:</strong> {{ item.location_in_vehicle }}</div>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-secondary no-print">No vehicle inventory items{% if selected_vehicle %} for {{ selected_vehicle.display_name }}{% endif %}.</div>
+{% endif %}
+
+<!-- Shop Inventory -->
+{% if not selected_vehicle %}
+{% if shop_items %}
+<div class="section-header shop">
+    <i class="fas fa-store"></i> <strong>Shop Inventory</strong>
+    <span class="text-muted ms-2">({{ shop_items|length }} items)</span>
+</div>
+<div class="qr-grid">
+    {% for item in shop_items %}
+    <div class="qr-item">
+        <img src="{% url 'vehicles:shop_inventory_qr_image' item.pk %}" alt="QR: {{ item.name }}" loading="lazy">
+        <div class="qr-item-name">{{ item.name }}</div>
+        <div class="qr-item-code">{{ item.qr_code }}</div>
+        <div class="qr-item-details">
+            <div><strong>Qty:</strong> {{ item.quantity }} {{ item.unit }}</div>
+            {% if item.category %}<div><strong>Cat:</strong> {{ item.category }}</div>{% endif %}
+            {% if item.location_in_shop %}<div><strong>Location:</strong> {{ item.location_in_shop }}</div>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-secondary no-print">No shop inventory items.</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}

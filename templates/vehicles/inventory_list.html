@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory - Client St0r{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicles_dashboard' %}">Vehicles</a></li>
+        <li class="breadcrumb-item active">Inventory</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="fas fa-warehouse"></i> Inventory</h2>
+    <div>
+        <a href="{% url 'vehicles:inventory_qr_print_all' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-qrcode"></i> QR Codes
+        </a>
+        <a href="{% url 'vehicles:shop_inventory_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Add Shop Item
+        </a>
+    </div>
+</div>
+
+{% if low_stock_all %}
+<div class="alert alert-warning">
+    <i class="fas fa-exclamation-triangle"></i>
+    <strong>{{ low_stock_all|length }} item(s)</strong> are at or below minimum quantity.
+</div>
+{% endif %}
+
+<!-- Filter bar -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <!-- View tabs -->
+            <div class="col-auto">
+                <div class="btn-group" role="group">
+                    <a href="?view=all{% if search %}&search={{ search }}{% endif %}"
+                       class="btn btn-sm {% if view == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                        <i class="fas fa-globe"></i> All
+                    </a>
+                    <a href="?view=vehicles{% if search %}&search={{ search }}{% endif %}"
+                       class="btn btn-sm {% if view == 'vehicles' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                        <i class="fas fa-truck"></i> Vehicles (flat)
+                    </a>
+                    <a href="?view=by_vehicle{% if search %}&search={{ search }}{% endif %}"
+                       class="btn btn-sm {% if view == 'by_vehicle' and not selected_vehicle %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                        <i class="fas fa-sitemap"></i> By Vehicle
+                    </a>
+                    <a href="?view=shop{% if search %}&search={{ search }}{% endif %}"
+                       class="btn btn-sm {% if view == 'shop' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                        <i class="fas fa-store"></i> Shop
+                    </a>
+                </div>
+            </div>
+
+            <!-- Per-vehicle filter -->
+            <div class="col-auto">
+                <select name="vehicle" class="form-select form-select-sm" onchange="this.form.submit()" style="min-width:180px">
+                    <option value="">All vehicles</option>
+                    {% for v in all_vehicles %}
+                    <option value="{{ v.pk }}" {% if selected_vehicle.pk == v.pk %}selected{% endif %}>{{ v.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Search -->
+            <div class="col">
+                <div class="input-group input-group-sm">
+                    <input type="hidden" name="view" value="{{ view }}">
+                    <input type="search" name="search" class="form-control" placeholder="Search items…" value="{{ search }}">
+                    <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if selected_vehicle %}
+<!-- Per-vehicle view -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <a href="{% url 'vehicles:vehicle_detail' selected_vehicle.pk %}" class="text-decoration-none">
+                <i class="fas fa-truck"></i> {{ selected_vehicle.display_name }}
+            </a>
+        </h5>
+        <a href="{% url 'vehicles:inventory_item_create' selected_vehicle.pk %}" class="btn btn-primary btn-sm">
+            <i class="fas fa-plus"></i> Add Item
+        </a>
+    </div>
+    {% with entry=vehicle_data.0 %}
+    {% if entry.items %}
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>Item</th><th>Category</th><th>Location</th><th>Qty</th><th>Min</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for item in entry.items %}
+                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.category|default:"—" }}</td>
+                    <td>{{ item.location_in_vehicle|default:"—" }}</td>
+                    <td>{{ item.quantity }} {{ item.unit }}</td>
+                    <td>{{ item.min_quantity }}</td>
+                    <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
+                    <td><a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body text-muted">No items found.</div>
+    {% endif %}
+    {% endwith %}
+</div>
+
+{% elif view == 'by_vehicle' %}
+<!-- Grouped by vehicle -->
+{% for entry in vehicle_data %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <a href="?vehicle={{ entry.vehicle.pk }}{% if search %}&search={{ search }}{% endif %}" class="text-decoration-none">
+                <i class="fas fa-truck"></i> {{ entry.vehicle.display_name }}
+            </a>
+            {% if entry.low_stock_count %}<span class="badge bg-warning text-dark ms-2">{{ entry.low_stock_count }} low stock</span>{% endif %}
+        </h5>
+        <div>
+            {% if entry.total_value %}<span class="text-muted me-3 small">Value: ${{ entry.total_value|floatformat:2 }}</span>{% endif %}
+            <a href="{% url 'vehicles:inventory_item_create' entry.vehicle.pk %}" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i></a>
+        </div>
+    </div>
+    {% if entry.items %}
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>Item</th><th>Category</th><th>Location</th><th>Qty</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for item in entry.items %}
+                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.category|default:"—" }}</td>
+                    <td>{{ item.location_in_vehicle|default:"—" }}</td>
+                    <td>{{ item.quantity }} {{ item.unit }}</td>
+                    <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
+                    <td><a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body text-muted small">No items.</div>
+    {% endif %}
+</div>
+{% empty %}
+<div class="alert alert-info">No vehicles found.</div>
+{% endfor %}
+
+{% elif view == 'shop' %}
+<!-- Shop items only -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-store"></i> Shop Inventory ({{ shop_items|length }})</h5>
+        <a href="{% url 'vehicles:shop_inventory_create' %}" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add Item</a>
+    </div>
+    {% if shop_items %}
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>Item</th><th>Category</th><th>Location</th><th>Qty</th><th>Min</th><th>Value</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for item in shop_items %}
+                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                    <td><strong>{{ item.name }}</strong></td>
+                    <td>{{ item.category|default:"—" }}</td>
+                    <td>{{ item.location_in_shop|default:"—" }}</td>
+                    <td>{{ item.quantity }} {{ item.unit }}</td>
+                    <td>{{ item.min_quantity }}</td>
+                    <td>{% if item.total_value %}${{ item.total_value|floatformat:2 }}{% else %}—{% endif %}</td>
+                    <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
+                    <td>
+                        <a href="{% url 'vehicles:shop_inventory_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a>
+                        <a href="{% url 'vehicles:shop_inventory_delete' item.pk %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body">
+        <p class="text-muted mb-2">No shop inventory items yet.</p>
+        <a href="{% url 'vehicles:shop_inventory_create' %}" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add First Item</a>
+    </div>
+    {% endif %}
+</div>
+
+{% elif view == 'vehicles' %}
+<!-- All vehicle items flat -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-truck"></i> Vehicle Inventory ({{ vehicle_items|length }})</h5>
+    </div>
+    {% if vehicle_items %}
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>Item</th><th>Vehicle</th><th>Category</th><th>Location</th><th>Qty</th><th>Min</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for item in vehicle_items %}
+                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                    <td>{{ item.name }}</td>
+                    <td><a href="?vehicle={{ item.vehicle.pk }}">{{ item.vehicle.display_name }}</a></td>
+                    <td>{{ item.category|default:"—" }}</td>
+                    <td>{{ item.location_in_vehicle|default:"—" }}</td>
+                    <td>{{ item.quantity }} {{ item.unit }}</td>
+                    <td>{{ item.min_quantity }}</td>
+                    <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
+                    <td><a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body text-muted">No vehicle inventory items found.</div>
+    {% endif %}
+</div>
+
+{% else %}
+<!-- All (default): vehicle items + shop items -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-truck"></i> Vehicle Inventory ({{ vehicle_items|length }})</h5>
+    </div>
+    {% if vehicle_items %}
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>Item</th><th>Vehicle</th><th>Category</th><th>Qty</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for item in vehicle_items %}
+                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                    <td>{{ item.name }}</td>
+                    <td><a href="?vehicle={{ item.vehicle.pk }}">{{ item.vehicle.display_name }}</a></td>
+                    <td>{{ item.category|default:"—" }}</td>
+                    <td>{{ item.quantity }} {{ item.unit }}</td>
+                    <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
+                    <td><a href="{% url 'vehicles:inventory_item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body text-muted">No vehicle inventory items.</div>
+    {% endif %}
+</div>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-store"></i> Shop Inventory ({{ shop_items|length }})</h5>
+        <a href="{% url 'vehicles:shop_inventory_create' %}" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add Item</a>
+    </div>
+    {% if shop_items %}
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>Item</th><th>Category</th><th>Location</th><th>Qty</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for item in shop_items %}
+                <tr class="{% if item.is_low_stock %}table-warning{% endif %}">
+                    <td><strong>{{ item.name }}</strong></td>
+                    <td>{{ item.category|default:"—" }}</td>
+                    <td>{{ item.location_in_shop|default:"—" }}</td>
+                    <td>{{ item.quantity }} {{ item.unit }}</td>
+                    <td>{% if item.is_low_stock %}<span class="badge bg-warning text-dark">Low</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
+                    <td>
+                        <a href="{% url 'vehicles:shop_inventory_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a>
+                        <a href="{% url 'vehicles:shop_inventory_delete' item.pk %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body text-muted">No shop inventory items.</div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

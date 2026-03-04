@@ -909,3 +909,26 @@ class ShopInventoryItem(BaseModel):
         if self.unit_cost is not None:
             return self.quantity * self.unit_cost
         return None
+
+    def generate_qr_code(self):
+        if not self.qr_code:
+            import uuid
+            self.qr_code = f"SHOP-INV-{uuid.uuid4().hex[:12].upper()}"
+        return self.qr_code
+
+    def get_qr_code_url(self):
+        from django.urls import reverse
+        if self.qr_code:
+            return reverse('vehicles:shop_item_scan', kwargs={'qr_code': self.qr_code})
+        return None
+
+    def get_qr_code_image_url(self):
+        from django.urls import reverse
+        if self.pk:
+            return reverse('vehicles:shop_inventory_qr_image', kwargs={'pk': self.pk})
+        return None
+
+    def save(self, *args, **kwargs):
+        if not self.qr_code:
+            self.generate_qr_code()
+        super().save(*args, **kwargs)

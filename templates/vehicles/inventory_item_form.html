@@ -52,7 +52,16 @@
 
                 <div class="col-md-6">
                     <div class="mb-3">
-                        <label class="form-label">QR Code <small class="text-muted">(for scanning)</small></label>
+                        <label class="form-label">QR Code <small class="text-muted">(auto-generated, do not change)</small></label>
+                        {% if item and item.qr_code %}
+                        <div class="mb-2 text-center">
+                            <img src="{% url 'vehicles:inventory_qr_image' item.pk %}" alt="QR Code" style="max-width:150px; border:1px solid #dee2e6; border-radius:4px; padding:4px;">
+                            <div class="mt-1"><code class="small">{{ item.qr_code }}</code></div>
+                            <a href="{% url 'vehicles:inventory_qr_image' item.pk %}" download="{{ item.qr_code }}.png" class="btn btn-sm btn-outline-secondary mt-1">
+                                <i class="fas fa-download"></i> Download PNG
+                            </a>
+                        </div>
+                        {% endif %}
                         {{ form.qr_code }}
                     </div>
                     <div class="mb-3">

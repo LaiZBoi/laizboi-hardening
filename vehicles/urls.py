@@ -18,12 +18,16 @@ urlpatterns = [
     path('vehicles/<int:pk>/delete/', views.vehicle_delete, name='vehicle_delete'),
 
     # Inventory sections
+    path('inventory/', views.inventory_list, name='inventory_list'),
     path('inventory/global/', views.inventory_global_list, name='inventory_global_list'),
     path('inventory/by-vehicle/', views.inventory_by_vehicle, name='inventory_by_vehicle'),
+    path('inventory/qr-codes/', views.inventory_qr_print_all, name='inventory_qr_print_all'),
     path('inventory/shop/', views.shop_inventory_list, name='shop_inventory_list'),
     path('inventory/shop/create/', views.shop_inventory_create, name='shop_inventory_create'),
     path('inventory/shop/<int:pk>/edit/', views.shop_inventory_edit, name='shop_inventory_edit'),
     path('inventory/shop/<int:pk>/delete/', views.shop_inventory_delete, name='shop_inventory_delete'),
+    path('inventory/shop/<int:pk>/qr-image/', views.shop_inventory_qr_image, name='shop_inventory_qr_image'),
+    path('inventory/shop/scan/<str:qr_code>/', views.shop_item_scan, name='shop_item_scan'),
 
     # Vehicle inventory items
     path('vehicles/<int:vehicle_id>/inventory/create/', views.inventory_item_create, name='inventory_item_create'),

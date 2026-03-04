@@ -425,79 +425,85 @@ def inventory_item_delete(request, pk):
 # Global / Cross-Vehicle Inventory Views
 
 @login_required
-def inventory_global_list(request):
-    """Global inventory across all vehicles and shop"""
-    vehicle_items = VehicleInventoryItem.objects.select_related('vehicle').order_by('category', 'name')
+def inventory_list(request):
+    """
+    Unified inventory page with filter tabs:
+    - view=all (default): vehicle items + shop items
+    - view=vehicles: all vehicle items flat list
+    - view=by_vehicle: grouped by vehicle
+    - view=shop: shop items only
+    - vehicle=<id>: items for a specific vehicle
+    """
+    view = request.GET.get('view', 'all')
+    vehicle_id = request.GET.get('vehicle', '').strip()
+    search = request.GET.get('search', '').strip()
+
+    all_vehicles = ServiceVehicle.objects.order_by('name')
+    selected_vehicle = None
+    if vehicle_id:
+        selected_vehicle = get_object_or_404(ServiceVehicle, pk=vehicle_id)
+        view = 'by_vehicle'
+
+    # Build querysets
+    vehicle_items = VehicleInventoryItem.objects.select_related('vehicle').order_by('vehicle__name', 'category', 'name')
     shop_items = ShopInventoryItem.objects.order_by('category', 'name')
 
-    search = request.GET.get('search', '').strip()
+    if selected_vehicle:
+        vehicle_items = vehicle_items.filter(vehicle=selected_vehicle)
+
     if search:
-        vehicle_items = vehicle_items.filter(
-            Q(name__icontains=search) | Q(category__icontains=search)
-        )
-        shop_items = shop_items.filter(
-            Q(name__icontains=search) | Q(category__icontains=search)
-        )
+        vehicle_items = vehicle_items.filter(Q(name__icontains=search) | Q(category__icontains=search))
+        shop_items = shop_items.filter(Q(name__icontains=search) | Q(category__icontains=search))
 
-    low_stock_vehicle = [i for i in vehicle_items if i.is_low_stock]
-    low_stock_shop = [i for i in shop_items if i.is_low_stock]
+    # Build grouped-by-vehicle data when needed
+    vehicle_data = None
+    if view in ('by_vehicle', 'all') or selected_vehicle:
+        vqs = [selected_vehicle] if selected_vehicle else list(all_vehicles)
+        vehicle_data = []
+        for v in vqs:
+            items = v.inventory_items.all().order_by('category', 'name')
+            if search:
+                items = items.filter(Q(name__icontains=search) | Q(category__icontains=search))
+            low_stock = [i for i in items if i.is_low_stock]
+            vehicle_data.append({
+                'vehicle': v,
+                'items': items,
+                'low_stock_count': len(low_stock),
+                'total_value': sum(i.total_value for i in items if i.total_value),
+            })
 
-    return render(request, 'vehicles/inventory_global_list.html', {
+    low_stock_all = [i for i in vehicle_items if i.is_low_stock] + [i for i in shop_items if i.is_low_stock]
+
+    return render(request, 'vehicles/inventory_list.html', {
+        'view': view,
+        'search': search,
         'vehicle_items': vehicle_items,
         'shop_items': shop_items,
-        'low_stock_vehicle': low_stock_vehicle,
-        'low_stock_shop': low_stock_shop,
-        'search': search,
+        'vehicle_data': vehicle_data,
+        'all_vehicles': all_vehicles,
+        'selected_vehicle': selected_vehicle,
+        'low_stock_all': low_stock_all,
     })
+
+
+# Keep legacy aliases so old bookmarks/links still work
+@login_required
+def inventory_global_list(request):
+    return redirect('vehicles:inventory_list')
 
 
 @login_required
 def inventory_by_vehicle(request):
-    """Inventory grouped by vehicle"""
-    vehicles = ServiceVehicle.objects.prefetch_related('inventory_items').order_by('name')
-
-    search = request.GET.get('search', '').strip()
-    vehicle_data = []
-    for vehicle in vehicles:
-        items = vehicle.inventory_items.all().order_by('category', 'name')
-        if search:
-            items = items.filter(
-                Q(name__icontains=search) | Q(category__icontains=search)
-            )
-        low_stock = [i for i in items if i.is_low_stock]
-        vehicle_data.append({
-            'vehicle': vehicle,
-            'items': items,
-            'low_stock_count': len(low_stock),
-            'total_value': sum(i.total_value for i in items if i.total_value),
-        })
-
-    return render(request, 'vehicles/inventory_by_vehicle.html', {
-        'vehicle_data': vehicle_data,
-        'search': search,
-    })
+    from django.urls import reverse as _reverse
+    return redirect(_reverse('vehicles:inventory_list') + '?view=by_vehicle')
 
 
 # Shop Inventory Views
 
 @login_required
 def shop_inventory_list(request):
-    """List shop/warehouse inventory"""
-    items = ShopInventoryItem.objects.order_by('category', 'name')
-
-    search = request.GET.get('search', '').strip()
-    if search:
-        items = items.filter(
-            Q(name__icontains=search) | Q(category__icontains=search)
-        )
-
-    low_stock = [i for i in items if i.is_low_stock]
-
-    return render(request, 'vehicles/shop_inventory_list.html', {
-        'items': items,
-        'low_stock': low_stock,
-        'search': search,
-    })
+    from django.urls import reverse as _reverse
+    return redirect(_reverse('vehicles:inventory_list') + '?view=shop')
 
 
 @login_required
@@ -1350,4 +1356,96 @@ def service_provider_delete(request, pk):
         return redirect('vehicles:vehicle_detail', pk=vehicle.pk)
     return render(request, 'vehicles/service_provider_confirm_delete.html', {
         'provider': provider, 'vehicle': vehicle
+    })
+
+
+# ============================================================================
+# Shop Inventory QR & Scan Views
+# ============================================================================
+
+@login_required
+def shop_inventory_qr_image(request, pk):
+    """Generate QR code PNG for a shop inventory item."""
+    item = get_object_or_404(ShopInventoryItem, pk=pk)
+
+    import qrcode
+    from io import BytesIO
+    from django.http import HttpResponse
+
+    qr_url = request.build_absolute_uri(item.get_qr_code_url())
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_url)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+
+    response = HttpResponse(buffer.getvalue(), content_type='image/png')
+    response['Content-Disposition'] = f'inline; filename="shop-{item.qr_code}.png"'
+    return response
+
+
+@login_required
+def shop_item_scan(request, qr_code):
+    """Mobile scan interface for shop inventory item."""
+    item = get_object_or_404(ShopInventoryItem, qr_code=qr_code)
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'increment':
+            item.quantity += 1
+            item.save()
+            messages.success(request, f'Increased {item.name} to {item.quantity}')
+        elif action == 'decrement':
+            if item.quantity > 0:
+                item.quantity -= 1
+                item.save()
+                messages.success(request, f'Decreased {item.name} to {item.quantity}')
+        elif action == 'set':
+            try:
+                new_qty = int(request.POST.get('quantity', 0))
+                if new_qty >= 0:
+                    item.quantity = new_qty
+                    item.save()
+                    messages.success(request, f'Set {item.name} quantity to {item.quantity}')
+            except (ValueError, TypeError):
+                messages.error(request, 'Invalid quantity.')
+        return redirect('vehicles:shop_item_scan', qr_code=qr_code)
+
+    return render(request, 'vehicles/shop_inventory_scan.html', {
+        'item': item,
+    })
+
+
+@login_required
+def inventory_qr_print_all(request):
+    """
+    Printable QR code sheet for all inventory (vehicle items + shop items).
+    Filter by vehicle or show all.
+    """
+    vehicle_id = request.GET.get('vehicle')
+    selected_vehicle = None
+
+    if vehicle_id:
+        selected_vehicle = get_object_or_404(ServiceVehicle, pk=vehicle_id)
+        vehicle_items = selected_vehicle.inventory_items.all().order_by('category', 'name')
+    else:
+        vehicle_items = VehicleInventoryItem.objects.select_related('vehicle').order_by('vehicle__name', 'category', 'name')
+
+    shop_items = ShopInventoryItem.objects.order_by('category', 'name')
+    vehicles = ServiceVehicle.objects.order_by('name')
+
+    return render(request, 'vehicles/inventory_qr_print_all.html', {
+        'vehicle_items': vehicle_items,
+        'shop_items': shop_items,
+        'vehicles': vehicles,
+        'selected_vehicle': selected_vehicle,
     })
