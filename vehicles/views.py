@@ -14,12 +14,14 @@ from files.models import Attachment
 from .models import (
     ServiceVehicle, VehicleInventoryItem, VehicleDamageReport,
     VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment,
-    VehicleServiceSchedule, VehicleServiceAlert, VehicleServiceProvider
+    VehicleServiceSchedule, VehicleServiceAlert, VehicleServiceProvider,
+    ShopInventoryItem
 )
 from .forms import (
     ServiceVehicleForm, VehicleInventoryItemForm, VehicleDamageReportForm,
     VehicleMaintenanceRecordForm, VehicleFuelLogForm, VehicleAssignmentForm,
-    VehicleServiceScheduleForm, VehicleServiceAlertAcknowledgeForm, VehicleServiceProviderForm
+    VehicleServiceScheduleForm, VehicleServiceAlertAcknowledgeForm, VehicleServiceProviderForm,
+    ShopInventoryItemForm
 )
 
 
@@ -104,7 +106,7 @@ def vehicles_dashboard(request):
     low_stock = [item for item in inventory_items if item.is_low_stock]
     if low_stock:
         alerts.append({
-            'type': 'info',
+            'type': 'warning',
             'icon': 'fas fa-boxes',
             'title': 'Low Inventory Stock',
             'message': f'{len(low_stock)} item(s) are below minimum quantity'
@@ -418,6 +420,139 @@ def inventory_item_delete(request, pk):
         'item': item,
         'vehicle': vehicle
     })
+
+
+# Global / Cross-Vehicle Inventory Views
+
+@login_required
+def inventory_global_list(request):
+    """Global inventory across all vehicles and shop"""
+    vehicle_items = VehicleInventoryItem.objects.select_related('vehicle').order_by('category', 'name')
+    shop_items = ShopInventoryItem.objects.order_by('category', 'name')
+
+    search = request.GET.get('search', '').strip()
+    if search:
+        vehicle_items = vehicle_items.filter(
+            Q(name__icontains=search) | Q(category__icontains=search)
+        )
+        shop_items = shop_items.filter(
+            Q(name__icontains=search) | Q(category__icontains=search)
+        )
+
+    low_stock_vehicle = [i for i in vehicle_items if i.is_low_stock]
+    low_stock_shop = [i for i in shop_items if i.is_low_stock]
+
+    return render(request, 'vehicles/inventory_global_list.html', {
+        'vehicle_items': vehicle_items,
+        'shop_items': shop_items,
+        'low_stock_vehicle': low_stock_vehicle,
+        'low_stock_shop': low_stock_shop,
+        'search': search,
+    })
+
+
+@login_required
+def inventory_by_vehicle(request):
+    """Inventory grouped by vehicle"""
+    vehicles = ServiceVehicle.objects.prefetch_related('inventory_items').order_by('name')
+
+    search = request.GET.get('search', '').strip()
+    vehicle_data = []
+    for vehicle in vehicles:
+        items = vehicle.inventory_items.all().order_by('category', 'name')
+        if search:
+            items = items.filter(
+                Q(name__icontains=search) | Q(category__icontains=search)
+            )
+        low_stock = [i for i in items if i.is_low_stock]
+        vehicle_data.append({
+            'vehicle': vehicle,
+            'items': items,
+            'low_stock_count': len(low_stock),
+            'total_value': sum(i.total_value for i in items if i.total_value),
+        })
+
+    return render(request, 'vehicles/inventory_by_vehicle.html', {
+        'vehicle_data': vehicle_data,
+        'search': search,
+    })
+
+
+# Shop Inventory Views
+
+@login_required
+def shop_inventory_list(request):
+    """List shop/warehouse inventory"""
+    items = ShopInventoryItem.objects.order_by('category', 'name')
+
+    search = request.GET.get('search', '').strip()
+    if search:
+        items = items.filter(
+            Q(name__icontains=search) | Q(category__icontains=search)
+        )
+
+    low_stock = [i for i in items if i.is_low_stock]
+
+    return render(request, 'vehicles/shop_inventory_list.html', {
+        'items': items,
+        'low_stock': low_stock,
+        'search': search,
+    })
+
+
+@login_required
+def shop_inventory_create(request):
+    """Add item to shop inventory"""
+    if request.method == 'POST':
+        form = ShopInventoryItemForm(request.POST)
+        if form.is_valid():
+            item = form.save()
+            messages.success(request, f'Shop item "{item.name}" added successfully.')
+            return redirect('vehicles:shop_inventory_list')
+    else:
+        form = ShopInventoryItemForm()
+
+    return render(request, 'vehicles/shop_inventory_form.html', {
+        'form': form,
+        'title': 'Add Shop Inventory Item',
+        'button_text': 'Add Item',
+    })
+
+
+@login_required
+def shop_inventory_edit(request, pk):
+    """Edit shop inventory item"""
+    item = get_object_or_404(ShopInventoryItem, pk=pk)
+
+    if request.method == 'POST':
+        form = ShopInventoryItemForm(request.POST, instance=item)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Shop item "{item.name}" updated successfully.')
+            return redirect('vehicles:shop_inventory_list')
+    else:
+        form = ShopInventoryItemForm(instance=item)
+
+    return render(request, 'vehicles/shop_inventory_form.html', {
+        'form': form,
+        'item': item,
+        'title': f'Edit {item.name}',
+        'button_text': 'Save Changes',
+    })
+
+
+@login_required
+def shop_inventory_delete(request, pk):
+    """Delete shop inventory item"""
+    item = get_object_or_404(ShopInventoryItem, pk=pk)
+
+    if request.method == 'POST':
+        item_name = item.name
+        item.delete()
+        messages.success(request, f'Shop item "{item_name}" deleted successfully.')
+        return redirect('vehicles:shop_inventory_list')
+
+    return render(request, 'vehicles/shop_inventory_confirm_delete.html', {'item': item})
 
 
 # Damage Report Views

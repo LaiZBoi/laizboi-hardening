@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Delete {{ item.name }} - Client St0r{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicles_dashboard' %}">Vehicles</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:shop_inventory_list' %}">Shop Inventory</a></li>
+        <li class="breadcrumb-item active">Delete</li>
+    </ol>
+</nav>
+
+<div class="card border-danger">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="fas fa-trash"></i> Delete Shop Inventory Item</h5>
+    </div>
+    <div class="card-body">
+        <p>Are you sure you want to delete <strong>{{ item.name }}</strong>?</p>
+        {% if item.category %}<p class="text-muted">Category: {{ item.category }}</p>{% endif %}
+        <p class="text-muted">Quantity: {{ item.quantity }} {{ item.unit }}</p>
+        <p class="text-danger"><i class="fas fa-exclamation-triangle"></i> This action cannot be undone.</p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">
+                <i class="fas fa-trash"></i> Yes, Delete
+            </button>
+            <a href="{% url 'vehicles:shop_inventory_list' %}" class="btn btn-secondary">
+                <i class="fas fa-times"></i> Cancel
+            </a>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

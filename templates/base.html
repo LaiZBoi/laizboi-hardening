@@ -125,6 +125,11 @@
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'vehicles:vehicle_list' %}"><i class="fas fa-list"></i> {% trans "All Vehicles" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'vehicles:vehicle_create' %}"><i class="fas fa-plus"></i> {% trans "Add Vehicle" %}</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><span class="dropdown-header">{% trans "Inventory" %}</span></li>
+                            <li><a class="dropdown-item" href="{% url 'vehicles:inventory_global_list' %}"><i class="fas fa-warehouse"></i> {% trans "Global Inventory" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'vehicles:inventory_by_vehicle' %}"><i class="fas fa-truck"></i> {% trans "Vehicle Inventory" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'vehicles:shop_inventory_list' %}"><i class="fas fa-store"></i> {% trans "Shop Inventory" %}</a></li>
                         </ul>
                     </li>
                     {% endif %}

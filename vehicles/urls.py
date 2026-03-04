@@ -17,7 +17,15 @@ urlpatterns = [
     path('vehicles/<int:pk>/edit/', views.vehicle_edit, name='vehicle_edit'),
     path('vehicles/<int:pk>/delete/', views.vehicle_delete, name='vehicle_delete'),
 
-    # Inventory
+    # Inventory sections
+    path('inventory/global/', views.inventory_global_list, name='inventory_global_list'),
+    path('inventory/by-vehicle/', views.inventory_by_vehicle, name='inventory_by_vehicle'),
+    path('inventory/shop/', views.shop_inventory_list, name='shop_inventory_list'),
+    path('inventory/shop/create/', views.shop_inventory_create, name='shop_inventory_create'),
+    path('inventory/shop/<int:pk>/edit/', views.shop_inventory_edit, name='shop_inventory_edit'),
+    path('inventory/shop/<int:pk>/delete/', views.shop_inventory_delete, name='shop_inventory_delete'),
+
+    # Vehicle inventory items
     path('vehicles/<int:vehicle_id>/inventory/create/', views.inventory_item_create, name='inventory_item_create'),
     path('inventory/<int:pk>/edit/', views.inventory_item_edit, name='inventory_item_edit'),
     path('inventory/<int:pk>/delete/', views.inventory_item_delete, name='inventory_item_delete'),

@@ -841,3 +841,71 @@ class VehicleServiceAlert(BaseModel):
         if self.due_mileage and self.vehicle.current_mileage >= self.due_mileage:
             return True
         return False
+
+
+class ShopInventoryItem(BaseModel):
+    """
+    Inventory item stored in the shop/warehouse (not vehicle-specific).
+    Tracks tools, parts, and supplies held at the base location.
+    """
+    # Item Details
+    name = models.CharField(max_length=200, help_text="Item name (e.g., 'CAT6 Cable', 'RJ45 Connectors')")
+    category = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Category (Cables, Tools, Hardware, Supplies, etc.)"
+    )
+    quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    unit = models.CharField(max_length=50, blank=True, help_text="Unit of measurement (ea, ft, box, etc.)")
+
+    # Stock Management
+    min_quantity = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Minimum quantity alert threshold"
+    )
+    reorder_quantity = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="How many to order when restocking"
+    )
+
+    # Value
+    unit_cost = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Cost per unit"
+    )
+
+    # Location & notes
+    description = models.TextField(blank=True)
+    location_in_shop = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Where stored in shop (e.g., 'Shelf A-3', 'Cabinet 2')"
+    )
+
+    # Reordering
+    qr_code = models.CharField(max_length=200, blank=True)
+    reorder_link = models.URLField(max_length=500, blank=True)
+
+    class Meta:
+        db_table = 'vehicle_shop_inventory'
+        ordering = ['category', 'name']
+
+    def __str__(self):
+        return f"{self.name} ({self.quantity} {self.unit or 'ea'})"
+
+    @property
+    def is_low_stock(self):
+        return self.quantity <= self.min_quantity
+
+    @property
+    def needs_restock(self):
+        return self.is_low_stock and self.reorder_quantity > 0
+
+    @property
+    def total_value(self):
+        if self.unit_cost is not None:
+            return self.quantity * self.unit_cost
+        return None

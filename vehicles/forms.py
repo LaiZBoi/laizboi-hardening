@@ -6,7 +6,8 @@ from django.contrib.auth import get_user_model
 from .models import (
     ServiceVehicle, VehicleInventoryItem, VehicleDamageReport,
     VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment,
-    VehicleServiceSchedule, VehicleServiceAlert, VehicleServiceProvider
+    VehicleServiceSchedule, VehicleServiceAlert, VehicleServiceProvider,
+    ShopInventoryItem
 )
 
 User = get_user_model()
@@ -89,6 +90,46 @@ class VehicleInventoryItemForm(forms.ModelForm):
             'unit_cost': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
             'location_in_vehicle': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Toolbox, Rear compartment'}),
+            'qr_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Auto-generated on save (or enter custom)'}),
+            'reorder_link': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://amazon.com/...'}),
+        }
+
+    def clean_min_quantity(self):
+        return self.cleaned_data.get('min_quantity') or 0
+
+    def clean_reorder_quantity(self):
+        return self.cleaned_data.get('reorder_quantity') or 0
+
+
+class ShopInventoryItemForm(forms.ModelForm):
+    """Form for managing shop/warehouse inventory"""
+
+    min_quantity = forms.IntegerField(
+        required=False, initial=0, min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control'}),
+        help_text="Minimum quantity alert threshold",
+    )
+    reorder_quantity = forms.IntegerField(
+        required=False, initial=0, min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'How many to order when restocking'}),
+        help_text="How many to order when restocking",
+    )
+
+    class Meta:
+        model = ShopInventoryItem
+        fields = [
+            'name', 'category', 'quantity', 'unit', 'min_quantity',
+            'reorder_quantity', 'unit_cost', 'description', 'location_in_shop',
+            'qr_code', 'reorder_link'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'category': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Cables, Tools, Hardware'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control'}),
+            'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ea, ft, box, etc.'}),
+            'unit_cost': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'location_in_shop': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Shelf A3, Storage room'}),
             'qr_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Auto-generated on save (or enter custom)'}),
             'reorder_link': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://amazon.com/...'}),
         }
