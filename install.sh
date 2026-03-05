@@ -248,8 +248,9 @@ if [ "$EXISTING_INSTALL" = true ]; then
                 print_status "Snyk CLI already installed"
             fi
 
-            # Run migrations
+            # Run migrations (makemigrations first to catch any missing migration files)
             print_info "Running database migrations..."
+            python3 manage.py makemigrations --no-input 2>/dev/null || true
             python3 manage.py migrate
 
             # Collect static files
@@ -266,7 +267,7 @@ After=network.target mariadb.service
 Wants=mariadb.service
 
 [Service]
-Type=notify
+Type=simple
 User=USER_PLACEHOLDER
 Group=USER_PLACEHOLDER
 WorkingDirectory=WORKDIR_PLACEHOLDER
@@ -842,7 +843,7 @@ After=network.target mariadb.service
 Wants=mariadb.service
 
 [Service]
-Type=notify
+Type=simple
 User=USER_PLACEHOLDER
 Group=USER_PLACEHOLDER
 WorkingDirectory=WORKDIR_PLACEHOLDER
