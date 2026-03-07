@@ -26,6 +26,11 @@ class Command(BaseCommand):
             help='Force sync even if recently synced'
         )
         parser.add_argument(
+            '--full',
+            action='store_true',
+            help='Full resync: clears last_sync_at so ALL devices are fetched, not just recently-changed ones. Use this to re-evaluate devices stuck in the wrong org after a fix.'
+        )
+        parser.add_argument(
             '--test-only',
             action='store_true',
             help='Only test connections, do not sync'
@@ -34,13 +39,14 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         connection_id = options.get('connection_id')
         force = options.get('force', False)
+        full = options.get('full', False)
         test_only = options.get('test_only', False)
 
         if connection_id:
             # Sync specific connection
             try:
                 connection = RMMConnection.objects.get(id=connection_id)
-                self.sync_connection(connection, force, test_only)
+                self.sync_connection(connection, force, full, test_only)
             except RMMConnection.DoesNotExist:
                 self.stdout.write(self.style.ERROR(f'Connection {connection_id} not found'))
                 return
@@ -58,9 +64,9 @@ class Command(BaseCommand):
             self.stdout.write(f'Found {connections.count()} active RMM connections')
 
             for connection in connections:
-                self.sync_connection(connection, force, test_only)
+                self.sync_connection(connection, force, full, test_only)
 
-    def sync_connection(self, connection, force=False, test_only=False):
+    def sync_connection(self, connection, force=False, full=False, test_only=False):
         """Sync a single connection."""
         self.stdout.write(f'\nProcessing: {connection.name} ({connection.get_provider_type_display()})')
 
@@ -78,11 +84,18 @@ class Command(BaseCommand):
             return
 
         # Check if sync is needed
-        if not force and connection.last_sync_at:
+        if not force and not full and connection.last_sync_at:
             next_sync = connection.last_sync_at + timedelta(minutes=connection.sync_interval_minutes)
             if timezone.now() < next_sync:
                 self.stdout.write(f'  ⏭ Skipping: next sync at {next_sync.strftime("%Y-%m-%d %H:%M")}')
                 return
+
+        # --full: clear last_sync_at so sync_devices fetches ALL devices, not just
+        # recently-changed ones. Required to re-evaluate devices stuck in wrong org.
+        if full and connection.last_sync_at:
+            self.stdout.write('  ↺ Full resync: clearing last_sync_at to fetch all devices')
+            connection.last_sync_at = None
+            connection.save(update_fields=['last_sync_at'])
 
         try:
             syncer = RMMSync(connection)
