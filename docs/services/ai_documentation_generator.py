@@ -129,23 +129,32 @@ class AIDocumentationGenerator:
             'expand': 'Expand the documentation with more details, examples, and best practices. Add missing sections.',
             'simplify': 'Simplify the language for better readability while maintaining technical accuracy.',
             'technical': 'Enhance with more technical details, specifications, and implementation notes.',
-            'consistency': 'Improve consistency in terminology, formatting, and structure. Fix any inconsistencies.'
+            'consistency': 'Improve consistency in terminology, formatting, and structure. Fix any inconsistencies.',
+            'markdown_to_html': 'Convert this markdown content to well-formatted HTML using Bootstrap 5 classes for styling. Use cards, badges, alerts, styled tables, and Font Awesome icons to make it visually rich.',
         }
 
         enhancement_instruction = enhancement_prompts.get(enhancement_type, enhancement_prompts['grammar'])
 
-        # Build format-specific instructions
-        if output_format == 'html':
-            format_instructions = """- Format using clean, semantic HTML5
+        # Build format-specific instructions.
+        # For markdown_to_html we want rich new styling; for all other HTML enhancements
+        # we must PRESERVE the existing classes/styles — the AI should only touch the
+        # text/content, not rebuild the visual structure from scratch.
+        if output_format == 'html' and enhancement_type == 'markdown_to_html':
+            format_instructions = """- Convert to clean, semantic HTML5
 - Use Bootstrap 5 classes for styling (cards, badges, alerts, tables)
 - Add color and visual hierarchy with appropriate classes
 - Use icons (Font Awesome) where appropriate (e.g., <i class="fas fa-check text-success"></i>)
-- Structure with proper sections: <section>, <article>, <header>
-- Use styled code blocks: <pre><code class="language-python">...</code></pre>
+- Structure with proper sections using <div>, <section>, <article>
+- Use styled code blocks: <pre><code class="language-bash">...</code></pre>
 - Add callout boxes for important notes: <div class="alert alert-info">...</div>
 - Use badges for labels: <span class="badge bg-primary">Important</span>
-- Create styled tables: <table class="table table-striped table-hover">
-- Add visual breaks with <hr> or styled dividers"""
+- Create styled tables: <table class="table table-striped table-hover">"""
+        elif output_format == 'html':
+            format_instructions = """- Output valid HTML5
+- PRESERVE all existing CSS classes, inline styles, Bootstrap classes, and visual formatting exactly as they are
+- Do NOT remove, replace, or simplify any existing class attributes or style attributes
+- Only modify text content, wording, and structure — never the visual styling
+- Use actual newline characters in the HTML source, never the literal string \\n"""
         else:
             format_instructions = "- Format using Markdown"
 
@@ -176,6 +185,7 @@ Enhancement Type: {enhancement_instruction}
 
 Return ONLY the enhanced HTML content. Do NOT wrap it in JSON. Do NOT use markdown.
 Preserve all code blocks and technical content exactly.
+Use real newline characters — never the literal two-character sequence backslash-n.
 Start your response directly with an HTML tag."""
         else:
             user_prompt = f"""Please enhance this documentation:
