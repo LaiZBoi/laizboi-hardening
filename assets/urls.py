@@ -18,6 +18,7 @@ urlpatterns = [
     path('<int:pk>/', views.asset_detail, name='asset_detail'),
     path('<int:pk>/edit/', views.asset_edit, name='asset_edit'),
     path('<int:pk>/delete/', views.asset_delete, name='asset_delete'),
+    path('<int:pk>/generate-profile/', views.asset_generate_profile, name='asset_generate_profile'),
     path('<int:pk>/ports/', port_views.asset_port_config, name='asset_port_config'),
     path('<int:pk>/ports/save/', port_views.asset_port_config_save, name='asset_port_config_save'),
 

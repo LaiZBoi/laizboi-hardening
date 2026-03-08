@@ -357,6 +357,195 @@ def contact_edit(request, pk):
 
 @login_required
 @require_write
+def asset_generate_profile(request, pk):
+    """
+    Generate (or regenerate) a profile document for an asset and link it.
+    Builds a rich HTML document from the asset's fields + any linked RMM device data.
+    Redirects to the newly created/updated document.
+    """
+    from django.utils.text import slugify
+    from django.utils import timezone
+    from docs.models import Document
+
+    org = get_request_organization(request)
+    if org:
+        asset = get_object_or_404(Asset, pk=pk, organization=org)
+    else:
+        asset = get_object_or_404(Asset, pk=pk)
+
+    # Gather RMM device data if linked
+    rmm = None
+    try:
+        rmm = asset.rmm_devices.select_related('connection').first()
+    except Exception:
+        pass
+
+    # Build HTML content
+    now = timezone.now().strftime('%Y-%m-%d %H:%M')
+    asset_type_label = asset.get_asset_type_display()
+
+    def row(label, value):
+        if not value:
+            return ''
+        return f'<tr><th style="width:35%">{label}</th><td>{value}</td></tr>'
+
+    # Identity section
+    identity_rows = (
+        row('Asset Type', asset_type_label) +
+        row('Serial Number', asset.serial_number) +
+        row('Asset Tag', asset.asset_tag) +
+        row('Manufacturer', asset.manufacturer) +
+        row('Model', asset.model)
+    )
+
+    # Network section
+    network_rows = (
+        row('Hostname', asset.hostname) +
+        row('IP Address', asset.ip_address) +
+        row('MAC Address', asset.mac_address)
+    )
+
+    # OS / Hardware section
+    hw_rows = (
+        row('Operating System', asset.os_name) +
+        row('OS Version', asset.os_version) +
+        row('CPU', asset.cpu) +
+        row('RAM', f'{asset.ram_gb} GB' if asset.ram_gb else '') +
+        row('Storage', asset.storage)
+    )
+
+    # RMM section
+    rmm_section = ''
+    if rmm:
+        rmm_rows = (
+            row('RMM Provider', rmm.connection.get_provider_type_display() if rmm.connection else '') +
+            row('External ID', rmm.external_id) +
+            row('Device Type', rmm.device_type) +
+            row('Online', '<span class="badge bg-success">Yes</span>' if rmm.is_online else '<span class="badge bg-secondary">No</span>') +
+            row('Last Seen', rmm.last_seen.strftime('%Y-%m-%d %H:%M') if rmm.last_seen else '') +
+            row('Site/Client', rmm.site_name) +
+            row('OS (RMM)', f'{rmm.os_type} {rmm.os_version}'.strip())
+        )
+        if rmm_rows:
+            rmm_section = f'''
+<div class="card mb-3">
+  <div class="card-header bg-info text-white"><i class="fas fa-plug me-2"></i>RMM Agent</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">{rmm_rows}</table>
+  </div>
+</div>'''
+
+    # Alerts section
+    alerts_section = ''
+    if rmm:
+        active_alerts = list(rmm.alerts.filter(status='active').order_by('-triggered_at')[:10])
+        if active_alerts:
+            alert_rows = ''.join(
+                f'<tr>'
+                f'<td><span class="badge bg-{"danger" if a.severity == "critical" else "warning" if a.severity == "warning" else "info"}">{a.severity}</span></td>'
+                f'<td>{a.alert_type}</td>'
+                f'<td>{a.message[:120]}</td>'
+                f'<td>{a.triggered_at.strftime("%Y-%m-%d %H:%M") if a.triggered_at else ""}</td>'
+                f'</tr>'
+                for a in active_alerts
+            )
+            alerts_section = f'''
+<div class="card mb-3">
+  <div class="card-header bg-warning"><i class="fas fa-exclamation-triangle me-2"></i>Active Alerts</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Severity</th><th>Type</th><th>Message</th><th>Triggered</th></tr></thead>
+      <tbody>{alert_rows}</tbody>
+    </table>
+  </div>
+</div>'''
+
+    notes_section = ''
+    if asset.notes:
+        import html as html_lib
+        notes_section = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-sticky-note me-2"></i>Notes</div>
+  <div class="card-body"><p class="mb-0" style="white-space:pre-wrap">{html_lib.escape(asset.notes)}</p></div>
+</div>'''
+
+    online_badge = ''
+    if rmm:
+        online_badge = (' <span class="badge bg-success ms-2">Online</span>' if rmm.is_online
+                        else ' <span class="badge bg-secondary ms-2">Offline</span>')
+
+    content = f'''<div class="container-fluid p-0">
+
+<div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated profile — last updated {now}</span>
+  <span class="badge bg-primary">{asset_type_label}</span>
+</div>
+
+<h4 class="mb-3"><i class="fas fa-server me-2"></i>{asset.name}{online_badge}</h4>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header"><i class="fas fa-id-card me-2"></i>Identity</div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-striped mb-0">{identity_rows or "<tr><td class='text-muted'>No identity data recorded.</td></tr>"}</table>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header"><i class="fas fa-network-wired me-2"></i>Network</div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-striped mb-0">{network_rows or "<tr><td class='text-muted'>No network data recorded.</td></tr>"}</table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-microchip me-2"></i>Hardware &amp; OS</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">{hw_rows or "<tr><td class='text-muted'>No hardware data recorded.</td></tr>"}</table>
+  </div>
+</div>
+
+{rmm_section}
+{alerts_section}
+{notes_section}
+
+</div>'''
+
+    # Create or update document
+    doc = asset.profile_document
+    if doc:
+        doc.title = f'{asset.name} — Device Profile'
+        doc.content = content
+        doc.content_type = 'html'
+        doc.save()
+        messages.success(request, f'Profile document updated for {asset.name}.')
+    else:
+        base_slug = slugify(f'{asset.name}-profile')
+        slug = base_slug
+        counter = 1
+        while Document.objects.filter(organization=asset.organization, slug=slug).exists():
+            slug = f'{base_slug}-{counter}'
+            counter += 1
+        doc = Document.objects.create(
+            organization=asset.organization,
+            title=f'{asset.name} — Device Profile',
+            content=content,
+            content_type='html',
+            slug=slug,
+        )
+        asset.profile_document = doc
+        asset.save(update_fields=['profile_document'])
+        messages.success(request, f'Profile document created for {asset.name}.')
+
+    return redirect('docs:document_detail', pk=doc.pk)
+
+
+@login_required
+@require_write
 def asset_delete(request, pk):
     """
     Delete asset.

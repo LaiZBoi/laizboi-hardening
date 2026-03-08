@@ -168,6 +168,15 @@ class Asset(BaseModel):
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='assets_created')
 
+    # Auto-generated profile document (linked when "Generate Profile" is clicked)
+    profile_document = models.ForeignKey(
+        'docs.Document',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='profiled_assets',
+        help_text='Auto-generated profile document for this asset',
+    )
+
     objects = OrganizationManager()
 
     class Meta:

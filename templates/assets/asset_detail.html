@@ -8,6 +8,14 @@
     <h1>{{ asset.name }}</h1>
     <div>
         {% include "includes/favorite_button.html" with object=asset %}
+        {% if asset.profile_document %}
+        <a href="{% url 'docs:document_detail' asset.profile_document.pk %}" class="btn btn-outline-info">
+            <i class="fas fa-file-alt"></i> View Profile Doc
+        </a>
+        {% endif %}
+        <a href="{% url 'assets:asset_generate_profile' asset.pk %}" class="btn btn-info">
+            <i class="fas fa-magic"></i> {% if asset.profile_document %}Regenerate Profile{% else %}Generate Profile{% endif %}
+        </a>
         <a href="{% url 'assets:asset_edit' asset.pk %}" class="btn btn-secondary">
             <i class="fas fa-edit"></i> Edit
         </a>
