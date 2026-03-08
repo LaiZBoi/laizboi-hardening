@@ -51,10 +51,10 @@
             </thead>
             <tbody>
                 {% for monitor in monitors %}
-                <tr>
+                <tr id="monitor-row-{{ monitor.pk }}">
                     <td><a href="{% url 'monitoring:website_monitor_detail' monitor.pk %}"><strong>{{ monitor.name }}</strong></a></td>
                     <td><a href="{{ monitor.url }}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i> {{ monitor.url|truncatechars:40 }}</a></td>
-                    <td>
+                    <td class="monitor-status-cell">
                         {% if monitor.status == 'active' %}
                         <span class="badge bg-success"><i class="fas fa-check-circle"></i> Active</span>
                         {% elif monitor.status == 'warning' %}
@@ -65,7 +65,7 @@
                         <span class="badge bg-secondary"><i class="fas fa-question-circle"></i> Unknown</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="monitor-rt-cell">
                         {% if monitor.last_response_time_ms %}
                         <span class="badge bg-info">{{ monitor.last_response_time_ms }}ms</span>
                         {% else %}—{% endif %}
@@ -76,7 +76,7 @@
                         {% if monitor.is_ssl_expiring_soon %}<span class="badge bg-warning">Soon</span>{% endif %}
                         {% else %}—{% endif %}
                     </td>
-                    <td>
+                    <td class="monitor-checked-cell">
                         {% if monitor.last_checked_at %}
                         {{ monitor.last_checked_at|timesince }} ago
                         {% else %}Never{% endif %}
@@ -86,9 +86,13 @@
                             <a href="{% url 'monitoring:website_monitor_detail' monitor.pk %}" class="btn btn-outline-primary" title="View">
                                 <i class="fas fa-eye"></i>
                             </a>
-                            <a href="{% url 'monitoring:website_monitor_check' monitor.pk %}" class="btn btn-outline-success" title="Check Now">
+                            <button type="button"
+                                    class="btn btn-outline-success btn-check-now"
+                                    title="Check Now"
+                                    data-url="{% url 'monitoring:website_monitor_check' monitor.pk %}"
+                                    data-pk="{{ monitor.pk }}">
                                 <i class="fas fa-sync"></i>
-                            </a>
+                            </button>
                             <a href="{% url 'monitoring:website_monitor_edit' monitor.pk %}" class="btn btn-outline-secondary" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </a>
@@ -125,6 +129,52 @@ $(document).ready(function() {
         }
     });
     {% endif %}
+
+    // Inline "Check Now" — runs the check via AJAX, updates the row in place.
+    $(document).on('click', '.btn-check-now', function() {
+        const btn = $(this);
+        const url = btn.data('url');
+        const pk = btn.data('pk');
+        const icon = btn.find('i');
+
+        btn.prop('disabled', true);
+        icon.addClass('fa-spin');
+
+        fetch(url, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                // Update status badge
+                const row = $('#monitor-row-' + pk);
+                const statusMap = {
+                    'active':  '<span class="badge bg-success"><i class="fas fa-check-circle"></i> Active</span>',
+                    'warning': '<span class="badge bg-warning"><i class="fas fa-exclamation-triangle"></i> Warning</span>',
+                    'down':    '<span class="badge bg-danger"><i class="fas fa-times-circle"></i> Down</span>',
+                };
+                const badge = statusMap[data.status] || '<span class="badge bg-secondary"><i class="fas fa-question-circle"></i> Unknown</span>';
+                row.find('.monitor-status-cell').html(badge);
+                row.find('.monitor-rt-cell').html(data.response_time ? '<span class="badge bg-info">' + data.response_time + 'ms</span>' : '—');
+                row.find('.monitor-checked-cell').text('just now');
+
+                // Flash row green briefly
+                row.addClass('table-success');
+                setTimeout(() => row.removeClass('table-success'), 2000);
+            } else {
+                alert('Check failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(() => alert('Request failed. Please try again.'))
+        .finally(() => {
+            btn.prop('disabled', false);
+            icon.removeClass('fa-spin');
+        });
+    });
 });
 </script>
 {% endblock %}

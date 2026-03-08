@@ -93,23 +93,26 @@ def website_monitor_detail(request, pk):
     """
     View website monitor details.
     Supports global view mode for superusers/staff users.
+    Redirects to list (with message) if monitor not found in current org context.
     """
     org = get_request_organization(request)
-
-    # Check if user is in global view mode (no org but is superuser/staff)
     is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
-    in_global_view = not org and (request.user.is_superuser or is_staff)
+    is_privileged = request.user.is_superuser or is_staff
 
-    if in_global_view:
-        # Global view: access monitor from any organization
+    # Privileged users can view any monitor regardless of org context.
+    # Regular users are scoped to their current org.
+    if is_privileged:
         monitor = get_object_or_404(WebsiteMonitor, pk=pk)
     else:
-        # Organization view: filter by current org
-        monitor = get_object_or_404(WebsiteMonitor, pk=pk, organization=org)
+        try:
+            monitor = WebsiteMonitor.objects.get(pk=pk, organization=org)
+        except WebsiteMonitor.DoesNotExist:
+            messages.warning(request, 'That monitor is not available in the current organisation.')
+            return redirect('monitoring:website_monitor_list')
 
     return render(request, 'monitoring/website_monitor_detail.html', {
         'monitor': monitor,
-        'in_global_view': in_global_view,
+        'in_global_view': not org and is_privileged,
     })
 
 
@@ -157,14 +160,48 @@ def website_monitor_delete(request, pk):
 @login_required
 @require_write
 def website_monitor_check(request, pk):
-    """Manually trigger website check."""
+    """Manually trigger website check.
+
+    Privileged users (superuser/staff) can check any monitor regardless of
+    current org context.  Returns JSON when called with XMLHttpRequest so the
+    list page can stay in place and show an inline result.
+    """
     org = get_request_organization(request)
-    monitor = _org_get_or_404(WebsiteMonitor, org, pk=pk)
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    is_privileged = request.user.is_superuser or is_staff
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    if is_privileged:
+        try:
+            monitor = WebsiteMonitor.objects.get(pk=pk)
+        except WebsiteMonitor.DoesNotExist:
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': 'Monitor not found.'}, status=404)
+            messages.error(request, 'Monitor not found.')
+            return redirect('monitoring:website_monitor_list')
+    else:
+        try:
+            monitor = WebsiteMonitor.objects.get(pk=pk, organization=org)
+        except WebsiteMonitor.DoesNotExist:
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': 'Monitor not found in current organisation.'}, status=404)
+            messages.warning(request, 'That monitor is not available in the current organisation.')
+            return redirect('monitoring:website_monitor_list')
 
     try:
         monitor.check_status()
+        if is_ajax:
+            return JsonResponse({
+                'success': True,
+                'status': monitor.status,
+                'status_display': monitor.get_status_display() if hasattr(monitor, 'get_status_display') else monitor.status,
+                'response_time': monitor.response_time_ms,
+                'last_checked': monitor.last_checked_at.strftime('%Y-%m-%d %H:%M') if monitor.last_checked_at else '',
+            })
         messages.success(request, f'Website "{monitor.url}" checked successfully.')
     except Exception as e:
+        if is_ajax:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
         messages.error(request, f'Error checking website: {str(e)}')
 
     return redirect('monitoring:website_monitor_detail', pk=monitor.pk)
