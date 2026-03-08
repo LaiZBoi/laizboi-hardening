@@ -26,9 +26,18 @@ def run_fail2ban_command(command):
     Returns:
         tuple: (success: bool, output: str, error: str)
     """
+    import os
+    import shutil
+    client_path = (
+        shutil.which('fail2ban-client') or
+        ('/usr/bin/fail2ban-client' if os.path.exists('/usr/bin/fail2ban-client') else None) or
+        ('/usr/local/bin/fail2ban-client' if os.path.exists('/usr/local/bin/fail2ban-client') else None)
+    )
+    if not client_path:
+        return False, '', 'fail2ban-client not found - is fail2ban installed?'
     try:
         result = subprocess.run(
-            ['sudo', '/usr/bin/fail2ban-client'] + command,
+            ['/usr/bin/sudo', client_path] + command,
             capture_output=True,
             text=True,
             timeout=10
@@ -49,12 +58,17 @@ def is_fail2ban_installed():
     Returns:
         tuple: (installed: bool, running: bool, sudo_configured: bool, error_message: str)
     """
-    # Check if fail2ban is installed by looking for the client binary directly.
-    # Using dpkg -l was unreliable inside gunicorn's restricted subprocess
-    # environment — PATH issues caused it to silently fail and return False even
-    # when fail2ban was fully installed and running.
+    # Check if fail2ban is installed by looking for the client binary.
+    # Use shutil.which (searches common bin dirs) with a fallback to explicit
+    # paths — handles installations in /usr/bin, /usr/local/bin, etc.
     import os
-    package_installed = os.path.exists('/usr/bin/fail2ban-client')
+    import shutil
+    fail2ban_client_path = (
+        shutil.which('fail2ban-client') or
+        ('/usr/bin/fail2ban-client' if os.path.exists('/usr/bin/fail2ban-client') else None) or
+        ('/usr/local/bin/fail2ban-client' if os.path.exists('/usr/local/bin/fail2ban-client') else None)
+    )
+    package_installed = bool(fail2ban_client_path)
 
     if not package_installed:
         return False, False, False, 'fail2ban package not installed'
@@ -69,7 +83,7 @@ def is_fail2ban_installed():
     service_running = False
     try:
         ping_result = subprocess.run(
-            ['/usr/bin/sudo', '-n', '/usr/bin/fail2ban-client', 'ping'],
+            ['/usr/bin/sudo', '-n', fail2ban_client_path, 'ping'],
             capture_output=True,
             text=True,
             timeout=5
