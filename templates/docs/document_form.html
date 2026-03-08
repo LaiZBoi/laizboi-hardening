@@ -377,6 +377,24 @@
                             </div>
                         </div>
                     </button>
+                    <button type="button" class="list-group-item list-group-item-action enhancement-option" data-type="custom">
+                        <div class="d-flex w-100 align-items-center">
+                            <i class="fas fa-comment-dots fa-2x me-3 text-purple" style="color:#6f42c1"></i>
+                            <div>
+                                <h6 class="mb-1">Custom Prompt</h6>
+                                <p class="mb-0 small text-muted">Tell the AI exactly what you want — add charts, reformat sections, change tone, etc.</p>
+                            </div>
+                        </div>
+                    </button>
+                </div>
+
+                <div id="custom-prompt-area" style="display:none;" class="mb-3">
+                    <label for="custom-prompt-input" class="form-label fw-semibold"><i class="fas fa-keyboard me-1"></i> What would you like the AI to do?</label>
+                    <textarea id="custom-prompt-input" class="form-control mb-2" rows="3" placeholder="e.g. Add a summary card at the top. Add a pie chart section using inline SVG. Reformat as a two-column layout."></textarea>
+                    <button type="button" class="btn btn-primary btn-sm" id="custom-prompt-submit">
+                        <i class="fas fa-paper-plane me-1"></i> Ask AI
+                    </button>
+                    <small class="text-muted ms-2">or press Enter</small>
                 </div>
 
                 <div id="ai-enhance-loading" class="text-center" style="display: none;">
@@ -769,8 +787,28 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.enhancement-option').forEach(button => {
         button.addEventListener('click', function() {
             const enhancementType = this.dataset.type;
+            if (enhancementType === 'custom') {
+                // Show the custom prompt area without triggering the call yet
+                document.getElementById('custom-prompt-area').style.display = 'block';
+                document.getElementById('custom-prompt-input').focus();
+                return;
+            }
+            document.getElementById('custom-prompt-area').style.display = 'none';
             enhanceWithAI(enhancementType);
         });
+    });
+
+    // Submit custom prompt on Enter (shift+enter = newline) or button click
+    document.getElementById('custom-prompt-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const prompt = this.value.trim();
+            if (prompt) enhanceWithAI('custom', prompt);
+        }
+    });
+    document.getElementById('custom-prompt-submit').addEventListener('click', function() {
+        const prompt = document.getElementById('custom-prompt-input').value.trim();
+        if (prompt) enhanceWithAI('custom', prompt);
     });
 
     // Format selector help text
@@ -785,7 +823,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    function enhanceWithAI(enhancementType) {
+    function enhanceWithAI(enhancementType, customPrompt) {
         // Get current content
         const contentType = document.getElementById('{{ form.content_type.id_for_label }}').value;
         const title = document.getElementById('{{ form.title.id_for_label }}').value;
@@ -825,7 +863,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 title: title,
                 content: content,
                 enhancement_type: enhancementType,
-                output_format: outputFormat
+                output_format: outputFormat,
+                custom_prompt: customPrompt || ''
             })
         })
         .then(async response => {

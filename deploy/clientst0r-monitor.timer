@@ -1,0 +1,11 @@
+[Unit]
+Description=Client St0r Website Monitor Check Timer
+Requires=clientst0r-monitor.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

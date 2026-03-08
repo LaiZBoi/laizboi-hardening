@@ -118,7 +118,7 @@ def website_monitor_detail(request, pk):
 def website_monitor_edit(request, pk):
     """Edit website monitor."""
     org = get_request_organization(request)
-    monitor = get_object_or_404(WebsiteMonitor, pk=pk, organization=org)
+    monitor = _org_get_or_404(WebsiteMonitor, org, pk=pk)
 
     if request.method == 'POST':
         form = WebsiteMonitorForm(request.POST, instance=monitor, organization=org)
@@ -159,7 +159,7 @@ def website_monitor_delete(request, pk):
 def website_monitor_check(request, pk):
     """Manually trigger website check."""
     org = get_request_organization(request)
-    monitor = get_object_or_404(WebsiteMonitor, pk=pk, organization=org)
+    monitor = _org_get_or_404(WebsiteMonitor, org, pk=pk)
 
     try:
         monitor.check_status()

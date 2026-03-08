@@ -1270,6 +1270,7 @@ def ai_enhance(request):
         content = data.get('content', '')
         enhancement_type = data.get('enhancement_type', 'grammar')
         output_format = data.get('output_format', 'markdown')  # 'markdown' or 'html'
+        custom_prompt = data.get('custom_prompt', '').strip()
 
         if not content:
             return JsonResponse({
@@ -1277,8 +1278,14 @@ def ai_enhance(request):
                 'error': 'Content is required'
             }, status=400)
 
+        if enhancement_type == 'custom' and not custom_prompt:
+            return JsonResponse({
+                'success': False,
+                'error': 'Please enter a custom prompt.'
+            }, status=400)
+
         generator = AIDocumentationGenerator()
-        result = generator.enhance_documentation(title, content, enhancement_type, output_format)
+        result = generator.enhance_documentation(title, content, enhancement_type, output_format, custom_prompt)
 
         return JsonResponse(result)
 

@@ -376,8 +376,10 @@ def fail2ban_install_sudoers(request):
         sudoers_content = f"""# Sudoers configuration for Client St0r fail2ban integration
 # Generated automatically during installation
 
-# Allow {username} user to run fail2ban-client and systemctl commands without password
+# Allow {username} user to run fail2ban-client without password.
+# Both paths are granted — fail2ban may install to either location depending on distro/method.
 {username} ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client
+{username} ALL=(ALL) NOPASSWD: /usr/local/bin/fail2ban-client
 {username} ALL=(ALL) NOPASSWD: /bin/systemctl is-active fail2ban
 {username} ALL=(ALL) NOPASSWD: /bin/systemctl status fail2ban
 """
@@ -583,8 +585,10 @@ def fail2ban_install(request):
         sudoers_content = f"""# Sudoers configuration for Client St0r fail2ban integration
 # Generated automatically during installation
 
-# Allow {username} user to run fail2ban-client and systemctl commands without password
+# Allow {username} user to run fail2ban-client without password.
+# Both paths are granted — fail2ban may install to either location depending on distro/method.
 {username} ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client
+{username} ALL=(ALL) NOPASSWD: /usr/local/bin/fail2ban-client
 {username} ALL=(ALL) NOPASSWD: /bin/systemctl is-active fail2ban
 {username} ALL=(ALL) NOPASSWD: /bin/systemctl status fail2ban
 """

@@ -111,7 +111,7 @@ class AIDocumentationGenerator:
                 'error': str(e)
             }
 
-    def enhance_documentation(self, title, content, enhancement_type='grammar', output_format='markdown'):
+    def enhance_documentation(self, title, content, enhancement_type='grammar', output_format='markdown', custom_prompt=''):
         """
         Enhance existing documentation.
 
@@ -133,7 +133,10 @@ class AIDocumentationGenerator:
             'markdown_to_html': 'Convert this markdown content to well-formatted HTML using Bootstrap 5 classes for styling. Use cards, badges, alerts, styled tables, and Font Awesome icons to make it visually rich.',
         }
 
-        enhancement_instruction = enhancement_prompts.get(enhancement_type, enhancement_prompts['grammar'])
+        if enhancement_type == 'custom' and custom_prompt:
+            enhancement_instruction = custom_prompt
+        else:
+            enhancement_instruction = enhancement_prompts.get(enhancement_type, enhancement_prompts['grammar'])
 
         # Build format-specific instructions.
         # For markdown_to_html we want rich new styling; for all other HTML enhancements

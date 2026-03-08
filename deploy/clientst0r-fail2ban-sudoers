@@ -3,4 +3,6 @@
 # Permissions: sudo chmod 0440 /etc/sudoers.d/clientst0r-fail2ban
 
 # Allow administrator user to run fail2ban-client without password
+# Both paths covered — fail2ban may install to either location depending on distro/method
 administrator ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client
+administrator ALL=(ALL) NOPASSWD: /usr/local/bin/fail2ban-client
