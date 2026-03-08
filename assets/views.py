@@ -519,7 +519,7 @@ def asset_generate_profile(request, pk):
     doc = asset.profile_document
     if doc:
         doc.title = f'{asset.name} — Device Profile'
-        doc.content = content
+        doc.body = content
         doc.content_type = 'html'
         doc.save()
         messages.success(request, f'Profile document updated for {asset.name}.')
@@ -533,7 +533,7 @@ def asset_generate_profile(request, pk):
         doc = Document.objects.create(
             organization=asset.organization,
             title=f'{asset.name} — Device Profile',
-            content=content,
+            body=content,
             content_type='html',
             slug=slug,
         )
