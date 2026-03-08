@@ -207,10 +207,10 @@
                     </li>
                     {% if current_organization or user.is_superuser or is_staff_user %}
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="orgDropdown" role="button" data-bs-toggle="dropdown" style="background-color: rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 0.375rem; max-width: 220px;" {% if current_organization %}title="{{ current_organization.name }}"{% endif %}>
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="orgDropdown" role="button" data-bs-toggle="dropdown" style="background-color: rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 0.375rem; max-width: 220px; min-width: 0;" {% if current_organization %}title="{{ current_organization.name }}"{% endif %}>
                             {% if current_organization %}
                             <i class="fas fa-building me-2 flex-shrink-0"></i>
-                            <strong style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ current_organization.name }}</strong>
+                            <strong style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">{{ current_organization.name }}</strong>
                             {% else %}
                             <i class="fas fa-globe me-2 flex-shrink-0"></i>
                             <strong>{% trans "Global View" %}</strong>
