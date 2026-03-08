@@ -49,17 +49,12 @@ def is_fail2ban_installed():
     Returns:
         tuple: (installed: bool, running: bool, sudo_configured: bool, error_message: str)
     """
-    # Check if fail2ban package is installed
-    try:
-        result = subprocess.run(
-            ['dpkg', '-l', 'fail2ban'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        package_installed = result.returncode == 0 and 'ii' in result.stdout
-    except Exception:
-        package_installed = False
+    # Check if fail2ban is installed by looking for the client binary directly.
+    # Using dpkg -l was unreliable inside gunicorn's restricted subprocess
+    # environment — PATH issues caused it to silently fail and return False even
+    # when fail2ban was fully installed and running.
+    import os
+    package_installed = os.path.exists('/usr/bin/fail2ban-client')
 
     if not package_installed:
         return False, False, False, 'fail2ban package not installed'
