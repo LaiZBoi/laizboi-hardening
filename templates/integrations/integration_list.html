@@ -104,11 +104,15 @@
         {% endif %}
     </div>
 </div>
+{% url 'integrations:unifi_create' as unifi_create_url %}
+{% url 'integrations:m365_create' as m365_create_url %}
+
 <!-- UniFi Integrations Section -->
+{% if unifi_create_url %}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="fas fa-network-wired"></i> UniFi Integrations</h5>
-        <a href="{% url 'integrations:unifi_create' %}" class="btn btn-sm btn-primary">
+        <a href="{{ unifi_create_url }}" class="btn btn-sm btn-primary">
             <i class="fas fa-plus"></i> Add UniFi Integration
         </a>
     </div>
@@ -125,8 +129,10 @@
             </thead>
             <tbody>
                 {% for conn in unifi_connections %}
+                {% url 'integrations:unifi_detail' conn.pk as unifi_detail_url %}
+                {% url 'integrations:unifi_edit' conn.pk as unifi_edit_url %}
                 <tr>
-                    <td><a href="{% url 'integrations:unifi_detail' conn.pk %}">{{ conn.name }}</a></td>
+                    <td><a href="{{ unifi_detail_url }}">{{ conn.name }}</a></td>
                     <td>{{ conn.host }}</td>
                     <td>
                         {% if conn.last_sync_status == 'ok' %}
@@ -141,8 +147,8 @@
                     </td>
                     <td>{{ conn.last_sync_at|date:"Y-m-d H:i"|default:"Never" }}</td>
                     <td>
-                        <a href="{% url 'integrations:unifi_detail' conn.pk %}" class="btn btn-sm btn-outline-primary">View</a>
-                        <a href="{% url 'integrations:unifi_edit' conn.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <a href="{{ unifi_detail_url }}" class="btn btn-sm btn-outline-primary">View</a>
+                        <a href="{{ unifi_edit_url }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                     </td>
                 </tr>
                 {% empty %}
@@ -152,12 +158,14 @@
         </table>
     </div>
 </div>
+{% endif %}
 
 <!-- M365 Integrations Section -->
+{% if m365_create_url %}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="fab fa-microsoft"></i> Microsoft 365 Integrations</h5>
-        <a href="{% url 'integrations:m365_create' %}" class="btn btn-sm btn-primary">
+        <a href="{{ m365_create_url }}" class="btn btn-sm btn-primary">
             <i class="fas fa-plus"></i> Add M365 Integration
         </a>
     </div>
@@ -174,8 +182,10 @@
             </thead>
             <tbody>
                 {% for conn in m365_connections %}
+                {% url 'integrations:m365_detail' conn.pk as m365_detail_url %}
+                {% url 'integrations:m365_edit' conn.pk as m365_edit_url %}
                 <tr>
-                    <td><a href="{% url 'integrations:m365_detail' conn.pk %}">{{ conn.name }}</a></td>
+                    <td><a href="{{ m365_detail_url }}">{{ conn.name }}</a></td>
                     <td><code>{{ conn.tenant_id|truncatechars:16 }}</code></td>
                     <td>
                         {% if conn.last_sync_status == 'ok' %}
@@ -190,8 +200,8 @@
                     </td>
                     <td>{{ conn.last_sync_at|date:"Y-m-d H:i"|default:"Never" }}</td>
                     <td>
-                        <a href="{% url 'integrations:m365_detail' conn.pk %}" class="btn btn-sm btn-outline-primary">View</a>
-                        <a href="{% url 'integrations:m365_edit' conn.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <a href="{{ m365_detail_url }}" class="btn btn-sm btn-outline-primary">View</a>
+                        <a href="{{ m365_edit_url }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                     </td>
                 </tr>
                 {% empty %}
@@ -201,6 +211,7 @@
         </table>
     </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
