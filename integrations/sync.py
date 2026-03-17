@@ -539,8 +539,12 @@ class RMMSync:
                     self.stats['alerts']['errors'] += 1
 
         except Exception as e:
-            logger.error(f"Error listing alerts: {e}")
-            raise
+            import requests as _requests
+            if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 405:
+                logger.warning(f"Alerts endpoint returned 405 for {self.connection} — this TRMM version may not support the /alerts/ endpoint. Skipping alert sync.")
+            else:
+                logger.error(f"Error listing alerts: {e}")
+            self.stats['alerts']['errors'] += 1
 
     def sync_software(self):
         """Sync software inventory for all online devices."""

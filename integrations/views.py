@@ -1250,17 +1250,18 @@ def unifi_sync(request, pk):
                 dtype = html_lib.escape(d.get('type', '—'))
                 ip = html_lib.escape(str(d.get('ip') or d.get('ipAddress') or '—'))
                 mac = html_lib.escape(str(d.get('mac') or '—'))
+                firmware = html_lib.escape(str(d.get('version') or d.get('firmwareVersion') or '—'))
                 state = d.get('state', 0)
                 status_badge = '<span class="badge bg-success">Online</span>' if state == 1 else '<span class="badge bg-secondary">Offline</span>'
-                device_rows += f'<tr><td>{name}</td><td>{dtype}</td><td>{model}</td><td>{ip}</td><td>{mac}</td><td>{status_badge}</td></tr>'
+                device_rows += f'<tr><td>{name}</td><td>{dtype}</td><td>{model}</td><td>{ip}</td><td>{mac}</td><td>{firmware}</td><td>{status_badge}</td></tr>'
 
             devices_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-network-wired me-2"></i>Devices ({len(site["devices"])})</div>
   <div class="card-body p-0">
     <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Name</th><th>Type</th><th>Model</th><th>IP</th><th>MAC</th><th>Status</th></tr></thead>
-      <tbody>{device_rows or "<tr><td colspan='6' class='text-muted'>No devices found.</td></tr>"}</tbody>
+      <thead><tr><th>Name</th><th>Type</th><th>Model</th><th>IP</th><th>MAC</th><th>Firmware</th><th>Status</th></tr></thead>
+      <tbody>{device_rows or "<tr><td colspan='7' class='text-muted'>No devices found.</td></tr>"}</tbody>
     </table>
   </div>
 </div>''' if site.get('devices') else ''
@@ -1507,120 +1508,128 @@ def m365_sync(request, pk):
         secure_score = data.get('secure_score', {})
         devices = data.get('devices', [])
 
-        # Users section
-        user_rows = ''
-        for u in users[:200]:  # cap at 200 for doc size
-            name = html_lib.escape(u.get('displayName', '\u2014'))
-            upn = html_lib.escape(u.get('userPrincipalName', '\u2014'))
-            title = html_lib.escape(u.get('jobTitle') or '\u2014')
-            dept = html_lib.escape(u.get('department') or '\u2014')
-            user_rows += f'<tr><td>{name}</td><td>{upn}</td><td>{title}</td><td>{dept}</td></tr>'
-        users_section = f'''
-<div class="card mb-3">
-  <div class="card-header"><i class="fas fa-users me-2"></i>Licensed Users ({len(users)})</div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Name</th><th>UPN</th><th>Title</th><th>Department</th></tr></thead>
-      <tbody>{user_rows or "<tr><td colspan='4' class='text-muted'>No users found.</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>'''
-
-        # Licenses section
-        lic_rows = ''
-        for lic in licenses:
-            sku = html_lib.escape(lic.get('skuPartNumber', '\u2014'))
-            consumed = lic.get('consumedUnits', 0)
-            available = lic.get('prepaidUnits', {}).get('enabled', 0)
-            lic_rows += f'<tr><td>{sku}</td><td>{consumed}</td><td>{available}</td></tr>'
-        licenses_section = f'''
-<div class="card mb-3">
-  <div class="card-header"><i class="fas fa-key me-2"></i>Assigned Licenses ({len(licenses)})</div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>License SKU</th><th>Assigned</th><th>Available</th></tr></thead>
-      <tbody>{lic_rows or "<tr><td colspan='3' class='text-muted'>No licenses found.</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>'''
-
-        # Teams section
-        team_rows = ''
-        for t in teams:
-            tname = html_lib.escape(t.get('displayName', '\u2014'))
-            vis = html_lib.escape(t.get('visibility') or 'Private')
-            desc = html_lib.escape((t.get('description') or '')[:80])
-            team_rows += f'<tr><td>{tname}</td><td>{vis}</td><td>{desc}</td></tr>'
-        teams_section = f'''
-<div class="card mb-3">
-  <div class="card-header"><i class="fas fa-comments me-2"></i>Microsoft Teams ({len(teams)})</div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Name</th><th>Visibility</th><th>Description</th></tr></thead>
-      <tbody>{team_rows or "<tr><td colspan='3' class='text-muted'>No Teams found.</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>''' if teams else ''
-
-        # SharePoint sites section
-        sp_rows = ''
-        for s in sites[:50]:
-            sname = html_lib.escape(s.get('displayName', '\u2014'))
-            url = html_lib.escape(s.get('webUrl', ''))
-            sp_rows += f'<tr><td>{sname}</td><td><a href="{url}" target="_blank">{url}</a></td></tr>'
-        sp_section = f'''
-<div class="card mb-3">
-  <div class="card-header"><i class="fas fa-globe me-2"></i>SharePoint Sites ({len(sites)})</div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Name</th><th>URL</th></tr></thead>
-      <tbody>{sp_rows or "<tr><td colspan='2' class='text-muted'>No sites found.</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>''' if sites else ''
-
-        # Roles section
-        role_rows = ''
-        for r in roles:
-            rname = html_lib.escape(r.get('displayName', '\u2014'))
-            members = r.get('members', [])
-            member_names = ', '.join(html_lib.escape(m.get('displayName', '')) for m in members[:5])
-            if len(members) > 5:
-                member_names += f' +{len(members)-5} more'
-            role_rows += f'<tr><td>{rname}</td><td>{len(members)}</td><td>{member_names}</td></tr>'
-        roles_section = f'''
-<div class="card mb-3">
-  <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Entra ID Roles ({len(roles)})</div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Role</th><th>Members</th><th>Assigned To</th></tr></thead>
-      <tbody>{role_rows or "<tr><td colspan='3' class='text-muted'>No active roles found.</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>''' if roles else ''
-
-        # Shared mailboxes section
-        shared_mbs = data.get('shared_mailboxes', [])
-        smb_rows = ''
-        for u in shared_mbs[:100]:
-            sname = html_lib.escape(u.get('displayName', '\u2014'))
-            mail = html_lib.escape(u.get('mail') or u.get('userPrincipalName', '\u2014'))
-            smb_rows += f'<tr><td>{sname}</td><td>{mail}</td></tr>'
-        smb_section = f'''
-<div class="card mb-3">
-  <div class="card-header"><i class="fas fa-envelope me-2"></i>Shared Mailboxes ({len(shared_mbs)})</div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Name</th><th>Address</th></tr></thead>
-      <tbody>{smb_rows or "<tr><td colspan='2' class='text-muted'>No shared mailboxes found.</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>''' if shared_mbs else ''
-
-        # Conditional access policies section
-        ca_rows = ''
-        for p in ca_policies:
+        def _safe_section(fn, label):
             try:
+                return fn()
+            except Exception as exc:
+                logger.error(f"M365 sync: error building {label} section: {exc}")
+                return f'<div class="alert alert-warning mb-3"><i class="fas fa-exclamation-triangle me-2"></i>Could not render <strong>{label}</strong> section: {html_lib.escape(str(exc))}</div>'
+
+        def _build_users():
+            user_rows = ''
+            for u in users[:200]:
+                name = html_lib.escape(u.get('displayName') or '\u2014')
+                upn = html_lib.escape(u.get('userPrincipalName') or '\u2014')
+                title = html_lib.escape(u.get('jobTitle') or '\u2014')
+                dept = html_lib.escape(u.get('department') or '\u2014')
+                user_rows += f'<tr><td>{name}</td><td>{upn}</td><td>{title}</td><td>{dept}</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-users me-2"></i>Licensed Users ({len(users)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Name</th><th>UPN</th><th>Title</th><th>Department</th></tr></thead>
+    <tbody>{user_rows or "<tr><td colspan='4' class='text-muted'>No users found.</td></tr>"}</tbody>
+  </table></div></div>'''
+
+        def _build_licenses():
+            lic_rows = ''
+            for lic in licenses:
+                sku = html_lib.escape(lic.get('skuPartNumber') or '\u2014')
+                consumed = lic.get('consumedUnits') or 0
+                available = (lic.get('prepaidUnits') or {}).get('enabled') or 0
+                lic_rows += f'<tr><td>{sku}</td><td>{consumed}</td><td>{available}</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-key me-2"></i>Assigned Licenses ({len(licenses)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>License SKU</th><th>Assigned</th><th>Available</th></tr></thead>
+    <tbody>{lic_rows or "<tr><td colspan='3' class='text-muted'>No licenses found.</td></tr>"}</tbody>
+  </table></div></div>'''
+
+        def _build_shared_mailboxes():
+            shared_mbs = data.get('shared_mailboxes', [])
+            if not shared_mbs:
+                return ''
+            smb_rows = ''
+            for u in shared_mbs[:100]:
+                sname = html_lib.escape(u.get('displayName') or '\u2014')
+                mail = html_lib.escape(u.get('mail') or u.get('userPrincipalName') or '\u2014')
+                smb_rows += f'<tr><td>{sname}</td><td>{mail}</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-envelope me-2"></i>Shared Mailboxes ({len(shared_mbs)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Name</th><th>Address</th></tr></thead>
+    <tbody>{smb_rows}</tbody>
+  </table></div></div>'''
+
+        def _build_teams():
+            if not teams:
+                return ''
+            team_rows = ''
+            for t in teams:
+                tname = html_lib.escape(t.get('displayName') or '\u2014')
+                vis = html_lib.escape(t.get('visibility') or 'Private')
+                desc = html_lib.escape((t.get('description') or '')[:80])
+                team_rows += f'<tr><td>{tname}</td><td>{vis}</td><td>{desc}</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-comments me-2"></i>Microsoft Teams ({len(teams)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Name</th><th>Visibility</th><th>Description</th></tr></thead>
+    <tbody>{team_rows}</tbody>
+  </table></div></div>'''
+
+        def _build_sharepoint():
+            if not sites:
+                return ''
+            sp_rows = ''
+            for s in sites[:50]:
+                sname = html_lib.escape(s.get('displayName') or '\u2014')
+                url = html_lib.escape(s.get('webUrl') or '')
+                sp_rows += f'<tr><td>{sname}</td><td><a href="{url}" target="_blank">{url}</a></td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-globe me-2"></i>SharePoint Sites ({len(sites)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Name</th><th>URL</th></tr></thead>
+    <tbody>{sp_rows}</tbody>
+  </table></div></div>'''
+
+        def _build_entra_devices():
+            if not devices:
+                return ''
+            dev_rows = ''
+            for d in devices[:200]:
+                dname = html_lib.escape(d.get('displayName') or '\u2014')
+                os_name = html_lib.escape(d.get('operatingSystem') or '\u2014')
+                os_ver = html_lib.escape(d.get('operatingSystemVersion') or '')
+                trust = html_lib.escape(d.get('trustType') or '\u2014')
+                compliant = '\u2705' if d.get('isCompliant') else ('\u274c' if d.get('isManaged') else '\u2014')
+                dev_rows += f'<tr><td>{dname}</td><td>{os_name} {os_ver}</td><td>{trust}</td><td>{compliant}</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-laptop me-2"></i>Entra ID Devices ({len(devices)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Device</th><th>OS</th><th>Join Type</th><th>Compliant</th></tr></thead>
+    <tbody>{dev_rows}</tbody>
+  </table></div></div>'''
+
+        def _build_roles():
+            if not roles:
+                return ''
+            role_rows = ''
+            for r in roles:
+                rname = html_lib.escape(r.get('displayName') or '\u2014')
+                members = r.get('members') or []
+                member_names = ', '.join(html_lib.escape(m.get('displayName') or '') for m in members[:5])
+                if len(members) > 5:
+                    member_names += f' +{len(members)-5} more'
+                role_rows += f'<tr><td>{rname}</td><td>{len(members)}</td><td>{member_names}</td></tr>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Entra ID Roles ({len(roles)})</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Role</th><th>Members</th><th>Assigned To</th></tr></thead>
+    <tbody>{role_rows}</tbody>
+  </table></div></div>'''
+
+        def _build_ca_policies():
+            ca_rows = ''
+            for p in ca_policies:
                 if not isinstance(p, dict):
                     continue
                 pname = html_lib.escape(p.get('displayName') or '\u2014')
@@ -1629,29 +1638,22 @@ def m365_sync(request, pk):
                 state_label = html_lib.escape(state.replace('enabledForReportingButNotEnforced', 'Report-only'))
                 modified = (p.get('modifiedDateTime') or p.get('createdDateTime') or '')[:10]
                 ca_rows += f'<tr><td>{pname}</td><td><span class="badge {badge}">{state_label}</span></td><td>{modified}</td></tr>'
-            except Exception:
-                continue
-        ca_section = f'''
-<div class="card mb-3">
+            return f'''<div class="card mb-3">
   <div class="card-header"><i class="fas fa-lock me-2"></i>Conditional Access Policies ({len(ca_policies)})</div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Policy</th><th>State</th><th>Modified</th></tr></thead>
-      <tbody>{ca_rows or "<tr><td colspan='3' class='text-muted'>No CA policies found (may need Policy.Read.All permission).</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>'''
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Policy</th><th>State</th><th>Modified</th></tr></thead>
+    <tbody>{ca_rows or "<tr><td colspan='3' class='text-muted'>No CA policies (may need Policy.Read.All permission).</td></tr>"}</tbody>
+  </table></div></div>'''
 
-        # Secure score section
-        score_section = ''
-        if secure_score:
-            current = secure_score.get('currentScore', 0)
-            maximum = secure_score.get('maxScore', 0)
-            pct = secure_score.get('percentageScore') or (round(current / maximum * 100, 1) if maximum else 0)
+        def _build_secure_score():
+            if not secure_score:
+                return ''
+            current = float(secure_score.get('currentScore') or 0)
+            maximum = float(secure_score.get('maxScore') or 0)
+            pct = float(secure_score.get('percentageScore') or (round(current / maximum * 100, 1) if maximum else 0))
             score_date = (secure_score.get('createdDateTime') or '')[:10]
             bar_colour = 'bg-danger' if pct < 40 else ('bg-warning' if pct < 70 else 'bg-success')
-            score_section = f'''
-<div class="card mb-3">
+            return f'''<div class="card mb-3">
   <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Microsoft Secure Score</div>
   <div class="card-body">
     <div class="d-flex align-items-center mb-2">
@@ -1665,25 +1667,15 @@ def m365_sync(request, pk):
   </div>
 </div>'''
 
-        # Devices section
-        dev_rows = ''
-        for d in devices[:200]:
-            dname = html_lib.escape(d.get('displayName', '\u2014'))
-            os_name = html_lib.escape(d.get('operatingSystem', '\u2014'))
-            os_ver = html_lib.escape(d.get('operatingSystemVersion', ''))
-            trust = html_lib.escape(d.get('trustType', '\u2014'))
-            compliant = '\u2705' if d.get('isCompliant') else ('\u274c' if d.get('isManaged') else '\u2014')
-            dev_rows += f'<tr><td>{dname}</td><td>{os_name} {os_ver}</td><td>{trust}</td><td>{compliant}</td></tr>'
-        devices_section = f'''
-<div class="card mb-3">
-  <div class="card-header"><i class="fas fa-laptop me-2"></i>Entra ID Devices ({len(devices)})</div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Device</th><th>OS</th><th>Join Type</th><th>Compliant</th></tr></thead>
-      <tbody>{dev_rows or "<tr><td colspan='4' class='text-muted'>No devices found.</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>''' if devices else ''
+        score_section    = _safe_section(_build_secure_score,     'Secure Score')
+        users_section    = _safe_section(_build_users,            'Users')
+        licenses_section = _safe_section(_build_licenses,         'Licenses')
+        smb_section      = _safe_section(_build_shared_mailboxes, 'Shared Mailboxes')
+        teams_section    = _safe_section(_build_teams,            'Teams')
+        sp_section       = _safe_section(_build_sharepoint,       'SharePoint')
+        devices_section  = _safe_section(_build_entra_devices,    'Entra Devices')
+        roles_section    = _safe_section(_build_roles,            'Roles')
+        ca_section       = _safe_section(_build_ca_policies,      'Conditional Access')
 
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">

@@ -422,10 +422,12 @@
                                             <dt class="col-sm-5">Site / Client</dt><dd class="col-sm-7">{{ rmm.site_name|default:"—" }}</dd>
                                             <dt class="col-sm-5">Last Seen</dt><dd class="col-sm-7">{{ rmm.last_seen|date:"Y-m-d H:i"|default:"—" }}</dd>
                                             {% with raw=rmm.raw_data %}
+                                            {% if raw %}
                                             {% if raw.logged_username %}<dt class="col-sm-5">Logged In</dt><dd class="col-sm-7">{{ raw.logged_username }}</dd>{% endif %}
                                             {% if raw.last_patched %}<dt class="col-sm-5">Last Patched</dt><dd class="col-sm-7">{{ raw.last_patched|slice:":10" }}</dd>{% endif %}
                                             {% if raw.needs_reboot %}<dt class="col-sm-5">Reboot</dt><dd class="col-sm-7"><span class="badge bg-warning text-dark">Needs Reboot</span></dd>{% endif %}
                                             {% if raw.agent_version %}<dt class="col-sm-5">Agent</dt><dd class="col-sm-7">{{ raw.agent_version }}</dd>{% endif %}
+                                            {% endif %}
                                             {% endwith %}
                                         </dl>
                                     </div>
@@ -433,11 +435,14 @@
                                         <h6 class="text-muted text-uppercase small mb-2">Hardware</h6>
                                         <dl class="row mb-0 small">
                                             {% with raw=rmm.raw_data %}
-                                            {% if raw.cpu_model or raw.cpu %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{{ raw.cpu_model|default:raw.cpu }}</dd>{% endif %}
+                                            {% if raw %}
+                                            {% if raw.cpu_model %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{{ raw.cpu_model }}</dd>
+                                            {% elif raw.cpu %}<dt class="col-sm-5">CPU</dt><dd class="col-sm-7">{{ raw.cpu }}</dd>{% endif %}
                                             {% if raw.total_ram %}<dt class="col-sm-5">RAM</dt><dd class="col-sm-7">{{ raw.total_ram|floatformat:0 }} MB</dd>{% endif %}
                                             {% if raw.make_model %}<dt class="col-sm-5">Model</dt><dd class="col-sm-7">{{ raw.make_model }}</dd>{% endif %}
                                             {% if raw.serial_number %}<dt class="col-sm-5">Serial</dt><dd class="col-sm-7"><code>{{ raw.serial_number }}</code></dd>{% endif %}
                                             {% if raw.public_ip %}<dt class="col-sm-5">Public IP</dt><dd class="col-sm-7"><code>{{ raw.public_ip }}</code></dd>{% endif %}
+                                            {% endif %}
                                             {% endwith %}
                                         </dl>
                                     </div>
