@@ -664,6 +664,19 @@ class RMMSync:
             # On error, fallback to connection org
             return self.organization
 
+    def _enrich_raw_data(self, device_data: dict) -> dict:
+        """Merge provider-normalized hardware values into raw_data so
+        _update_asset_hardware can find them even when the original API
+        response uses different/absent field names."""
+        raw = dict(device_data.get('raw_data') or {})
+        if device_data.get('ram_gb') is not None:
+            raw.setdefault('_norm_ram_gb', device_data['ram_gb'])
+        if device_data.get('storage'):
+            raw.setdefault('_norm_storage', device_data['storage'])
+        if device_data.get('cpu'):
+            raw.setdefault('_norm_cpu', device_data['cpu'])
+        return raw
+
     def _upsert_device(self, device_data, target_org):
         """
         Create or update RMM device.
@@ -696,7 +709,7 @@ class RMMSync:
                 'longitude': device_data.get('longitude'),
                 'is_online': device_data.get('is_online', False),
                 'last_seen': device_data.get('last_seen'),
-                'raw_data': device_data.get('raw_data', {}),
+                'raw_data': self._enrich_raw_data(device_data),
             }
         )
 
@@ -795,7 +808,7 @@ class RMMSync:
         update_fields = []
         raw = device.raw_data or {}
 
-        cpu = raw.get('cpu_model') or raw.get('cpu') or ''
+        cpu = raw.get('cpu_model') or raw.get('cpu') or raw.get('_norm_cpu') or ''
         if cpu and cpu != asset.cpu:
             asset.cpu = cpu
             update_fields.append('cpu')
@@ -804,9 +817,13 @@ class RMMSync:
             total_ram_mb = raw.get('total_ram') or 0
             if total_ram_mb:
                 ram_gb = int(round(int(total_ram_mb) / 1024))
-                if ram_gb != asset.ram_gb:
-                    asset.ram_gb = ram_gb
-                    update_fields.append('ram_gb')
+            elif raw.get('_norm_ram_gb') is not None:
+                ram_gb = int(round(float(raw['_norm_ram_gb'])))
+            else:
+                ram_gb = None
+            if ram_gb and ram_gb != asset.ram_gb:
+                asset.ram_gb = ram_gb
+                update_fields.append('ram_gb')
         except (ValueError, TypeError):
             pass
 
@@ -821,9 +838,11 @@ class RMMSync:
                 storage_parts.append(f"{dev} {int(total)}GB ({pct}% used)")
         if storage_parts:
             storage = ', '.join(storage_parts)
-            if storage != asset.storage:
-                asset.storage = storage
-                update_fields.append('storage')
+        else:
+            storage = raw.get('_norm_storage') or ''
+        if storage and storage != asset.storage:
+            asset.storage = storage
+            update_fields.append('storage')
 
         if device.os_type and device.os_type != asset.os_name:
             asset.os_name = device.os_type

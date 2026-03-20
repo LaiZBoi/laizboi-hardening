@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tz %}
 
 {% block title %}{{ connection.name }} - RMM Integration - Client St0r{% endblock %}
 
@@ -81,7 +82,7 @@
                     </tr>
                     <tr>
                         <th>Last Sync:</th>
-                        <td>{{ connection.last_sync_at|date:"Y-m-d H:i:s"|default:"Never" }}</td>
+                        <td>{{ connection.last_sync_at|localtime|date:"Y-m-d H:i:s"|default:"Never" }}</td>
                     </tr>
                     <tr>
                         <th>Sync Status:</th>

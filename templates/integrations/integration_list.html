@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tz %}
 
 {% block title %}Integrations{% endblock %}
 
@@ -36,7 +37,7 @@
                         <span class="badge bg-secondary">Inactive</span>
                         {% endif %}
                     </td>
-                    <td>{{ conn.last_sync_at|date:"Y-m-d H:i"|default:"Never" }}</td>
+                    <td>{{ conn.last_sync_at|localtime|date:"Y-m-d H:i"|default:"Never" }}</td>
                     <td>
                         <button class="btn btn-sm btn-info test-conn" data-id="{{ conn.pk }}">Test</button>
                         <button class="btn btn-sm btn-primary sync-conn" data-id="{{ conn.pk }}">Sync</button>
@@ -86,7 +87,7 @@
                         <span class="badge bg-secondary">Disabled</span>
                         {% endif %}
                     </td>
-                    <td>{{ conn.last_sync_at|date:"Y-m-d H:i"|default:"Never" }}</td>
+                    <td>{{ conn.last_sync_at|localtime|date:"Y-m-d H:i"|default:"Never" }}</td>
                     <td>{{ conn.devices.count }}</td>
                     <td>
                         <a href="{% url 'integrations:rmm_edit' conn.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
@@ -145,7 +146,7 @@
                         <span class="badge bg-secondary">Inactive</span>
                         {% endif %}
                     </td>
-                    <td>{{ conn.last_sync_at|date:"Y-m-d H:i"|default:"Never" }}</td>
+                    <td>{{ conn.last_sync_at|localtime|date:"Y-m-d H:i"|default:"Never" }}</td>
                     <td>
                         <a href="{{ unifi_detail_url }}" class="btn btn-sm btn-outline-primary">View</a>
                         <a href="{{ unifi_edit_url }}" class="btn btn-sm btn-outline-secondary">Edit</a>
@@ -198,7 +199,7 @@
                         <span class="badge bg-secondary">Inactive</span>
                         {% endif %}
                     </td>
-                    <td>{{ conn.last_sync_at|date:"Y-m-d H:i"|default:"Never" }}</td>
+                    <td>{{ conn.last_sync_at|localtime|date:"Y-m-d H:i"|default:"Never" }}</td>
                     <td>
                         <a href="{{ m365_detail_url }}" class="btn btn-sm btn-outline-primary">View</a>
                         <a href="{{ m365_edit_url }}" class="btn btn-sm btn-outline-secondary">Edit</a>

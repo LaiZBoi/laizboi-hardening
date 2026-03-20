@@ -131,6 +131,7 @@ class M365Provider:
             return self._get_all('/sites', params={
                 '$select': 'displayName,webUrl,description,createdDateTime',
                 '$search': '*',
+                '$count': 'true',
             })
         except Exception as e:
             logger.warning(f"M365 get_sharepoint_sites failed: {e}")
@@ -194,6 +195,7 @@ class M365Provider:
             sites = self._get_all('/sites', params={
                 '$search': '*',
                 '$select': 'id,displayName,webUrl',
+                '$count': 'true',
             })
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0

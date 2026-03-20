@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tz %}
 
 {% block title %}{{ connection.name }} - PSA Integration - Client St0r{% endblock %}
 
@@ -85,7 +86,7 @@
                     <dt class="col-sm-4">Last Sync:</dt>
                     <dd class="col-sm-8">
                         {% if connection.last_sync_at %}
-                        {{ connection.last_sync_at|date:"F j, Y g:i A" }}
+                        {{ connection.last_sync_at|localtime|date:"F j, Y g:i A" }}
                         {% else %}
                         <span class="text-muted">Never</span>
                         {% endif %}

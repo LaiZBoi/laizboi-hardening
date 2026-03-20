@@ -181,6 +181,27 @@ class UnifiProvider:
                 continue
         return []
 
+    def get_firewall_policies(self, site_ref: str, site_id: str = '') -> list:
+        """Get zone-based Firewall Policies (UniFi OS 3.x+). Requires username/password."""
+        if not (self.username and self.password):
+            return []
+        paths = []
+        if site_id:
+            paths.append(f'/proxy/network/v2/api/site/{site_id}/firewall/policies')
+        paths += [
+            f'/proxy/network/v2/api/site/{site_ref}/firewall/policies',
+            f'/proxy/network/api/s/{site_ref}/rest/firewallpolicy',
+        ]
+        for path in paths:
+            try:
+                raw = self._legacy_get(path)
+                items = raw if isinstance(raw, list) else raw.get('data', raw.get('policies', []))
+                if items:
+                    return items
+            except Exception:
+                continue
+        return []
+
     def get_device_serials(self, site_ref: str) -> dict:
         """Get MAC→serial mapping from legacy stat/device endpoint.
         Requires username/password."""
@@ -236,6 +257,7 @@ class UnifiProvider:
             wlans = self.get_wlans(site_ref)
             vlans = self.get_vlans(site_ref)
             firewall_rules = self.get_firewall_rules(site_ref)
+            firewall_policies = self.get_firewall_policies(site_ref, site_id=site_id)
             traffic_rules = self.get_traffic_rules(site_ref, site_id=site_id)
             client_count = self.get_client_count(site_ref)
 
@@ -252,6 +274,7 @@ class UnifiProvider:
                 'wlans': wlans,
                 'vlans': vlans,
                 'firewall_rules': firewall_rules,
+                'firewall_policies': firewall_policies,
                 'traffic_rules': traffic_rules,
                 'client_count': client_count,
             })

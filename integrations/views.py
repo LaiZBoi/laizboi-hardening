@@ -1335,6 +1335,32 @@ def unifi_sync(request, pk):
   </div>
 </div>'''
 
+            # Firewall Policies (zone-based, UniFi OS 3.x+)
+            fp_rules = site.get('firewall_policies', [])
+            fp_rows = ''
+            for r in fp_rules:
+                rname = html_lib.escape(r.get('name') or r.get('description') or r.get('_id') or '—')
+                action = html_lib.escape(r.get('action') or r.get('ruleAction') or '—')
+                src_zone = html_lib.escape(r.get('source', {}).get('zone') or r.get('sourceZone') or 'any')
+                dst_zone = html_lib.escape(r.get('destination', {}).get('zone') or r.get('destinationZone') or 'any')
+                enabled = '\u2705' if r.get('enabled', True) else '\u274c'
+                action_badge = 'bg-danger' if action.upper() in ('DROP', 'REJECT', 'BLOCK') else 'bg-success'
+                fp_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{src_zone}</td><td>{dst_zone}</td></tr>'
+            if not has_legacy:
+                fp_empty = "<tr><td colspan='4' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required to fetch firewall policies via legacy API.</td></tr>"
+            else:
+                fp_empty = "<tr><td colspan='4' class='text-muted'>No firewall policies configured.</td></tr>"
+            fp_table = f'''
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Firewall Policies / Zone Rules ({len(fp_rules)})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Policy</th><th>Action</th><th>Source Zone</th><th>Dest Zone</th></tr></thead>
+      <tbody>{fp_rows or fp_empty}</tbody>
+    </table>
+  </div>
+</div>'''
+
             # Traffic Rules (UniFi OS 3.x+)
             tr_rules = site.get('traffic_rules', [])
             tr_rows = ''
@@ -1367,7 +1393,7 @@ def unifi_sync(request, pk):
     <span class="badge bg-light text-dark ms-2">{site["client_count"]} clients connected</span>
   </div>
   <div class="card-body">
-    {devices_table}{wlans_table}{vlans_table}{fw_table}{tr_table}
+    {devices_table}{wlans_table}{vlans_table}{fw_table}{fp_table}{tr_table}
   </div>
 </div>'''
 
