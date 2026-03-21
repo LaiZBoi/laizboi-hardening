@@ -1327,11 +1327,11 @@ def unifi_sync(request, pk):
                 action_badge = 'bg-danger' if action == 'drop' else ('bg-warning text-dark' if action == 'reject' else 'bg-success')
                 fw_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{proto}</td><td>{src}</td><td>{dst}{(" :" + dport) if dport else ""}</td></tr>'
             if not has_legacy:
-                fw_empty = "<tr><td colspan='5' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required — configure on the UniFi connection settings.</td></tr>"
+                fw_empty = "<tr><td colspan='5' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Legacy API credentials not configured — add a username + password in the connection settings to enable firewall rule data.</td></tr>"
             elif not legacy_login_ok:
-                fw_empty = "<tr><td colspan='5' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — check username/password on the connection settings.</td></tr>"
+                fw_empty = "<tr><td colspan='5' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — verify the username and password in the connection settings are correct for this controller.</td></tr>"
             else:
-                fw_empty = "<tr><td colspan='5' class='text-muted'>No legacy firewall rules found.</td></tr>"
+                fw_empty = "<tr><td colspan='5' class='text-muted'>No firewall rules found for this site.</td></tr>"
             fw_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-fire-alt me-2"></i>Legacy Firewall Rules ({len(fw_rules)})</div>
@@ -1355,11 +1355,11 @@ def unifi_sync(request, pk):
                 action_badge = 'bg-danger' if action.upper() in ('DROP', 'REJECT', 'BLOCK') else 'bg-success'
                 fp_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{src_zone}</td><td>{dst_zone}</td></tr>'
             if not has_legacy:
-                fp_empty = "<tr><td colspan='4' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required — configure on the UniFi connection settings.</td></tr>"
+                fp_empty = "<tr><td colspan='4' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Legacy API credentials not configured — add a username + password in the connection settings to enable firewall policy data.</td></tr>"
             elif not legacy_login_ok:
-                fp_empty = "<tr><td colspan='4' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — check username/password on the connection settings.</td></tr>"
+                fp_empty = "<tr><td colspan='4' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — verify the username and password in the connection settings are correct for this controller.</td></tr>"
             else:
-                fp_empty = "<tr><td colspan='4' class='text-muted'>No firewall policies found.</td></tr>"
+                fp_empty = "<tr><td colspan='4' class='text-muted'>No firewall policies found for this site.</td></tr>"
             fp_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Firewall Policies / Zone Rules ({len(fp_rules)})</div>
@@ -1382,9 +1382,9 @@ def unifi_sync(request, pk):
                 action_badge = 'bg-danger' if action in ('BLOCK', 'REJECT') else ('bg-warning text-dark' if action == 'THROTTLE' else 'bg-success')
                 tr_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{matching}</td></tr>'
             if not has_legacy:
-                tr_empty = "<tr><td colspan='3' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Username &amp; password required — configure on the UniFi connection settings.</td></tr>"
+                tr_empty = "<tr><td colspan='3' class='text-muted small'><i class='fas fa-info-circle me-1'></i>Legacy API credentials not configured — add a username + password in the connection settings to enable traffic rule data.</td></tr>"
             elif not legacy_login_ok:
-                tr_empty = "<tr><td colspan='3' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — check username/password on the connection settings.</td></tr>"
+                tr_empty = "<tr><td colspan='3' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — verify the username and password in the connection settings are correct for this controller.</td></tr>"
             else:
                 tr_empty = "<tr><td colspan='3' class='text-muted'>No traffic rules found.</td></tr>"
             tr_table = f'''
