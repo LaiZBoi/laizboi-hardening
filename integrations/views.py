@@ -1253,14 +1253,15 @@ def unifi_sync(request, pk):
             device_rows = ''
             for d in site.get('devices', []):
                 name = html_lib.escape(d.get('name') or d.get('hostname') or '—')
-                model = html_lib.escape(d.get('model', '—'))
-                dtype = html_lib.escape(d.get('type', '—'))
+                model = html_lib.escape(d.get('model') or d.get('shortname') or '—')
+                dtype = html_lib.escape(d.get('type') or d.get('productType') or '—')
                 ip = html_lib.escape(str(d.get('ip') or d.get('ipAddress') or '—'))
                 mac = html_lib.escape(str(d.get('mac') or d.get('macAddress') or '—'))
                 serial = html_lib.escape(str(d.get('serial') or d.get('serialNumber') or d.get('serialno') or '—'))
                 firmware = html_lib.escape(str(d.get('version') or d.get('firmwareVersion') or '—'))
-                state = d.get('state', 0)
-                status_badge = '<span class="badge bg-success">Online</span>' if state == 1 else '<span class="badge bg-secondary">Offline</span>'
+                # Site Manager uses online:bool; self-hosted uses state:int (1=online)
+                is_online = d.get('online') if d.get('online') is not None else (d.get('state', 0) == 1)
+                status_badge = '<span class="badge bg-success">Online</span>' if is_online else '<span class="badge bg-secondary">Offline</span>'
                 device_rows += f'<tr><td>{name}</td><td>{dtype}</td><td>{model}</td><td>{ip}</td><td>{mac}</td><td>{serial}</td><td>{firmware}</td><td>{status_badge}</td></tr>'
 
             devices_table = f'''
@@ -1410,12 +1411,14 @@ def unifi_sync(request, pk):
 </div>'''
 
         cloud_note = ''
-        if data.get('_cloud_mode'):
-            cloud_note = '<div class="alert alert-info mb-3"><i class="fas fa-cloud me-2"></i><strong>Cloud mode:</strong> WLANs, VLANs, firewall rules and traffic rules are not available via the UniFi Site Manager cloud API.</div>'
+        if data.get('mode') == 'cloud':
+            cloud_note = '<div class="alert alert-info mb-3"><i class="fas fa-cloud me-2"></i><strong>Cloud mode (UniFi Site Manager):</strong> WLANs, VLANs, firewall rules and traffic rules are not available via the Site Manager API.</div>'
 
+        synced_by = request.user.get_full_name() or request.user.username if request.user.is_authenticated else ''
+        synced_by_html = f' by <strong>{html_lib.escape(synced_by)}</strong>' if synced_by else ''
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
-  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated <span data-utc="{now_utc}">{now_display}</span></span>
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated <span data-utc="{now_utc}">{now_display}</span>{synced_by_html}</span>
   <span class="badge bg-primary">{len(data.get("sites", []))} site(s)</span>
 </div>
 {cloud_note}{site_sections or "<p class='text-muted'>No sites found.</p>"}
@@ -1775,7 +1778,7 @@ def m365_sync(request, pk):
 
         def _build_defender():
             if not defender_alerts:
-                return ''
+                return '<div class="card mb-3"><div class="card-header"><i class="fas fa-shield-virus me-2"></i>Microsoft Defender Alerts</div><div class="card-body"><p class="text-muted mb-0"><i class="fas fa-check-circle text-success me-1"></i>No active Defender alerts found.</p></div></div>'
             if defender_alerts[0].get('_permission_error'):
                 return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>Defender Alerts</strong> — missing permission: <code>{defender_alerts[0].get("required")}</code>. Add <code>SecurityAlert.Read.All</code> to your Azure AD app registration (Application permission) and grant admin consent.</div>'
             sev_badge = {'high': 'bg-danger', 'medium': 'bg-warning text-dark', 'low': 'bg-info text-dark', 'informational': 'bg-secondary'}
@@ -1817,9 +1820,11 @@ def m365_sync(request, pk):
         sp_usage_section = _safe_section(_build_sp_usage,         'SharePoint Usage')
         defender_section = _safe_section(_build_defender,         'Defender Alerts')
 
+        m365_synced_by = request.user.get_full_name() or request.user.username if request.user.is_authenticated else ''
+        m365_synced_by_html = f' by <strong>{html_lib.escape(m365_synced_by)}</strong>' if m365_synced_by else ''
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
-  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated <span data-utc="{now_utc}">{now_display}</span></span>
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated <span data-utc="{now_utc}">{now_display}</span>{m365_synced_by_html}</span>
   <span class="badge bg-primary">Tenant: {html_lib.escape(connection.tenant_id[:8])}...</span>
 </div>
 {score_section}

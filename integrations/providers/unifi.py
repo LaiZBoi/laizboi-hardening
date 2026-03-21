@@ -387,9 +387,13 @@ class UnifiCloudProvider:
         for site in sites:
             site_id = site.get('siteId') or site.get('id') or ''
             host_id = site.get('hostId') or ''
-            site_name = site.get('name') or site.get('desc') or site_id
+            # Site Manager API stores the display name in meta.desc
+            site_name = (site.get('meta') or {}).get('desc') or site.get('name') or site.get('desc') or site_id
 
-            site_devices = [d for d in devices if d.get('siteId') == site_id or d.get('hostId') == host_id]
+            # Match devices by siteId first; fall back to hostId only when no device has siteId
+            site_devices = [d for d in devices if d.get('siteId') == site_id]
+            if not site_devices:
+                site_devices = [d for d in devices if d.get('hostId') == host_id]
             type_counts = {}
             for d in site_devices:
                 dtype = d.get('type', 'unknown')

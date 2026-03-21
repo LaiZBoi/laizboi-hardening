@@ -274,9 +274,14 @@ class TacticalRMMProvider(BaseRMMProvider):
             manufacturer = parts[0] if len(parts) > 0 else ''
             model = parts[1] if len(parts) > 1 else ''
 
-        # Get IP address
-        local_ips = raw_data.get('local_ips', [])
-        ip_address = local_ips[0] if local_ips else raw_data.get('public_ip')
+        # Get IP address — prefer private/local IP; fall back to public IP
+        local_ips = raw_data.get('local_ips') or []
+        if isinstance(local_ips, list) and local_ips:
+            ip_address = local_ips[0]
+        else:
+            # Some TRMM versions return a single string in local_ip or lan_ip
+            ip_address = (raw_data.get('local_ip') or raw_data.get('lan_ip') or
+                          raw_data.get('ip') or raw_data.get('public_ip') or '')
 
         # Parse OS type
         plat = raw_data.get('plat', '').lower()
