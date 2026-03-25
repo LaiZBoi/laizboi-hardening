@@ -194,10 +194,10 @@ h6 { font-size: 1rem; }
     min-height: 3.75rem; /* Changed from 60px to scale with browser zoom */
 }
 
-/* Prevent navbar overflow at all costs */
+/* Navbar container — flex layout that wraps instead of clipping */
 .navbar-container {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: center;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
@@ -1528,20 +1528,9 @@ nav[aria-label="breadcrumb"]:not(.card *) > .breadcrumb {
     height: 40px !important;  /* Up from 30px */
 }
 
-/* Center search bar in navbar */
 @media (min-width: 992px) {
-    .navbar-nav.ms-auto {
-        margin-left: auto !important;
-        margin-right: auto !important;
-    }
-    
-    /* Adjust spacing for centered look */
-    .navbar .container-fluid {
-        justify-content: center;
-    }
-    
     .navbar-brand {
-        margin-right: 2rem;
+        margin-right: 1rem;
     }
 }
 
