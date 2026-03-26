@@ -2,7 +2,17 @@ from django.db import migrations, models
 
 
 def _add_mode_column_if_missing(apps, schema_editor):
-    """Add mode column only if absent — idempotent for servers where it already exists."""
+    """Add mode column only if absent — idempotent for servers where it already exists.
+    No-op on fresh installs where the table doesn't exist yet (Django creates it
+    with the correct schema from the ORM state).
+    """
+    with schema_editor.connection.cursor() as cursor:
+        existing_tables = schema_editor.connection.introspection.table_names(cursor)
+
+    if 'integrations_unificonnection' not in existing_tables:
+        # Fresh install — table will be created with the column included; nothing to do.
+        return
+
     with schema_editor.connection.cursor() as cursor:
         col_names = [
             info.name
