@@ -1751,9 +1751,9 @@ def m365_sync(request, pk):
         def _build_sp_usage():
             if not sp_usage:
                 return ''
-            if sp_usage[0].get('_permission_error'):
+            if sp_usage[0].get('permission_error'):
                 return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>SharePoint Storage Usage</strong> — missing permission: <code>{sp_usage[0].get("required")}</code>. Add this to your Azure AD app registration.</div>'
-            if sp_usage[0].get('_no_sites'):
+            if sp_usage[0].get('no_sites'):
                 return '<div class="alert alert-info mb-3"><i class="fas fa-info-circle me-2"></i><strong>SharePoint Storage</strong> — no sites returned by the Graph API. Ensure admin consent has been granted for <code>Sites.Read.All</code> and that your tenant has SharePoint Online enabled.</div>'
             sp_rows = ''
             for s in sp_usage[:100]:
@@ -1781,7 +1781,7 @@ def m365_sync(request, pk):
         def _build_defender():
             if not defender_alerts:
                 return '<div class="card mb-3"><div class="card-header"><i class="fas fa-shield-virus me-2"></i>Microsoft Defender Alerts</div><div class="card-body"><p class="text-muted mb-0"><i class="fas fa-check-circle text-success me-1"></i>No active Defender alerts found.</p></div></div>'
-            if defender_alerts[0].get('_permission_error'):
+            if defender_alerts[0].get('permission_error'):
                 return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>Defender Alerts</strong> — missing permission: <code>{defender_alerts[0].get("required")}</code>. Add <code>SecurityAlert.Read.All</code> to your Azure AD app registration (Application permission) and grant admin consent.</div>'
             sev_badge = {'high': 'bg-danger', 'medium': 'bg-warning text-dark', 'low': 'bg-info text-dark', 'informational': 'bg-secondary'}
             da_rows = ''

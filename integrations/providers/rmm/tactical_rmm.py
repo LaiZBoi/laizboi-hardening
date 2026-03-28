@@ -368,21 +368,24 @@ class TacticalRMMProvider(BaseRMMProvider):
             parts = []
             for disk in disks:
                 dev = disk.get('device') or disk.get('dev', '?')
-                total = disk.get('total_gb') or disk.get('total') or 0
-                used = disk.get('used_gb') or disk.get('used') or 0
+                total_raw = disk.get('total_gb') or disk.get('total') or 0
+                used_raw = disk.get('used_gb') or disk.get('used') or 0
                 percent = disk.get('percent')
+                # total/used may be pre-formatted strings like "3.7 TB" — parse numeric prefix
                 try:
-                    total = float(total)
-                    used = float(used)
-                except (ValueError, TypeError):
+                    total = float(str(total_raw).split()[0])
+                    used = float(str(used_raw).split()[0])
+                    total_unit = str(total_raw).split()[1] if len(str(total_raw).split()) > 1 else 'GB'
+                except (ValueError, TypeError, IndexError):
                     total = 0
                     used = 0
+                    total_unit = 'GB'
                 if total:
                     if percent is not None:
                         pct = round(float(percent))
                     else:
                         pct = round(used / total * 100) if total else 0
-                    parts.append(f"{dev} {int(total)}GB ({pct}% used)")
+                    parts.append(f"{dev} {total:.1f} {total_unit} ({pct}% used)")
             storage = ', '.join(parts)
 
         # Agent notes/description

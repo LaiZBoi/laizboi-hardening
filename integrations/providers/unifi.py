@@ -184,57 +184,75 @@ class UnifiProvider:
             return []
 
     def get_traffic_rules(self, site_ref: str, site_id: str = '') -> list:
-        """Get Traffic Rules (UniFi OS 3.x+). Tries v2 API first, falls back to legacy REST.
-        Requires username/password."""
-        if not (self.username and self.password):
-            return []
-        # Try v2 API with UUID first (most reliable on OS 3.x), then short name, then legacy REST
-        paths = []
+        """Get Traffic Rules (UniFi OS 3.x+). Tries v2 API first, falls back to legacy REST."""
+        # Build path list — try UUID first, then short name, then legacy REST
+        paths_v2 = []
         if site_id:
-            paths.append(f'/proxy/network/v2/api/site/{site_id}/trafficrules')
-        paths += [
-            f'/proxy/network/v2/api/site/{site_ref}/trafficrules',
-            f'/proxy/network/api/s/{site_ref}/rest/trafficrule',
-        ]
-        for path in paths:
+            paths_v2.append(f'/proxy/network/v2/api/site/{site_id}/trafficrules')
+        paths_v2.append(f'/proxy/network/v2/api/site/{site_ref}/trafficrules')
+        paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/trafficrule']
+
+        # Try v2 paths with API key first (no username/password required)
+        for path in paths_v2:
             try:
-                raw = self._legacy_get(path)
+                raw = self._get(path)
                 items = raw if isinstance(raw, list) else raw.get('data', raw.get('trafficRules', raw.get('rules', [])))
                 if items:
-                    logger.debug(f"UniFi traffic rules found via {path}: {len(items)} items")
+                    logger.debug(f"UniFi traffic rules (API key) found via {path}: {len(items)} items")
                     return items
             except Exception as e:
-                logger.debug(f"UniFi traffic rules path {path} failed: {e}")
-                continue
+                logger.debug(f"UniFi traffic rules (API key) path {path} failed: {e}")
+
+        # Fallback: legacy session cookie auth
+        if self.username and self.password:
+            for path in paths_v2 + paths_legacy:
+                try:
+                    raw = self._legacy_get(path)
+                    items = raw if isinstance(raw, list) else raw.get('data', raw.get('trafficRules', raw.get('rules', [])))
+                    if items:
+                        logger.debug(f"UniFi traffic rules (legacy) found via {path}: {len(items)} items")
+                        return items
+                except Exception as e:
+                    logger.debug(f"UniFi traffic rules (legacy) path {path} failed: {e}")
         return []
 
     def get_firewall_policies(self, site_ref: str, site_id: str = '') -> list:
-        """Get zone-based Firewall Policies (UniFi OS 3.x+). Requires username/password.
+        """Get zone-based Firewall Policies (UniFi OS 3.x+).
         UniFi 8.x renamed the endpoint from /firewall/policies to /firewall/zone-policies."""
-        if not (self.username and self.password):
-            return []
-        paths = []
-        # Try UUID-based paths first (most reliable for v2 API)
+        paths_v2 = []
         if site_id:
-            paths.append(f'/proxy/network/v2/api/site/{site_id}/firewall/zone-policies')
-            paths.append(f'/proxy/network/v2/api/site/{site_id}/firewall/policies')
-        # Then short-name paths
-        paths += [
+            paths_v2.append(f'/proxy/network/v2/api/site/{site_id}/firewall/zone-policies')
+            paths_v2.append(f'/proxy/network/v2/api/site/{site_id}/firewall/policies')
+        paths_v2 += [
             f'/proxy/network/v2/api/site/{site_ref}/firewall/zone-policies',
             f'/proxy/network/v2/api/site/{site_ref}/firewall/policies',
-            f'/proxy/network/api/s/{site_ref}/rest/firewallpolicy',
         ]
-        for path in paths:
+        paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/firewallpolicy']
+
+        def _parse(raw):
+            return (raw if isinstance(raw, list)
+                    else raw.get('data', raw.get('policies', raw.get('zonePolicies', []))))
+
+        # Try v2 paths with API key first
+        for path in paths_v2:
             try:
-                raw = self._legacy_get(path)
-                items = (raw if isinstance(raw, list)
-                         else raw.get('data', raw.get('policies', raw.get('zonePolicies', []))))
+                items = _parse(self._get(path))
                 if items:
-                    logger.debug(f"UniFi firewall policies found via {path}: {len(items)} items")
+                    logger.debug(f"UniFi firewall policies (API key) found via {path}: {len(items)} items")
                     return items
             except Exception as e:
-                logger.debug(f"UniFi firewall policies path {path} failed: {e}")
-                continue
+                logger.debug(f"UniFi firewall policies (API key) path {path} failed: {e}")
+
+        # Fallback: legacy session cookie auth
+        if self.username and self.password:
+            for path in paths_v2 + paths_legacy:
+                try:
+                    items = _parse(self._legacy_get(path))
+                    if items:
+                        logger.debug(f"UniFi firewall policies (legacy) found via {path}: {len(items)} items")
+                        return items
+                except Exception as e:
+                    logger.debug(f"UniFi firewall policies (legacy) path {path} failed: {e}")
         return []
 
     def get_device_serials(self, site_ref: str) -> dict:
@@ -403,11 +421,17 @@ class UnifiCloudProvider:
         for site in sites:
             site_id = site.get('siteId') or site.get('id') or ''
             host_id = site.get('hostId') or ''
-            # Site Manager API stores the display name in meta.desc
-            site_name = (site.get('meta') or {}).get('desc') or site.get('name') or site.get('desc') or site_id
-            host_name = (host_map.get(host_id) or {}).get('name') or host_id
-            # When the site name is the generic "default" placeholder, use the host name instead
-            # so MSP setups (one host per client, each with a "Default" site) show the client name.
+            # Site Manager API stores the display name in meta.desc or displayName
+            meta = site.get('meta') or {}
+            site_name = (meta.get('desc') or meta.get('name') or meta.get('displayName') or
+                         site.get('displayName') or site.get('name') or
+                         site.get('desc') or site.get('description') or site_id)
+            host = host_map.get(host_id) or {}
+            host_name = (host.get('reportedState', {}).get('hostname') or
+                         host.get('name') or host.get('displayName') or
+                         host.get('hostname') or host_id)
+            # When the site name is a generic placeholder or fell through to the raw UUID,
+            # use the host name — one host per client setups will show the client's device name.
             if not site_name or site_name.strip().lower() in ('default', 'default site') or site_name == site_id:
                 site_name = host_name or site_id
 

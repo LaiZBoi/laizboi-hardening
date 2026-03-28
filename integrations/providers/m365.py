@@ -126,7 +126,7 @@ class M365Provider:
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0
             if code == 403:
-                return [{'_permission_error': True, 'required': 'Reports.Read.All'}]
+                return [{'permission_error': True, 'required': 'Reports.Read.All'}]
             logger.warning(f"M365 get_mailbox_usage failed (HTTP {code}): {e}")
             return []
         except Exception as e:
@@ -241,13 +241,13 @@ class M365Provider:
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0
             if code == 403:
-                return [{'_permission_error': True, 'required': 'Sites.Read.All'}]
+                return [{'permission_error': True, 'required': 'Sites.Read.All'}]
             return []
         except Exception as e:
             logger.warning(f"M365 get_sharepoint_usage (sites) failed: {e}")
             return []
         if not sites:
-            return [{'_permission_error': False, '_no_sites': True}]
+            return [{'permission_error': False, 'no_sites': True}]
 
         for site in sites[:50]:  # cap to avoid too many requests
             try:
@@ -277,7 +277,7 @@ class M365Provider:
             code = e.response.status_code if e.response is not None else 0
             logger.warning(f"M365 get_defender_alerts failed (HTTP {code}): {e}")
             if code == 403:
-                return [{'_permission_error': True, 'required': 'SecurityAlert.Read.All'}]
+                return [{'permission_error': True, 'required': 'SecurityAlert.Read.All'}]
             return []
         except Exception as e:
             logger.warning(f"M365 get_defender_alerts failed: {e}")
