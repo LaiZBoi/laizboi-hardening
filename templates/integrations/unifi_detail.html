@@ -8,6 +8,11 @@
         <a href="{% url 'integrations:unifi_sync' connection.pk %}" class="btn btn-success">
             <i class="fas fa-sync"></i> Sync Now
         </a>
+        {% if total_devices %}
+        <a href="{% url 'integrations:unifi_import_assets' connection.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-download"></i> Import to Assets
+        </a>
+        {% endif %}
         <a href="{% url 'integrations:unifi_test' connection.pk %}" class="btn btn-outline-info">
             <i class="fas fa-plug"></i> Test
         </a>
@@ -31,11 +36,11 @@
                     <tr><th>SSL Verify</th><td>{{ connection.verify_ssl|yesno:"Yes,No" }}</td></tr>
                     <tr><th>Active</th><td>{{ connection.is_active|yesno:"Yes,No" }}</td></tr>
                     <tr><th>Status</th><td>
-                        {% if connection.last_sync_status == 'ok' %}<span class="badge bg-success">OK</span>
-                        {% elif connection.last_sync_status == 'error' %}<span class="badge bg-danger">Error</span>
-                        {% else %}<span class="badge bg-secondary">Never synced</span>{% endif %}
+                        {% if connection.last_sync_status == 'ok' %}<span class="badge bg-success text-white">OK</span>
+                        {% elif connection.last_sync_status == 'error' %}<span class="badge bg-danger text-white">Error</span>
+                        {% else %}<span class="badge bg-secondary text-white">Never synced</span>{% endif %}
                     </td></tr>
-                    <tr><th>Last Sync</th><td>{% if connection.last_sync_at %}<span data-utc="{{ connection.last_sync_at|date:"c" }}">{{ connection.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td></tr>
+                    <tr><th>Last Sync</th><td>{% if connection.last_sync_at %}<span class="local-time" data-utc="{{ connection.last_sync_at|date:'c' }}">{{ connection.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td></tr>
                     {% if connection.last_error %}<tr><th>Last Error</th><td class="text-danger small">{{ connection.last_error }}</td></tr>{% endif %}
                 </table>
             </div>
@@ -53,23 +58,224 @@
                 {% else %}
                 <p class="text-muted">No documentation generated yet. Click <strong>Sync Now</strong> to generate.</p>
                 {% endif %}
+                {% if total_devices %}
+                <hr class="my-2">
+                <p class="mb-1 small text-muted">{{ sites|length }} site(s) &middot; {{ total_devices }} device(s) synced</p>
+                <a href="{% url 'integrations:unifi_import_assets' connection.pk %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-download me-1"></i>Import Devices to Asset Registry
+                </a>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-{% if connection.cached_data.sites %}
-<h5>Cached Data — {{ connection.cached_data.sites|length }} site(s)</h5>
-{% for site in connection.cached_data.sites %}
-<div class="card mb-3">
-    <div class="card-header">
-        <i class="fas fa-map-marker-alt me-2"></i>{{ site.name }}
-        <span class="badge bg-secondary ms-2">{{ site.client_count }} clients</span>
-        <span class="badge bg-info ms-1">{{ site.devices|length }} devices</span>
-        <span class="badge bg-primary ms-1">{{ site.wlans|length }} WLANs</span>
-        <span class="badge bg-warning text-dark ms-1">{{ site.vlans|length }} networks</span>
+{% if is_cloud %}
+<div class="alert alert-info mb-3">
+    <i class="fas fa-cloud me-2"></i><strong>Cloud mode (UniFi Site Manager):</strong>
+    WLANs, VLANs, firewall rules and traffic rules are not available via the Site Manager API.
+    Device hardware details come from the cloud inventory.
+</div>
+{% elif not has_legacy %}
+<div class="alert alert-secondary mb-3">
+    <i class="fas fa-info-circle me-2"></i>
+    Add a <strong>username + password</strong> to the connection settings to enable WLANs, VLANs, firewall rules and traffic rule data.
+</div>
+{% elif not legacy_ok %}
+<div class="alert alert-warning mb-3">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    Legacy API login failed — verify the <strong>username and password</strong> in the connection settings are correct.
+</div>
+{% endif %}
+
+{% if sites %}
+{% for site in sites %}
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-map-marker-alt me-2"></i><strong>{{ site.name }}</strong></span>
+        <div>
+            {% if site.devices %}<span class="badge bg-light text-dark me-1"><i class="fas fa-server me-1"></i>{{ site.devices|length }} devices</span>{% endif %}
+            {% if site.wlans %}<span class="badge bg-light text-dark me-1"><i class="fas fa-wifi me-1"></i>{{ site.wlans|length }} WLANs</span>{% endif %}
+            {% if site.vlans %}<span class="badge bg-light text-dark me-1"><i class="fas fa-sitemap me-1"></i>{{ site.vlans|length }} networks</span>{% endif %}
+            {% if site.client_count %}<span class="badge bg-light text-dark"><i class="fas fa-users me-1"></i>{{ site.client_count }} clients</span>{% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0">
+
+        {# Devices #}
+        {% if site.devices %}
+        <div class="px-3 pt-3 pb-0">
+            <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="fas fa-network-wired me-1"></i>Devices ({{ site.devices|length }})</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-dark">
+                    <tr><th>Name</th><th>Type</th><th>Model</th><th>IP</th><th>MAC</th><th>Firmware</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    {% for d in site.devices %}
+                    <tr>
+                        <td class="fw-semibold">{{ d.name|default:d.hostname|default:"—" }}</td>
+                        <td><span class="badge bg-secondary text-white">{{ d.productType|default:d.type|default:"—" }}</span></td>
+                        <td>{{ d.model|default:d.shortname|default:"—" }}</td>
+                        <td><code class="small">{{ d.ip|default:d.ipAddress|default:"—" }}</code></td>
+                        <td><code class="small">{{ d.mac|default:d.macAddress|default:"—" }}</code></td>
+                        <td class="small text-muted">{{ d.version|default:d.firmwareVersion|default:"—" }}</td>
+                        <td>
+                            {% if d.online or d.state == 1 %}
+                            <span class="badge bg-success text-white">Online</span>
+                            {% else %}
+                            <span class="badge bg-secondary text-white">Offline</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {# WLANs #}
+        {% if site.wlans %}
+        <div class="px-3 pt-3 pb-0">
+            <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="fas fa-wifi me-1"></i>Wireless Networks ({{ site.wlans|length }})</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-dark">
+                    <tr><th>SSID</th><th>Security</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    {% for w in site.wlans %}
+                    <tr>
+                        <td class="fw-semibold">{{ w.name }}</td>
+                        <td>{{ w.security|default:"—" }}</td>
+                        <td>{% if w.enabled %}<span class="badge bg-success text-white">Enabled</span>{% else %}<span class="badge bg-secondary text-white">Disabled</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {# VLANs #}
+        {% if site.vlans %}
+        <div class="px-3 pt-3 pb-0">
+            <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="fas fa-sitemap me-1"></i>Networks / VLANs ({{ site.vlans|length }})</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-dark">
+                    <tr><th>Name</th><th>VLAN ID</th><th>Subnet</th><th>Purpose</th></tr>
+                </thead>
+                <tbody>
+                    {% for v in site.vlans %}
+                    <tr>
+                        <td>{{ v.name }}</td>
+                        <td>{{ v.vlan|default:v.vlan_id|default:"—" }}</td>
+                        <td><code class="small">{{ v.ip_subnet|default:v.subnet|default:"—" }}</code></td>
+                        <td class="small text-muted">{{ v.purpose|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {# Firewall Policies (zone-based) #}
+        {% if not is_cloud %}
+        <div class="px-3 pt-3 pb-0">
+            <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="fas fa-shield-alt me-1"></i>Firewall Policies{% if site.firewall_policies %} ({{ site.firewall_policies|length }}){% endif %}</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-dark">
+                    <tr><th>Policy</th><th>Action</th><th>Source Zone</th><th>Dest Zone</th></tr>
+                </thead>
+                <tbody>
+                    {% if site.firewall_policies %}
+                    {% for r in site.firewall_policies %}
+                    <tr>
+                        <td>{% if r.enabled %}<i class="fas fa-check-circle text-success me-1"></i>{% else %}<i class="fas fa-times-circle text-secondary me-1"></i>{% endif %}{{ r.name|default:r.description|default:"—" }}</td>
+                        <td>
+                            {% with a=r.action|default:r.ruleAction|default:"" %}
+                            {% if "DROP" in a|upper or "BLOCK" in a|upper %}<span class="badge bg-danger text-white">{{ a }}</span>
+                            {% elif "REJECT" in a|upper %}<span class="badge bg-warning text-dark">{{ a }}</span>
+                            {% else %}<span class="badge bg-success text-white">{{ a|default:"allow" }}</span>{% endif %}
+                            {% endwith %}
+                        </td>
+                        <td class="small">{{ r.source.zone|default:r.sourceZone|default:"any" }}</td>
+                        <td class="small">{{ r.destination.zone|default:r.destinationZone|default:"any" }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% elif not has_legacy %}
+                    <tr><td colspan="4" class="text-muted small py-2"><i class="fas fa-info-circle me-1"></i>Add username + password to enable firewall policy data.</td></tr>
+                    {% elif not legacy_ok %}
+                    <tr><td colspan="4" class="text-warning small py-2"><i class="fas fa-exclamation-triangle me-1"></i>Legacy API login failed — check credentials.</td></tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted small py-2">No firewall policies found.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Traffic Rules #}
+        <div class="px-3 pt-3 pb-0">
+            <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="fas fa-traffic-light me-1"></i>Traffic Rules{% if site.traffic_rules %} ({{ site.traffic_rules|length }}){% endif %}</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-3">
+                <thead class="table-dark">
+                    <tr><th>Rule</th><th>Action</th><th>Target</th></tr>
+                </thead>
+                <tbody>
+                    {% if site.traffic_rules %}
+                    {% for r in site.traffic_rules %}
+                    <tr>
+                        <td>{% if r.enabled %}<i class="fas fa-check-circle text-success me-1"></i>{% else %}<i class="fas fa-times-circle text-secondary me-1"></i>{% endif %}{{ r.description|default:r.name|default:"—" }}</td>
+                        <td>
+                            {% with a=r.action|default:"" %}
+                            {% if a == "BLOCK" or a == "REJECT" %}<span class="badge bg-danger text-white">{{ a }}</span>
+                            {% elif a == "THROTTLE" %}<span class="badge bg-warning text-dark">{{ a }}</span>
+                            {% else %}<span class="badge bg-success text-white">{{ a|default:"allow" }}</span>{% endif %}
+                            {% endwith %}
+                        </td>
+                        <td class="small text-muted">{{ r.matching_target|default:"all" }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% elif not has_legacy %}
+                    <tr><td colspan="3" class="text-muted small py-2"><i class="fas fa-info-circle me-1"></i>Add username + password to enable traffic rule data.</td></tr>
+                    {% elif not legacy_ok %}
+                    <tr><td colspan="3" class="text-warning small py-2"><i class="fas fa-exclamation-triangle me-1"></i>Legacy API login failed — check credentials.</td></tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-muted small py-2">No traffic rules found.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
     </div>
 </div>
 {% endfor %}
+{% elif connection.last_sync_at %}
+<div class="alert alert-secondary">No sites found in last sync. Try syncing again.</div>
+{% else %}
+<div class="alert alert-info">No data yet — click <strong>Sync Now</strong> to pull data from UniFi.</div>
 {% endif %}
+
+{% endblock %}
+{% block extra_js %}
+<script>
+document.querySelectorAll('.local-time[data-utc]').forEach(el => {
+    const d = new Date(el.dataset.utc);
+    if (!isNaN(d)) {
+        el.textContent = d.getFullYear() + '-' +
+            String(d.getMonth()+1).padStart(2,'0') + '-' +
+            String(d.getDate()).padStart(2,'0') + ' ' +
+            String(d.getHours()).padStart(2,'0') + ':' +
+            String(d.getMinutes()).padStart(2,'0');
+    }
+});
+</script>
 {% endblock %}

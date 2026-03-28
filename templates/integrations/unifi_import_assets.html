@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Import UniFi Devices — {{ connection.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-download me-2"></i>Import UniFi Devices to Assets</h2>
+    <a href="{% url 'integrations:unifi_detail' connection.pk %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back
+    </a>
+</div>
+
+<div class="alert alert-info">
+    <i class="fas fa-info-circle me-2"></i>
+    The following <strong>{{ all_devices|length }}</strong> device(s) will be imported from
+    <strong>{{ connection.name }}</strong> into your asset registry.
+    Existing assets are matched by MAC address and updated; new assets are created.
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Devices to Import</strong>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-download me-1"></i>Confirm Import ({{ all_devices|length }} devices)
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Site</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Model</th>
+                            <th>IP</th>
+                            <th>MAC</th>
+                            <th>Serial</th>
+                            <th>Firmware</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in all_devices %}
+                        {% with d=item.device %}
+                        <tr>
+                            <td class="text-muted small">{{ item.site_name }}</td>
+                            <td class="fw-semibold">{{ d.name|default:d.hostname|default:"—" }}</td>
+                            <td><span class="badge bg-secondary text-white">{{ d.productType|default:d.type|default:"—" }}</span></td>
+                            <td>{{ d.model|default:d.shortname|default:"—" }}</td>
+                            <td><code class="small">{{ d.ip|default:d.ipAddress|default:"—" }}</code></td>
+                            <td><code class="small">{{ d.mac|default:d.macAddress|default:"—" }}</code></td>
+                            <td class="small text-muted">{{ d.serial|default:d.serialNumber|default:"—" }}</td>
+                            <td class="small text-muted">{{ d.version|default:d.firmwareVersion|default:"—" }}</td>
+                        </tr>
+                        {% endwith %}
+                        {% empty %}
+                        <tr><td colspan="8" class="text-muted py-3 text-center">No devices found. Sync the connection first.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if all_devices %}
+        <div class="card-footer text-end">
+            <a href="{% url 'integrations:unifi_detail' connection.pk %}" class="btn btn-outline-secondary me-2">Cancel</a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-download me-1"></i>Confirm Import
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</form>
+{% endblock %}

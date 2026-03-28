@@ -1159,7 +1159,20 @@ def unifi_detail(request, pk):
     """View UniFi connection details and cached data."""
     org = get_request_organization(request)
     connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
-    return render(request, 'integrations/unifi_detail.html', {'connection': connection})
+    data = connection.cached_data or {}
+    sites = data.get('sites', [])
+    is_cloud = data.get('mode') == 'cloud'
+    has_legacy = data.get('has_legacy_data', False)
+    legacy_ok = data.get('legacy_login_ok', False)
+    total_devices = sum(len(s.get('devices', [])) for s in sites)
+    return render(request, 'integrations/unifi_detail.html', {
+        'connection': connection,
+        'sites': sites,
+        'is_cloud': is_cloud,
+        'has_legacy': has_legacy,
+        'legacy_ok': legacy_ok,
+        'total_devices': total_devices,
+    })
 
 
 @login_required
@@ -1457,6 +1470,94 @@ def unifi_sync(request, pk):
         messages.error(request, f"Sync failed: {e}")
 
     return redirect('integrations:unifi_detail', pk=pk)
+
+
+@login_required
+@require_admin
+def unifi_import_assets(request, pk):
+    """Import UniFi devices into the asset registry."""
+    from assets.models import Asset
+    from django.core.validators import validate_ipv46_address
+
+    org = get_request_organization(request)
+    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+    data = connection.cached_data or {}
+    sites = data.get('sites', [])
+
+    # Map UniFi productType prefixes to asset types
+    _TYPE_MAP = [
+        ('uap', 'wireless_ap'),
+        ('usw', 'switch'),
+        ('udm', 'router'),
+        ('uxg', 'router'),
+        ('usg', 'firewall'),
+        ('ups', 'ups'),
+        ('ucg', 'router'),
+    ]
+
+    def _asset_type(device):
+        pt = (device.get('productType') or device.get('type') or '').lower()
+        for prefix, atype in _TYPE_MAP:
+            if pt.startswith(prefix):
+                return atype
+        return 'network_device' if 'network_device' in dict(Asset.ASSET_TYPES) else 'other'
+
+    def _clean_ip(raw):
+        try:
+            validate_ipv46_address(raw)
+            return raw
+        except Exception:
+            return ''
+
+    # Build flat device list with site context
+    all_devices = []
+    for site in sites:
+        for d in site.get('devices', []):
+            all_devices.append({'site_name': site.get('name', ''), 'device': d})
+
+    if request.method == 'POST':
+        created = updated = skipped = 0
+        for item in all_devices:
+            d = item['device']
+            mac = (d.get('mac') or d.get('macAddress') or '').lower().replace('-', ':')
+            name = d.get('name') or d.get('hostname') or mac or 'Unknown Device'
+            ip_raw = _clean_ip(d.get('ip') or d.get('ipAddress') or '')
+
+            fields = {
+                'name': name,
+                'asset_type': _asset_type(d),
+                'model': d.get('model') or d.get('shortname') or '',
+                'serial_number': d.get('serial') or d.get('serialNumber') or d.get('serialno') or '',
+                'hostname': d.get('hostname') or '',
+                'mac_address': mac,
+                'os_version': d.get('version') or d.get('firmwareVersion') or '',
+            }
+            if ip_raw:
+                fields['ip_address'] = ip_raw
+
+            existing = Asset.objects.filter(organization=org, mac_address__iexact=mac).first() if mac else None
+            if existing:
+                changed = False
+                for k, v in fields.items():
+                    if v and getattr(existing, k, '') != v:
+                        setattr(existing, k, v)
+                        changed = True
+                if changed:
+                    existing.save()
+                    updated += 1
+                else:
+                    skipped += 1
+            else:
+                Asset.objects.create(organization=org, **{k: v for k, v in fields.items() if v})
+                created += 1
+
+        messages.success(request, f"Import complete: {created} created, {updated} updated, {skipped} unchanged.")
+        return redirect('integrations:unifi_detail', pk=pk)
+
+    return render(request, 'integrations/unifi_import_assets.html', {
+        'connection': connection,
+        'all_devices': all_devices,
+    })
 
 
 # ============================================================================
