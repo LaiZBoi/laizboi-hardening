@@ -122,6 +122,10 @@ class M365Provider:
         try:
             resp = self._get('/reports/getMailboxUsageDetail(period=\'D7\')',
                              params={'$format': 'application/json'})
+            # Graph reports API may redirect and return a raw JSON array rather
+            # than the usual {"value": [...]} envelope.
+            if isinstance(resp, list):
+                return resp
             return resp.get('value', [])
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0

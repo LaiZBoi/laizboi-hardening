@@ -172,9 +172,9 @@
                     {% for v in site.vlans %}
                     <tr>
                         <td>{{ v.name }}</td>
-                        <td>{{ v.vlan|default:v.vlan_id|default:"—" }}</td>
-                        <td><code class="small">{{ v.ip_subnet|default:v.subnet|default:"—" }}</code></td>
-                        <td class="small text-muted">{{ v.purpose|default:"—" }}</td>
+                        <td>{{ v.vlan_id }}</td>
+                        <td><code class="small">{{ v.subnet }}</code></td>
+                        <td class="small text-muted">{{ v.purpose }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

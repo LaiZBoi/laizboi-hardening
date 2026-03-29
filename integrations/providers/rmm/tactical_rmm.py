@@ -297,7 +297,8 @@ class TacticalRMMProvider(BaseRMMProvider):
         # Get IP address — prefer private/local IP; fall back to public IP
         # Also scan nics (network interfaces) for IP and MAC data
         nics = raw_data.get('nics') or []
-        mac_address = ''
+        # Top-level mac_address field takes precedence over nics[]
+        mac_address = raw_data.get('mac_address') or raw_data.get('mac') or ''
         nic_ips = []
         for nic in nics:
             if not mac_address:
@@ -313,11 +314,17 @@ class TacticalRMMProvider(BaseRMMProvider):
             elif isinstance(nic_ip_list, str) and nic_ip_list:
                 nic_ips.append(nic_ip_list)
 
-        local_ips = raw_data.get('local_ips') or nic_ips or []
-        # Filter out link-local and loopback from local_ips list too
-        if isinstance(local_ips, list):
-            local_ips = [ip for ip in local_ips
-                         if str(ip) and not str(ip).startswith('169.254') and not str(ip).startswith('127.')]
+        raw_local_ips = raw_data.get('local_ips') or nic_ips or []
+        # Normalise to a list — TRMM sometimes returns a comma-separated string
+        if isinstance(raw_local_ips, str):
+            local_ips = [ip.strip() for ip in raw_local_ips.replace(';', ',').split(',') if ip.strip()]
+        elif isinstance(raw_local_ips, list):
+            local_ips = [str(ip).strip() for ip in raw_local_ips if str(ip).strip()]
+        else:
+            local_ips = []
+        # Filter out link-local and loopback
+        local_ips = [ip for ip in local_ips
+                     if not ip.startswith('169.254') and not ip.startswith('127.')]
 
         if local_ips:
             ip_address = local_ips[0]

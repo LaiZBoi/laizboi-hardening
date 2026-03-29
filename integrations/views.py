@@ -1177,13 +1177,22 @@ def unifi_detail(request, pk):
             'online': bool(d.get('online')) or d.get('state') == 1,
         }
 
+    def _norm_vlan(v):
+        """Flatten VLAN dict to safe, consistent keys for template rendering."""
+        return {
+            'name': v.get('name') or v.get('desc') or '—',
+            'vlan_id': v.get('vlan_id') or v.get('vlan') or v.get('vlanId') or '—',
+            'subnet': v.get('ip_subnet') or v.get('subnet') or v.get('ipSubnet') or '—',
+            'purpose': v.get('purpose') or '—',
+        }
+
     sites = []
     for s in data.get('sites', []):
         sites.append({
             'name': s.get('name', ''),
             'devices': [_norm_device(d) for d in s.get('devices', [])],
             'wlans': s.get('wlans', []),
-            'vlans': s.get('vlans', []),
+            'vlans': [_norm_vlan(v) for v in s.get('vlans', [])],
             'firewall_policies': s.get('firewall_policies', []),
             'traffic_rules': s.get('traffic_rules', []),
             'client_count': s.get('client_count', 0),
@@ -1456,7 +1465,7 @@ def unifi_sync(request, pk):
         synced_by_html = f' by <strong>{html_lib.escape(synced_by)}</strong>' if synced_by else ''
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
-  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated <span data-utc="{now_utc}">{now_display}</span>{synced_by_html}</span>
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from UniFi — last updated <span class="local-time" data-utc="{now_utc}">{now_display}</span>{synced_by_html}</span>
   <span class="badge bg-primary">{len(data.get("sites", []))} site(s)</span>
 </div>
 {cloud_note}{site_sections or "<p class='text-muted'>No sites found.</p>"}
@@ -1960,7 +1969,7 @@ def m365_sync(request, pk):
         m365_synced_by_html = f' by <strong>{html_lib.escape(m365_synced_by)}</strong>' if m365_synced_by else ''
         content = f'''<div class="container-fluid p-0">
 <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-3">
-  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated <span data-utc="{now_utc}">{now_display}</span>{m365_synced_by_html}</span>
+  <span><i class="fas fa-info-circle me-2"></i>Auto-generated from Microsoft 365 \u2014 last updated <span class="local-time" data-utc="{now_utc}">{now_display}</span>{m365_synced_by_html}</span>
   <span class="badge bg-primary">Tenant: {html_lib.escape(connection.tenant_id[:8])}...</span>
 </div>
 {score_section}
