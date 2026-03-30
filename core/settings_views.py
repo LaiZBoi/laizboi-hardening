@@ -589,13 +589,13 @@ def system_status(request):
 
         # Check PSA Sync - check if scheduled task exists and is enabled
         psa_task = ScheduledTask.objects.filter(
-            task_name__in=['psa_sync_contacts', 'psa_sync']
+            task_type='psa_sync'
         ).first()
         services_status['psa_sync'] = psa_task.enabled if psa_task else False
 
         # Check Monitor - check if scheduled task exists and is enabled
         monitor_task = ScheduledTask.objects.filter(
-            task_name='monitor_check'
+            task_type='website_monitoring'
         ).first()
         services_status['monitor'] = monitor_task.enabled if monitor_task else False
 
