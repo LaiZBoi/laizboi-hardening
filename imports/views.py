@@ -40,7 +40,11 @@ def import_create(request):
             job.started_by = request.user
             job.save()
 
-            messages.success(request, f'Import job created. Review settings and click "Start Import" to begin.')
+            if job.source_type == 'csv':
+                messages.success(request, 'CSV file uploaded. Now map your columns to the target fields.')
+                return redirect('imports:import_map_fields', pk=job.pk)
+
+            messages.success(request, 'Import job created. Review settings and click "Start Import" to begin.')
             return redirect('imports:import_detail', pk=job.pk)
     else:
         form = ImportJobForm(user=request.user)
@@ -211,4 +215,65 @@ def import_log(request, pk):
 
     return render(request, 'imports/import_log.html', {
         'job': job,
+    })
+
+
+@login_required
+@user_passes_test(is_staff_or_superuser)
+def import_map_fields(request, pk):
+    """
+    CSV field mapper: let user map source columns to target model fields.
+    On GET: shows columns from uploaded CSV with dropdowns for each.
+    On POST: saves field_mappings and csv_target_model to the job.
+    """
+    from .services.csv_importer import TARGET_FIELDS, read_csv_preview
+
+    job = get_object_or_404(ImportJob, pk=pk)
+
+    if job.source_type != 'csv':
+        messages.error(request, 'Field mapping is only available for CSV imports.')
+        return redirect('imports:import_detail', pk=job.pk)
+
+    if not job.source_file:
+        messages.error(request, 'No file attached to this import job.')
+        return redirect('imports:import_edit', pk=job.pk)
+
+    try:
+        headers, preview_rows = read_csv_preview(job.source_file)
+    except Exception as e:
+        messages.error(request, f'Could not read CSV file: {e}')
+        return redirect('imports:import_detail', pk=job.pk)
+
+    if request.method == 'POST':
+        target_model = request.POST.get('csv_target_model', '')
+        if not target_model or target_model not in TARGET_FIELDS:
+            messages.error(request, 'Please select a target data type.')
+            return redirect('imports:import_map_fields', pk=job.pk)
+
+        # Build field_mappings from POST: mapping_{col_index} = target_field
+        mappings = {}
+        for i, header in enumerate(headers):
+            tgt = request.POST.get(f'mapping_{i}', '__skip__')
+            if tgt and tgt != '__skip__':
+                mappings[header] = tgt
+            else:
+                mappings[header] = '__skip__'
+
+        job.csv_target_model = target_model
+        job.field_mappings = mappings
+        job.save(update_fields=['csv_target_model', 'field_mappings'])
+
+        messages.success(request, 'Field mappings saved. Review and click "Start Import" when ready.')
+        return redirect('imports:import_detail', pk=job.pk)
+
+    # Precompute preview as list of lists for easy template iteration (no custom filter needed)
+    preview_table = [[row.get(h, '') for h in headers] for row in preview_rows]
+
+    return render(request, 'imports/import_map_fields.html', {
+        'job': job,
+        'headers': headers,
+        'preview_table': preview_table,
+        'target_fields': TARGET_FIELDS,
+        'current_target_model': job.csv_target_model or 'asset',
+        'current_mappings': job.field_mappings or {},
     })

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Auto-backup rules (Android 6–11, android:fullBackupContent).
+    Exclude ephemeral cache; include DataStore preferences so that user
+    settings survive device migrations.
+-->
+<full-backup-content>
+    <exclude domain="cache"          path="." />
+    <exclude domain="external-cache" path="." />
+    <include domain="database"       path="." />
+    <include domain="sharedpref"     path="." />
+</full-backup-content>

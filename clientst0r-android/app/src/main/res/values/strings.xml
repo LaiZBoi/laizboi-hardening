@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">ClientSt0r</string>
+
+    <!-- FCM notification channels -->
+    <string name="default_notification_channel_id">clientst0r_default</string>
+    <string name="notification_channel_name">ClientSt0r Notifications</string>
+    <string name="notification_channel_description">General notifications from ClientSt0r</string>
+
+    <!-- Digital Asset Links
+         Replace YOUR_SHA256_CERT_FINGERPRINT with the SHA-256 fingerprint
+         of your release signing certificate:
+           keytool -list -v -keystore release.jks -alias your-key-alias -->
+    <string name="asset_statements" translatable="false">
+        [{
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+            \"target\": {
+                \"namespace\": \"android_app\",
+                \"package_name\": \"app.clientst0r\",
+                \"sha256_cert_fingerprints\": [\"YOUR_SHA256_CERT_FINGERPRINT\"]
+            }
+        }]
+    </string>
+
+</resources>

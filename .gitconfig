@@ -1,0 +1,5 @@
+[credential]
+	helper = \\!gh auth git-credential
+[user]
+	name = Luna the GSD
+	email = agit8or@agit8or.net

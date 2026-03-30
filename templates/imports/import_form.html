@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}{{ action }} Import Job - {{ block.super }}{% endblock %}
+{% block title %}{{ action }} Import Job — {{ block.super }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-3">
         <div class="col-md-12">
-            <h1><i class="fas fa-download"></i> {{ action }} Import Job</h1>
+            <h1><i class="fas fa-file-import"></i> {{ action }} Import Job</h1>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="{% url 'imports:import_list' %}">Import Jobs</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'imports:import_list' %}">Data Import</a></li>
                     <li class="breadcrumb-item active">{{ action }}</li>
                 </ol>
             </nav>
@@ -20,153 +20,113 @@
     <div class="row">
         <div class="col-md-8">
             <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Import Configuration</h5>
-                </div>
+                <div class="card-header"><h5 class="mb-0">Import Configuration</h5></div>
                 <div class="card-body">
-                    <form method="post" enctype="multipart/form-data">
+                    <form method="post" enctype="multipart/form-data" id="importForm">
                         {% csrf_token %}
 
                         {% if form.non_field_errors %}
-                        <div class="alert alert-danger">
-                            {{ form.non_field_errors }}
-                        </div>
+                        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
                         {% endif %}
 
+                        <!-- Source type -->
                         <div class="mb-3">
-                            <label for="{{ form.source_type.id_for_label }}" class="form-label">
-                                Source Type <span class="text-danger">*</span>
-                            </label>
+                            <label class="form-label">Source Type <span class="text-danger">*</span></label>
                             {{ form.source_type }}
-                            {% if form.source_type.errors %}
-                            <div class="text-danger">{{ form.source_type.errors }}</div>
-                            {% endif %}
-                            <small class="form-text text-muted">{{ form.source_type.help_text }}</small>
+                            {% if form.source_type.errors %}<div class="text-danger">{{ form.source_type.errors }}</div>{% endif %}
                         </div>
 
-                        <div class="mb-3">
-                            <label for="{{ form.source_url.id_for_label }}" class="form-label">
-                                Source URL <span class="text-danger">*</span>
-                            </label>
-                            {{ form.source_url }}
-                            {% if form.source_url.errors %}
-                            <div class="text-danger">{{ form.source_url.errors }}</div>
-                            {% endif %}
-                            <small class="form-text text-muted">{{ form.source_url.help_text }}</small>
+                        <!-- API fields (IT Glue / Hudu) -->
+                        <div id="apiFields">
+                            <div class="mb-3">
+                                <label class="form-label">Source URL <span class="text-danger">*</span></label>
+                                {{ form.source_url }}
+                                {% if form.source_url.errors %}<div class="text-danger">{{ form.source_url.errors }}</div>{% endif %}
+                                <small class="form-text text-muted">{{ form.source_url.help_text }}</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">API Key <span class="text-danger">*</span></label>
+                                {{ form.source_api_key }}
+                                {% if form.source_api_key.errors %}<div class="text-danger">{{ form.source_api_key.errors }}</div>{% endif %}
+                            </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label for="{{ form.source_api_key.id_for_label }}" class="form-label">
-                                API Key <span class="text-danger">*</span>
-                            </label>
-                            {{ form.source_api_key }}
-                            {% if form.source_api_key.errors %}
-                            <div class="text-danger">{{ form.source_api_key.errors }}</div>
-                            {% endif %}
-                            <small class="form-text text-muted">{{ form.source_api_key.help_text }}</small>
+                        <!-- File upload (CSV / MagicPlan) -->
+                        <div id="fileField" class="mb-3" style="display:none">
+                            <label class="form-label">Upload File <span class="text-danger">*</span></label>
+                            {{ form.source_file }}
+                            {% if form.source_file.errors %}<div class="text-danger">{{ form.source_file.errors }}</div>{% endif %}
+                            <small id="fileHint" class="form-text text-muted"></small>
                         </div>
 
+                        <!-- Target organization -->
                         <div class="mb-3">
-                            <label for="{{ form.target_organization.id_for_label }}" class="form-label">
-                                Target Organization <span class="badge bg-secondary">Optional</span>
-                            </label>
+                            <label class="form-label" id="orgLabel">Target Organization <span class="badge bg-secondary" id="orgBadge">Optional</span></label>
                             {{ form.target_organization }}
-                            {% if form.target_organization.errors %}
-                            <div class="text-danger">{{ form.target_organization.errors }}</div>
-                            {% endif %}
-                            <small class="form-text text-muted">{{ form.target_organization.help_text }}</small>
+                            {% if form.target_organization.errors %}<div class="text-danger">{{ form.target_organization.errors }}</div>{% endif %}
+                            <small class="form-text text-muted" id="orgHint">{{ form.target_organization.help_text }}</small>
                         </div>
 
-                        <div class="alert alert-info">
-                            <i class="fas fa-magic"></i>
-                            <strong>Automatic Organization Matching:</strong> Leave "Target Organization" blank and enable fuzzy matching below.
-                            The system will automatically match imported companies to your existing organizations by name similarity.
+                        <!-- Fuzzy matching (not for CSV/MagicPlan) -->
+                        <div id="fuzzySection">
+                            <div class="alert alert-info small mb-3">
+                                <i class="fas fa-magic"></i>
+                                <strong>Automatic Organization Matching:</strong> Leave Target Organization blank and enable fuzzy matching.
+                                The system will match imported companies to existing organizations by name similarity.
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.use_fuzzy_matching }}
+                                <label class="form-check-label" for="{{ form.use_fuzzy_matching.id_for_label }}"><strong>Enable Fuzzy Matching</strong></label>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Match Threshold (%)</label>
+                                {{ form.fuzzy_match_threshold }}
+                                {% if form.fuzzy_match_threshold.errors %}<div class="text-danger">{{ form.fuzzy_match_threshold.errors }}</div>{% endif %}
+                                <small class="form-text text-muted">{{ form.fuzzy_match_threshold.help_text }}</small>
+                            </div>
                         </div>
 
-                        <hr>
-
-                        <h6 class="mb-3">Fuzzy Matching Options</h6>
-
-                        <div class="form-check mb-3">
-                            {{ form.use_fuzzy_matching }}
-                            <label class="form-check-label" for="{{ form.use_fuzzy_matching.id_for_label }}">
-                                <strong>Enable Fuzzy Matching</strong>
-                            </label>
-                            <br>
-                            <small class="form-text text-muted">{{ form.use_fuzzy_matching.help_text }}</small>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="{{ form.fuzzy_match_threshold.id_for_label }}" class="form-label">
-                                Match Threshold (%)
-                            </label>
-                            {{ form.fuzzy_match_threshold }}
-                            {% if form.fuzzy_match_threshold.errors %}
-                            <div class="text-danger">{{ form.fuzzy_match_threshold.errors }}</div>
-                            {% endif %}
-                            <small class="form-text text-muted">{{ form.fuzzy_match_threshold.help_text }}</small>
-                        </div>
-
-                        <hr>
-
-                        <h6 class="mb-3">Data Types to Import</h6>
-
-                        <div class="form-check mb-2">
-                            {{ form.import_assets }}
-                            <label class="form-check-label" for="{{ form.import_assets.id_for_label }}">
-                                Import Assets/Configuration Items
-                            </label>
-                        </div>
-
-                        <div class="form-check mb-2">
-                            {{ form.import_passwords }}
-                            <label class="form-check-label" for="{{ form.import_passwords.id_for_label }}">
-                                Import Passwords
-                            </label>
-                        </div>
-
-                        <div class="form-check mb-2">
-                            {{ form.import_documents }}
-                            <label class="form-check-label" for="{{ form.import_documents.id_for_label }}">
-                                Import Documents/Articles
-                            </label>
-                        </div>
-
-                        <div class="form-check mb-2">
-                            {{ form.import_contacts }}
-                            <label class="form-check-label" for="{{ form.import_contacts.id_for_label }}">
-                                Import Contacts
-                            </label>
-                        </div>
-
-                        <div class="form-check mb-2">
-                            {{ form.import_locations }}
-                            <label class="form-check-label" for="{{ form.import_locations.id_for_label }}">
-                                Import Locations
-                            </label>
-                        </div>
-
-                        <div class="form-check mb-2">
-                            {{ form.import_networks }}
-                            <label class="form-check-label" for="{{ form.import_networks.id_for_label }}">
-                                Import Networks
-                            </label>
+                        <!-- Data type checkboxes (not for CSV — those come from field mapper) -->
+                        <div id="dataTypeSection">
+                            <hr>
+                            <h6 class="mb-3">Data Types to Import</h6>
+                            <div class="form-check mb-2">
+                                {{ form.import_assets }}
+                                <label class="form-check-label" for="{{ form.import_assets.id_for_label }}">Assets / Configuration Items</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.import_passwords }}
+                                <label class="form-check-label" for="{{ form.import_passwords.id_for_label }}">Passwords</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.import_documents }}
+                                <label class="form-check-label" for="{{ form.import_documents.id_for_label }}">Documents / Articles</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.import_contacts }}
+                                <label class="form-check-label" for="{{ form.import_contacts.id_for_label }}">Contacts</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.import_locations }}
+                                <label class="form-check-label" for="{{ form.import_locations.id_for_label }}">Locations</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.import_networks }}
+                                <label class="form-check-label" for="{{ form.import_networks.id_for_label }}">Networks</label>
+                            </div>
                         </div>
 
                         <hr>
-
                         <div class="form-check mb-3">
                             {{ form.dry_run }}
-                            <label class="form-check-label" for="{{ form.dry_run.id_for_label }}">
-                                <strong>Dry Run (Preview Only)</strong>
-                            </label>
-                            <br>
-                            <small class="form-text text-muted">{{ form.dry_run.help_text }}</small>
+                            <label class="form-check-label" for="{{ form.dry_run.id_for_label }}"><strong>Dry Run (Preview Only)</strong></label>
+                            <br><small class="form-text text-muted">{{ form.dry_run.help_text }}</small>
                         </div>
 
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save"></i> Save Import Job
+                                <i class="fas fa-save"></i>
+                                <span id="submitLabel">Save Import Job</span>
                             </button>
                             <a href="{% url 'imports:import_list' %}" class="btn btn-secondary">
                                 <i class="fas fa-times"></i> Cancel
@@ -179,59 +139,89 @@
 
         <div class="col-md-4">
             <div class="card">
-                <div class="card-header">
-                    <h6 class="mb-0"><i class="fas fa-info-circle"></i> Import Information</h6>
-                </div>
-                <div class="card-body">
-                    <h6>IT Glue</h6>
-                    <p class="small">
-                        Import data from IT Glue documentation platform. Supports assets, passwords,
-                        documents, contacts, and locations.
-                    </p>
-                    <p class="small">
-                        <strong>API URL:</strong> <code>https://api.itglue.com</code>
-                    </p>
-                    <p class="small">
-                        <a href="https://api.itglue.com/developer/" target="_blank">
-                            <i class="fas fa-external-link-alt"></i> IT Glue API Documentation
-                        </a>
-                    </p>
-
-                    <hr>
-
-                    <h6>Hudu</h6>
-                    <p class="small">
-                        Import data from Hudu documentation platform. Supports assets, passwords,
-                        articles, and companies.
-                    </p>
-                    <p class="small">
-                        <strong>API URL:</strong> <code>https://your-hudu.com</code>
-                    </p>
-                    <p class="small">
-                        <a href="https://github.com/hudu-team/hudu-api-docs" target="_blank">
-                            <i class="fas fa-external-link-alt"></i> Hudu API Documentation
-                        </a>
-                    </p>
-
-                    <hr>
-
-                    <h6>Import Process</h6>
-                    <ol class="small">
-                        <li>Configure source and target settings</li>
-                        <li>Select data types to import</li>
-                        <li>Run as dry run first to preview</li>
-                        <li>Review results and adjust settings</li>
-                        <li>Run actual import</li>
-                    </ol>
-
-                    <div class="alert alert-warning small">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <strong>Recommendation:</strong> Always run a dry run first to preview
-                        what will be imported without actually saving any data.
+                <div class="card-header"><h6 class="mb-0"><i class="fas fa-info-circle"></i> Source Information</h6></div>
+                <div class="card-body small" id="sourceInfo">
+                    <div id="info-itglue">
+                        <h6>IT Glue</h6>
+                        <p>Full migration from IT Glue. Supports assets, passwords, documents, contacts, and locations.</p>
+                        <p><strong>API URL:</strong> <code>https://api.itglue.com</code></p>
                     </div>
+                    <div id="info-hudu" style="display:none">
+                        <h6>Hudu</h6>
+                        <p>Full migration from Hudu. Supports assets, passwords, articles, and companies.</p>
+                        <p><strong>API URL:</strong> <code>https://your-hudu.com</code></p>
+                    </div>
+                    <div id="info-csv" style="display:none">
+                        <h6>CSV / Spreadsheet</h6>
+                        <p>Import any data from a CSV or TSV file. After uploading you'll map each column to the target field.</p>
+                        <p>Supports: <strong>Assets, Passwords, Contacts, Documents</strong></p>
+                        <p class="text-muted">Export from Excel as CSV (UTF-8) for best results.</p>
+                    </div>
+                    <div id="info-magicplan" style="display:none">
+                        <h6>MagicPlan</h6>
+                        <p>Import floor plans from a MagicPlan JSON export file.</p>
+                    </div>
+                    <hr>
+                    <h6>Process</h6>
+                    <ol class="mb-0 ps-3">
+                        <li>Configure source &amp; target</li>
+                        <li id="step2">Select data types</li>
+                        <li>Enable <strong>Dry Run</strong> first</li>
+                        <li>Review results, then run for real</li>
+                    </ol>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+const sourceSelect = document.getElementById('{{ form.source_type.id_for_label }}');
+const apiFields = document.getElementById('apiFields');
+const fileField = document.getElementById('fileField');
+const fileHint = document.getElementById('fileHint');
+const fuzzySection = document.getElementById('fuzzySection');
+const dataTypeSection = document.getElementById('dataTypeSection');
+const orgBadge = document.getElementById('orgBadge');
+const submitLabel = document.getElementById('submitLabel');
+
+function updateForm() {
+    const val = sourceSelect.value;
+    // Info panels
+    ['itglue','hudu','csv','magicplan'].forEach(k => {
+        document.getElementById('info-' + k).style.display = (k === val) ? '' : 'none';
+    });
+
+    if (val === 'csv') {
+        apiFields.style.display = 'none';
+        fileField.style.display = '';
+        fileHint.textContent = 'Upload a CSV or TSV file. Column mapping happens in the next step.';
+        fuzzySection.style.display = 'none';
+        dataTypeSection.style.display = 'none';
+        orgBadge.textContent = 'Required';
+        orgBadge.className = 'badge bg-danger';
+        submitLabel.textContent = 'Upload & Map Fields →';
+    } else if (val === 'magicplan') {
+        apiFields.style.display = 'none';
+        fileField.style.display = '';
+        fileHint.textContent = 'Upload a MagicPlan JSON export file.';
+        fuzzySection.style.display = 'none';
+        dataTypeSection.style.display = 'none';
+        orgBadge.textContent = 'Required';
+        orgBadge.className = 'badge bg-danger';
+        submitLabel.textContent = 'Save Import Job';
+    } else {
+        apiFields.style.display = '';
+        fileField.style.display = 'none';
+        fuzzySection.style.display = '';
+        dataTypeSection.style.display = '';
+        orgBadge.textContent = 'Optional';
+        orgBadge.className = 'badge bg-secondary';
+        submitLabel.textContent = 'Save Import Job';
+    }
+}
+
+sourceSelect.addEventListener('change', updateForm);
+updateForm();
+</script>
 {% endblock %}

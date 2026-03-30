@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-build string overrides.
+    The app name gets a "(debug)" suffix so debug and release APKs can
+    coexist on the same device (different applicationId suffix keeps them
+    separate; the label makes it obvious which one you are looking at).
+-->
+<resources>
+    <string name="app_name">ClientSt0r (debug)</string>
+</resources>

@@ -1,0 +1,18 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Release signing — never commit these
+keystore.properties
+*.jks
+*.keystore
+
+# Firebase — replace with your own
+/app/google-services.json

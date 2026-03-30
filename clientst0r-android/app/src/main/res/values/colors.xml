@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Primary brand palette — deep navy / electric blue -->
+    <color name="colorPrimary">#1E3A5F</color>
+    <color name="colorPrimaryDark">#152B47</color>
+    <color name="colorAccent">#4A9EFF</color>
+
+    <!-- Splash screen background (shown while the TWA loads) -->
+    <color name="splashBackground">#0F1D2E</color>
+
+</resources>

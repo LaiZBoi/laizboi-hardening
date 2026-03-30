@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Splash-screen icon (windowSplashScreenAnimatedIcon).
+    Shown centred on the splash background (#0F1D2E).
+    Recommended size: 288dp × 288dp but displayed at ~160dp effective size.
+    Must be a non-adaptive drawable on Android 12+.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+
+    <!-- Background circle -->
+    <path
+        android:fillColor="#1E3A5F"
+        android:pathData="
+            M144,40
+            m-104,0
+            a104,104 0 1,0 208,0
+            a104,104 0 1,0 -208,0" />
+
+    <!-- Outer ring accent -->
+    <path
+        android:strokeColor="#4A9EFF"
+        android:strokeWidth="6"
+        android:fillColor="#00000000"
+        android:pathData="
+            M144,44
+            m-100,0
+            a100,100 0 1,0 200,0
+            a100,100 0 1,0 -200,0" />
+
+    <!-- "C" letterform -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+            M172,84
+            C138,74 100,92 90,126
+            C80,160 100,196 136,208
+            C154,214 172,210 186,200
+            L178,185
+            C167,193 152,196 138,190
+            C114,182 102,158 110,134
+            C118,110 144,98 168,106
+            Z" />
+
+</vector>

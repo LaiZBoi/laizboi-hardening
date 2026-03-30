@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive icon foreground layer.
+    Draws a stylised "C" (for ClientSt0r) in electric-blue on a transparent
+    background.  The safe zone for adaptive icons is the inner 66dp × 66dp
+    (viewport 72×72 centred in 108×108).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer ring -->
+    <path
+        android:strokeColor="#4A9EFF"
+        android:strokeWidth="5"
+        android:fillColor="#00000000"
+        android:pathData="
+            M54,22
+            m-32,0
+            a32,32 0 1,0 64,0
+            a32,32 0 1,0 -64,0" />
+
+    <!-- "C" letterform — open arc on the right side -->
+    <path
+        android:fillColor="#4A9EFF"
+        android:pathData="
+            M66,32
+            C50,28 34,38 34,54
+            C34,70 50,80 66,76
+            L66,69
+            C54,72 42,64 42,54
+            C42,44 54,36 66,39
+            Z" />
+
+</vector>

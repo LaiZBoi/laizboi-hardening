@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Map Fields — {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h1><i class="fas fa-columns"></i> Map CSV Fields</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'imports:import_list' %}">Data Import</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'imports:import_detail' job.pk %}">#{{ job.pk }}</a></li>
+                    <li class="breadcrumb-item active">Map Fields</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <form method="post" id="mapForm">
+        {% csrf_token %}
+
+        <div class="row g-3">
+            <!-- Left: target model + column mapper -->
+            <div class="col-lg-8">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">1. Select Target Data Type</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            {% for key, fields in target_fields.items %}
+                            <div class="col-6 col-md-3">
+                                <input type="radio" class="btn-check" name="csv_target_model"
+                                       id="target_{{ key }}" value="{{ key }}"
+                                       {% if current_target_model == key %}checked{% endif %}>
+                                <label class="btn btn-outline-primary w-100 text-center py-3" for="target_{{ key }}">
+                                    {% if key == 'asset' %}<i class="fas fa-laptop-code d-block fs-4 mb-1"></i> Assets
+                                    {% elif key == 'password' %}<i class="fas fa-lock d-block fs-4 mb-1"></i> Passwords
+                                    {% elif key == 'contact' %}<i class="fas fa-address-card d-block fs-4 mb-1"></i> Contacts
+                                    {% elif key == 'document' %}<i class="fas fa-file-alt d-block fs-4 mb-1"></i> Documents
+                                    {% endif %}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">2. Map Columns to Fields</h5>
+                        <span class="badge bg-secondary">{{ headers|length }} column{{ headers|length|pluralize }}</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:35%">CSV Column</th>
+                                        <th style="width:35%">Import As</th>
+                                        <th>Sample Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for header in headers %}
+                                    <tr>
+                                        <td><code>{{ header }}</code></td>
+                                        <td>
+                                            <select name="mapping_{{ forloop.counter0 }}"
+                                                    class="form-select form-select-sm field-mapping-select"
+                                                    data-col-index="{{ forloop.counter0 }}"
+                                                    data-col-name="{{ header }}">
+                                                <!-- Options injected by JS -->
+                                            </select>
+                                        </td>
+                                        <td class="small text-muted sample-cell" data-col-index="{{ forloop.counter0 }}">—</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: preview + tips -->
+            <div class="col-lg-4">
+                <div class="card mb-3">
+                    <div class="card-header"><h6 class="mb-0"><i class="fas fa-table"></i> Data Preview (first 5 rows)</h6></div>
+                    <div class="card-body p-0" style="overflow-x:auto; max-height:250px">
+                        {% if preview_table %}
+                        <table class="table table-sm table-bordered mb-0 small">
+                            <thead class="table-light sticky-top">
+                                <tr>{% for h in headers %}<th class="text-truncate" style="max-width:90px" title="{{ h }}">{{ h }}</th>{% endfor %}</tr>
+                            </thead>
+                            <tbody>
+                                {% for row in preview_table %}
+                                <tr>
+                                    {% for cell in row %}
+                                    <td class="text-truncate" style="max-width:90px" title="{{ cell }}">{{ cell|default:"" }}</td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% else %}
+                        <p class="text-muted p-3 mb-0">No data rows found.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header"><h6 class="mb-0"><i class="fas fa-info-circle"></i> Tips</h6></div>
+                    <div class="card-body small">
+                        <ul class="mb-0 ps-3">
+                            <li>Map the <strong>required</strong> field — rows without it are skipped.</li>
+                            <li>Use <em>Skip this column</em> for columns you don't need.</li>
+                            <li>Enable <strong>Dry Run</strong> to preview without saving.</li>
+                            <li>You can re-open this page to adjust mappings before running.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Mappings &amp; Continue
+                    </button>
+                    <a href="{% url 'imports:import_detail' job.pk %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Back to Job
+                    </a>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+// Populate sample cells from first preview row
+const PREVIEW_ROW = [{% if preview_table %}{% for cell in preview_table.0 %}"{{ cell|escapejs }}",{% endfor %}{% endif %}];
+document.querySelectorAll('.sample-cell').forEach(td => {
+    const idx = parseInt(td.dataset.colIndex);
+    td.textContent = PREVIEW_ROW[idx] || '—';
+});
+
+const TARGET_FIELDS = {
+    {% for key, fields in target_fields.items %}"{{ key }}": [{% for fkey, flabel in fields.items %}["{{ fkey }}", "{{ flabel|escapejs }}"],{% endfor %}],
+    {% endfor %}
+};
+const CURRENT_MAPPINGS = {
+    {% for col, field in current_mappings.items %}"{{ col|escapejs }}": "{{ field|escapejs }}",
+    {% endfor %}
+};
+
+function rebuildSelects(targetModel) {
+    const fields = TARGET_FIELDS[targetModel] || [];
+    document.querySelectorAll('.field-mapping-select').forEach(sel => {
+        const colName = sel.dataset.colName;
+        const savedVal = CURRENT_MAPPINGS[colName] || '';
+        sel.innerHTML = '';
+        fields.forEach(([key, label]) => {
+            const opt = document.createElement('option');
+            opt.value = key;
+            opt.textContent = label;
+            sel.appendChild(opt);
+        });
+        if (savedVal) {
+            sel.value = savedVal;
+        } else {
+            // Auto-suggest by matching column name to field key
+            const lower = colName.toLowerCase().replace(/[\s\-\.]+/g, '_');
+            for (const [key] of fields) {
+                if (key === '__skip__') continue;
+                if (lower === key || lower.includes(key) || key.includes(lower.replace(/_/g, ''))) {
+                    sel.value = key;
+                    break;
+                }
+            }
+        }
+    });
+}
+
+document.querySelectorAll('input[name="csv_target_model"]').forEach(r =>
+    r.addEventListener('change', e => rebuildSelects(e.target.value))
+);
+const checked = document.querySelector('input[name="csv_target_model"]:checked');
+if (checked) rebuildSelects(checked.value);
+</script>
+{% endblock %}

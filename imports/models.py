@@ -17,6 +17,14 @@ class ImportJob(BaseModel):
         ('itglue', 'IT Glue'),
         ('hudu', 'Hudu'),
         ('magicplan', 'MagicPlan Floor Plans'),
+        ('csv', 'CSV / Spreadsheet'),
+    ]
+
+    CSV_TARGET_CHOICES = [
+        ('asset', 'Assets'),
+        ('password', 'Passwords (Vault)'),
+        ('contact', 'Contacts'),
+        ('document', 'Documents'),
     ]
 
     STATUS_CHOICES = [
@@ -40,12 +48,25 @@ class ImportJob(BaseModel):
         help_text="API key for authentication - not needed for MagicPlan"
     )
 
-    # MagicPlan file upload
+    # File upload (MagicPlan JSON or CSV)
     source_file = models.FileField(
-        upload_to='imports/magicplan/%Y/%m/',
+        upload_to='imports/files/%Y/%m/',
         blank=True,
         null=True,
-        help_text="MagicPlan JSON export file"
+        help_text="Upload file: MagicPlan JSON export or CSV/spreadsheet"
+    )
+
+    # CSV field mapper
+    csv_target_model = models.CharField(
+        max_length=20,
+        choices=CSV_TARGET_CHOICES,
+        blank=True,
+        help_text="What to import CSV rows as (CSV imports only)"
+    )
+    field_mappings = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Maps source column headers to target model field names"
     )
 
     # Import settings (optional - if null, imports all organizations from source)

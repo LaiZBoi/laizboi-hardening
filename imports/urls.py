@@ -16,4 +16,5 @@ urlpatterns = [
     path('<int:pk>/start/', views.import_start, name='import_start'),
     path('<int:pk>/rollback/', views.import_rollback, name='import_rollback'),
     path('<int:pk>/log/', views.import_log, name='import_log'),
+    path('<int:pk>/map-fields/', views.import_map_fields, name='import_map_fields'),
 ]

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network Security Configuration
+
+    Production:  Only HTTPS to clientst0r.app — cleartext is blocked.
+    Debug:       User-installed CA certificates are trusted so that a proxy
+                 (e.g. Charles, mitmproxy) can inspect traffic during development.
+-->
+<network-security-config>
+
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">clientst0r.app</domain>
+    </domain-config>
+
+    <debug-overrides>
+        <trust-anchors>
+            <!-- Trust user-installed CAs in debug builds only -->
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+
+</network-security-config>

@@ -43,6 +43,9 @@ Usage: {% include "core/_settings_menu.html" with active_page="general" %}
         <div class="list-group-item bg-light py-1">
             <small class="text-muted fw-bold">INTEGRATIONS</small>
         </div>
+        <a href="{% url 'integrations:integration_list' %}" class="list-group-item list-group-item-action {% if active_page == 'integrations' %}active{% endif %}">
+            <i class="fas fa-plug"></i> Integrations
+        </a>
         <a href="{% url 'core:settings_directory' %}" class="list-group-item list-group-item-action {% if active_page == 'directory' %}active{% endif %}">
             <i class="fas fa-users-cog"></i> Directory Services
         </a>
@@ -59,8 +62,8 @@ Usage: {% include "core/_settings_menu.html" with active_page="general" %}
         <a href="{% url 'core:settings_kb_import' %}" class="list-group-item list-group-item-action {% if active_page == 'kb_import' %}active{% endif %}">
             <i class="fas fa-database"></i> Demo Data
         </a>
-        <a href="{% url 'core:vault_import' %}" class="list-group-item list-group-item-action {% if active_page == 'vault_import' %}active{% endif %}">
-            <i class="fas fa-file-import"></i> Vault Import
+        <a href="{% url 'imports:import_list' %}" class="list-group-item list-group-item-action {% if active_page == 'data_import' %}active{% endif %}">
+            <i class="fas fa-file-import"></i> Data Import
         </a>
         <a href="{% url 'core:settings_data_export' %}" class="list-group-item list-group-item-action {% if active_page == 'data_export' %}active{% endif %}">
             <i class="fas fa-file-export"></i> Data Export

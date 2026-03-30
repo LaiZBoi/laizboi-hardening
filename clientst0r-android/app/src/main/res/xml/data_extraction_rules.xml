@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Data extraction rules (Android 12+, android:dataExtractionRules).
+    Replaces fullBackupContent on API 31+ for both cloud backup and
+    device-to-device transfer scenarios.
+-->
+<data-extraction-rules>
+
+    <cloud-backup>
+        <exclude domain="cache" />
+        <exclude domain="external-cache" />
+    </cloud-backup>
+
+    <device-transfer>
+        <exclude domain="cache" />
+        <exclude domain="external-cache" />
+    </device-transfer>
+
+</data-extraction-rules>

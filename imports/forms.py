@@ -22,7 +22,7 @@ class ImportJobForm(forms.ModelForm):
             'source_type': forms.Select(attrs={'class': 'form-control'}),
             'source_url': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://api.itglue.com or https://your-hudu.com'}),
             'source_api_key': forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Your API key'}),
-            'source_file': forms.FileInput(attrs={'class': 'form-control', 'accept': '.json'}),
+            'source_file': forms.FileInput(attrs={'class': 'form-control', 'accept': '.json,.csv,.tsv'}),
             'target_organization': forms.Select(attrs={'class': 'form-control', 'id': 'id_target_organization'}),
             'target_location': forms.Select(attrs={'class': 'form-control', 'id': 'id_target_location'}),
             'use_fuzzy_matching': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -90,6 +90,13 @@ class ImportJobForm(forms.ModelForm):
                 self.add_error('source_file', 'MagicPlan JSON file is required')
             if not target_organization:
                 self.add_error('target_organization', 'Target organization is required for MagicPlan imports')
+
+        # CSV validation
+        elif source_type == 'csv':
+            if not source_file:
+                self.add_error('source_file', 'CSV file is required')
+            if not target_organization:
+                self.add_error('target_organization', 'Target organization is required for CSV imports')
 
         # IT Glue/Hudu validation
         elif source_type in ['itglue', 'hudu']:
