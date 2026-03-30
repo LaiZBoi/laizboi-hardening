@@ -76,7 +76,7 @@ class ScheduledTask(BaseModel):
     objects = OrganizationManager()
 
     class Meta:
-        db_table = 'scheduled_tasks'
+        db_table = 'scheduling_tasks'
         ordering = ['due_date', 'priority', 'title']
         verbose_name = 'Scheduled Task'
         verbose_name_plural = 'Scheduled Tasks'
@@ -173,7 +173,7 @@ class TaskAssignment(models.Model):
     notes = models.TextField(blank=True)
 
     class Meta:
-        db_table = 'task_assignments'
+        db_table = 'scheduling_assignments'
         unique_together = ('task', 'user')
         verbose_name = 'Task Assignment'
         verbose_name_plural = 'Task Assignments'
@@ -204,7 +204,7 @@ class TaskComment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'task_comments'
+        db_table = 'scheduling_comments'
         ordering = ['created_at']
         verbose_name = 'Task Comment'
         verbose_name_plural = 'Task Comments'

@@ -101,7 +101,7 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name': 'Scheduled Task',
                 'verbose_name_plural': 'Scheduled Tasks',
-                'db_table': 'scheduled_tasks',
+                'db_table': 'scheduling_tasks',
                 'ordering': ['due_date', 'priority', 'title'],
             },
         ),
@@ -126,7 +126,7 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name': 'Task Assignment',
                 'verbose_name_plural': 'Task Assignments',
-                'db_table': 'task_assignments',
+                'db_table': 'scheduling_assignments',
             },
         ),
         migrations.AddField(
@@ -165,7 +165,7 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name': 'Task Comment',
                 'verbose_name_plural': 'Task Comments',
-                'db_table': 'task_comments',
+                'db_table': 'scheduling_comments',
                 'ordering': ['created_at'],
             },
         ),
