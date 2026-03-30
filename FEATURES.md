@@ -237,12 +237,15 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
 ## 📍 Location Management & Navigation
 
 ### Location Features
-- **Location Tracking** - Manage physical locations for organizations
+- **Integrated into Organizations** - Manage multiple physical locations per organization directly from the organization detail page — no separate menu required
+- **Multi-Location Support** - Each organization can have unlimited locations (headquarters, branches, data centers, etc.)
 - **Address Management** - Full address details with geocoding support
 - **Coordinates Support** - Latitude/longitude for precise positioning
 - **Location Types** - Headquarters, branch office, data center, remote site, customer site
-- **Status Tracking** - Active, planned, inactive, closed
+- **Status Tracking** - Active, planned, inactive, closed (with colored badges)
 - **Primary Location** - Designate headquarters
+- **Floor Plan Support** - Track whether a floor plan has been generated for each location
+- **Role-Based Controls** - Edit and delete buttons visible to owners and admins only
 
 ### SMS/Navigation Links
 - **Multi-Provider SMS** - Send SMS via Twilio, Plivo, Vonage/Nexmo, Telnyx, or AWS SNS
@@ -368,6 +371,25 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
 - **Entity Linking** - Link knowledge base docs, passwords, secure notes, or assets to workflow stages
 - **Quick Access** - View all linked entities directly from execution view
 
+## 🌐 Network Hardware Integrations
+
+### Supported Network Platforms
+
+**3 Network Controller Integrations:**
+- **UniFi** - Ubiquiti UniFi Network controller: auto-discover switches, APs, gateways, cameras; import as assets; configurable scheduled sync
+- **Omada** - TP-Link Omada controller: auto-discover switches, APs, gateways, EAPs; session-based auth with CSRF; site-aware sync
+- **Grandstream** - Grandstream UCM/GDMS: Bearer token auth; auto-discover wireless APs; import as assets with MAC/serial deduplication
+
+### Integration Features
+- **Asset Auto-Import** - Discovered devices imported as assets with name, type, serial number, MAC address, IP address, firmware version
+- **Smart Deduplication** - Match existing assets by MAC address first, then serial number — updates instead of duplicating
+- **Scheduled Auto-Sync** - Configurable sync interval (minutes); systemd timer runs sync_network_assets management command
+- **On-Demand Sync** - Trigger manual sync from the Integrations page
+- **Encrypted Credentials** - All API keys, tokens, and passwords stored with AES-256-GCM encryption
+- **Asset Type Mapping** - Device types automatically mapped (switch, wireless_ap, gateway, camera, etc.)
+- **Import Preview** - Review discovered devices before importing
+- **Connection Testing** - Verify controller connectivity before saving
+
 ## 🔌 PSA Integrations
 
 ### Supported PSA Platforms
@@ -449,7 +471,22 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
 - **Development Tools** - Management commands, seed data, test suite, debug toolbar, API docs
 
 ## 🔄 Data Management
-- **Import/Export** - CSV import, JSON export, backup/restore, migration tools from other platforms
+
+### Data Import
+- **Universal CSV Import** - Import any data from CSV or spreadsheet files with a visual field mapper
+- **Field Mapper** - Step-by-step import: select target model (Assets, Passwords, Contacts, Documents), then map each CSV column to a destination field
+- **Preview** - See the first 5 rows of your data before mapping to identify columns
+- **Auto-Suggestion** - Column names are automatically matched to likely target fields
+- **Hudu Import** - Direct import from Hudu exports (assets, passwords, contacts, documents)
+- **IT Glue Import** - Direct import from IT Glue exports
+- **MagicPlan Import** - Floor plan import from MagicPlan exports
+- **Import History** - Track all import jobs with status, record counts, and error details
+- **Source Tracking** - Each imported record tagged with source platform
+
+### Export & Backup
+- **CSV/JSON Export** - Export assets, audit logs, and reports
+- **Encrypted Backups** - Automated encrypted backup with configurable retention
+- **One-Click Restore** - Restore from backup via web interface
 - **Data Integrity** - Comprehensive validation, database constraints, ACID transactions, rollback
 
 ## 🚀 Performance & Deployment

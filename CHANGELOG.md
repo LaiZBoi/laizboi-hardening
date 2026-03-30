@@ -5,6 +5,55 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.5] - 2026-03-30
+
+### Bug Fixes
+- **Navbar main items now centered** - Changed main nav `<ul>` from `navbar-nav` to `navbar-nav mx-auto`; removed `ms-auto` from the right navbar `<ul>` to avoid competing auto-margins. Bootstrap flexbox now distributes equal left/right auto-margins around the main nav, centering Dashboard/Assets/Vault/Docs/Operations/Reports/Admin between the logo and right-side items (search, org switcher, profile)
+
+## [3.16.4] - 2026-03-30
+
+### Bug Fixes
+- **Navbar off-center after nav consolidation** - Removed `flex-wrap: wrap` and redundant `display: flex; align-items: center` from `.navbar-container` in `custom.css`; Bootstrap handles the flex layout natively — wrapping was causing the nav to render on two rows and appear misaligned after the Operations dropdown consolidation
+
+## [3.16.3] - 2026-03-30
+
+### New Features
+- **Locations integrated into Organizations** - Manage multiple physical locations per organization directly from the organization detail page; removed Locations from the Admin navigation (access is through org → Locations section); each location card shows status badges (Inactive/Planned/Closed) and Edit/Delete buttons for owners and admins; location count badge on section header
+- **Streamlined top navigation** - Consolidated Inventory, Scheduling, Monitoring, Vehicles, and Workflows into a single "Operations" dropdown (only shown if at least one of these modules is enabled); removed "Quick Add" from top nav (already on dashboard); removed standalone Locations from Admin dropdown; reduced nav from 12 items to 6 (Dashboard, Assets, Vault, Docs, Operations, Reports, Admin)
+
+### Bug Fixes
+- **Vehicle Inventory dark mode contrast** - `inventory_summary.html` replaced all hardcoded light-mode CSS colors (`#f8f9fa`, `white`, `#212529`, `#d1e7dd`, `#f8d7da`) with Bootstrap CSS variables (`--bs-secondary-bg`, `--bs-card-bg`, `--bs-body-color`, `--bs-border-color`); now renders correctly in both light and dark mode
+
+## [3.16.2] - 2026-03-28
+
+### Changes
+- **Settings → Integrations** - Moved Integrations link from Admin Management dropdown to Settings sidebar under a dedicated "Integrations" section; removed duplicate from Admin nav
+- **Settings sidebar** - Replaced "Vault Import" with "Data Import" in the Settings sidebar link
+
+## [3.16.1] - 2026-03-28
+
+### New Features
+- **Data Import with CSV field mapper** - New visual field mapper for importing any CSV/spreadsheet data; supports Assets, Passwords (Vault), Contacts, and Documents as target models; auto-suggests column mappings by name; shows 5-row data preview; `CSVImportService` handles import with deduplication
+- **Multi-platform data import** - Import data from Hudu exports, IT Glue exports, MagicPlan floor plans, or any CSV/spreadsheet file; import jobs tracked in database with status and record counts
+- **Field mapper UI** - Step-by-step flow: upload file → map fields → import; radio buttons to select target model; per-column dropdowns for destination fields; JavaScript `rebuildSelects()` updates dropdowns when model type changes
+
+### Changes
+- **Renamed "Vault Import" → "Data Import"** - Import is no longer vault-specific; all data types supported
+
+### Migrations
+- `imports/migrations/0006_csv_import_mapper.py` — Adds `csv_target_model` and `field_mappings` fields to `import_jobs` table
+
+## [3.16.0] - 2026-03-27
+
+### New Features
+- **Omada network integration** - TP-Link Omada SDN controller integration: session-based authentication with CSRF token support, paginated API calls, site-aware device discovery; devices mapped to asset types (switch, wireless_ap, gateway, eap); CRUD management + manual sync + import-as-assets; configurable scheduled auto-sync
+- **Grandstream network integration** - Grandstream GDMS/UCM integration: Bearer token authentication, paginated device listing with flat fallback for simple deployments; all devices mapped to `wireless_ap` asset type; same CRUD + sync + import flow as UniFi and Omada
+- **Network asset auto-sync** - New `sync_network_assets` management command (called by systemd timer); iterates all UniFi, Omada, and Grandstream connections with `auto_sync_assets=True`; respects per-connection `sync_interval_minutes` to avoid unnecessary API calls; updates `last_asset_sync_at` on completion
+- **Shared device import helper** - `_import_devices_to_assets(org, devices, source_label)` in `integrations/views.py`; matches by MAC address first, then serial number; creates or updates Asset records; used by all three network integrations
+
+### Migrations
+- `integrations/migrations/0018_add_omada_grandstream_autosync.py` — Adds `auto_sync_assets`, `sync_interval_minutes`, `last_asset_sync_at` to `UnifiConnection`; creates `omada_connections` and `grandstream_connections` tables
+
 ## [3.13.1] - 2026-02-24
 
 ### Bug Fixes

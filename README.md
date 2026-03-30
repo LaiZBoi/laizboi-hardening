@@ -1,6 +1,6 @@
 # Client St0r
 
-[![Version 3.13.69](https://img.shields.io/badge/version-3.13.69-brightgreen)](https://github.com/agit8or1/clientst0r)
+[![Version 3.16.5](https://img.shields.io/badge/version-3.16.5-brightgreen)](https://github.com/agit8or1/clientst0r)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
@@ -216,6 +216,9 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 - **OS Package Scanner** - System package vulnerability scanning (apt/yum/dnf), automated security update detection, scheduled scans
 - **Monitoring** - Website uptime, SSL certificates, domain expiration, custom alerts, WAN monitoring
 - **Workflows** - Process automation with audit logging, PSA integration, execution tracking
+- **Scheduling** - Staff scheduling with calendar view, shift management, and coverage tracking
+- **Inventory Module** - Standalone inventory management with barcode scanning, stock levels, and reorder alerts
+- **Locations in Organizations** - Manage multiple locations per organization with address, type, status, and floor plan support
 - **Firewall Management** - iptables firewall rules, GeoIP country blocking, IP whitelist/blacklist
 - **Intrusion Prevention** - Fail2ban integration with ban management and IP checking
 - **Reporting & Analytics** - Advanced reports, custom dashboards, scheduled reports, data visualization
@@ -226,8 +229,10 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 ### 🔌 Integrations & APIs
 - **8 PSA Providers** - ConnectWise, Autotask, HaloPSA, Kaseya BMS, Syncro, Freshservice, Zendesk, ITFlow
 - **5 RMM Providers** - Tactical RMM (full), NinjaOne, Datto, Atera, CW Automate (infrastructure ready)
+- **3 Network Integrations** - UniFi, Omada, and Grandstream — auto-discover and sync network devices as assets with scheduled sync support
 - **Organization Auto-Import** - Automatically create orgs from PSA companies or RMM sites
 - **Asset Mapping** - Auto-link RMM devices to assets
+- **Data Import** - CSV/spreadsheet import with visual field mapper; import from Hudu and IT Glue
 - **REST API v1** - Full-featured REST API with authentication and rate limiting
 - **GraphQL API v2** - Modern GraphQL API with filtering, pagination, and real-time capabilities
 - **Webhook Support** - Event-driven integrations with external systems
@@ -236,19 +241,19 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 ## 🆕 What's New
 
-### Latest Release - v3.10.4 (February 2026)
+### Latest Release - v3.16.5 (March 2026)
 
-**🎉 Major Features in v3.10:**
-- **🚗 Service Vehicles Fleet Management** - Complete fleet tracking with mileage, maintenance, fuel logs, damage reports, inventory, GPS location, and insurance tracking
-- **📦 OS Package Security Scanner** - Automated vulnerability scanning for system packages (apt/yum/dnf) with scheduled scans and security update tracking
-- **🖱️ Enhanced Rack Drag-and-Drop** - Native HTML5 drag-and-drop for moving rack devices with visual feedback and collision detection
-- **🚙 Interactive Vehicle Damage Diagrams** - SVG-based vehicle diagrams with clickable areas for damage reporting and visualization
-- **📊 Clickable Dashboard Statistics** - All dashboard stat cards now link to filtered views for quick access
+**🎉 Major Features in v3.16:**
+- **🌐 Omada & Grandstream Network Integrations** - Auto-discover and sync network devices from TP-Link Omada and Grandstream controllers as assets, with configurable scheduled sync
+- **📥 Data Import with CSV Field Mapper** - Import any data (assets, passwords, contacts, documents) from CSV/spreadsheets with a visual field mapper; also import directly from Hudu or IT Glue
+- **🏢 Locations Integrated into Organizations** - Manage multiple physical locations per organization directly from the org detail page; locations include status, type, floor plan, and edit/delete controls
+- **🧭 Streamlined Navigation** - Consolidated top navigation: Inventory, Scheduling, Monitoring, Vehicles, and Workflows combined into a single Operations dropdown; main nav items centered in navbar
+- **🌙 Dark Mode Compatibility** - Vehicle Inventory summary page now fully compatible with dark mode using Bootstrap CSS variables throughout
 
-**Previous Release - v3.8.0:**
-- **🔍 Network Scanner & Asset Discovery** - Automated network scanning using nmap with intelligent device detection and smart import system
-- **🎨 Interactive Rack/Board Visualization** - Wall-mounted board layout with drag-and-drop, realistic device visuals, and snap-to-grid
-- **📡 Patch Panel Management** - Interactive port management with click-to-connect, visual cable tracking, and connection visualization
+**Previous Release - v3.13.x:**
+- **📄 Device Profile Document Generator** - Auto-generate structured documentation for devices from asset data
+- **🔒 Fail2ban Binary Detection** - Path-agnostic lookup using shutil.which for reliable detection across distributions
+- **🔐 Security Hardening Release (v3.13.0)** - GraphQL field whitelists, subprocess input validation, XSS fixes, path traversal protection, CSRF enforcement, performance optimizations
 
 #### Service Vehicles Fleet Management (v3.9.0+)
 Complete fleet management system for tracking service vehicles with comprehensive features:
@@ -674,8 +679,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📊 Project Status
 
-- **Version**: 3.8.0
-- **Release Date**: February 2026
+- **Version**: 3.16.5
+- **Release Date**: March 2026
 - **Status**: Production Ready
 - **Maintained**: Yes
 - **Security**: Continuous monitoring, automated scanning, HaveIBeenPwned integrated
