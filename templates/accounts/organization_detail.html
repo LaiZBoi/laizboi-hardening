@@ -159,9 +159,12 @@
     <div class="col-md-12 mb-4">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="fas fa-map-marker-alt"></i> Locations</h5>
+                <h5 class="mb-0">
+                    <i class="fas fa-map-marker-alt"></i> Locations
+                    {% if locations %}<span class="badge bg-secondary ms-1">{{ locations|length }}</span>{% endif %}
+                </h5>
                 {% if user_membership.role == 'owner' or user_membership.role == 'admin' or user.is_superuser %}
-                <a href="{% url 'locations:location_create' %}?organization={{ organization.id }}" class="btn btn-sm btn-primary">
+                <a href="{% url 'locations:location_create' %}" class="btn btn-sm btn-primary">
                     <i class="fas fa-plus"></i> Add Location
                 </a>
                 {% endif %}
@@ -173,17 +176,26 @@
                     <div class="col-md-6 col-lg-4 mb-3">
                         <div class="card h-100 border">
                             <div class="card-body">
-                                <h6 class="mb-2">
-                                    <a href="{% url 'locations:location_detail' location.id %}" class="text-decoration-none">
-                                        <i class="fas fa-map-marker-alt text-primary"></i> {{ location.name }}
-                                    </a>
-                                </h6>
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <h6 class="mb-0">
+                                        <a href="{% url 'locations:location_detail' location.id %}" class="text-decoration-none">
+                                            <i class="fas fa-map-marker-alt text-primary"></i> {{ location.name }}
+                                        </a>
+                                    </h6>
+                                    {% if location.status == 'inactive' %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                    {% elif location.status == 'planned' %}
+                                    <span class="badge bg-warning text-dark">Planned</span>
+                                    {% elif location.status == 'closed' %}
+                                    <span class="badge bg-danger">Closed</span>
+                                    {% endif %}
+                                </div>
                                 {% if location.full_address %}
                                 <p class="text-muted small mb-2">
                                     <i class="fas fa-location-arrow"></i> {{ location.full_address|truncatewords:8 }}
                                 </p>
                                 {% endif %}
-                                <div class="d-flex justify-content-between align-items-center">
+                                <div class="d-flex justify-content-between align-items-center mt-2">
                                     <div>
                                         {% if location.location_type %}
                                         <span class="badge bg-info">{{ location.get_location_type_display }}</span>
@@ -194,9 +206,19 @@
                                         </span>
                                         {% endif %}
                                     </div>
-                                    <a href="{% url 'locations:location_detail' location.id %}" class="btn btn-sm btn-outline-primary">
-                                        View
-                                    </a>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{% url 'locations:location_detail' location.id %}" class="btn btn-outline-primary" title="View">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        {% if user_membership.role == 'owner' or user_membership.role == 'admin' or user.is_superuser %}
+                                        <a href="{% url 'locations:location_edit' location.id %}" class="btn btn-outline-secondary" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <a href="{% url 'locations:location_delete' location.id %}" class="btn btn-outline-danger" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </a>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -208,7 +230,7 @@
                     <i class="fas fa-map-marker-alt fa-3x text-muted mb-3"></i>
                     <p class="text-muted">No locations yet.</p>
                     {% if user_membership.role == 'owner' or user_membership.role == 'admin' or user.is_superuser %}
-                    <a href="{% url 'locations:location_create' %}?organization={{ organization.id }}" class="btn btn-primary">
+                    <a href="{% url 'locations:location_create' %}" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Add First Location
                     </a>
                     {% endif %}

@@ -38,7 +38,8 @@
     }
 
     .session-summary {
-        background: white;
+        background: var(--bs-card-bg, var(--bs-body-bg));
+        border: 1px solid var(--bs-border-color);
         border-radius: 12px;
         padding: 25px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -53,35 +54,36 @@
     }
 
     .stat-box {
-        background: #f8f9fa;
+        background: var(--bs-secondary-bg);
         padding: 20px;
         border-radius: 8px;
         text-align: center;
-        border: 2px solid #dee2e6;
+        border: 2px solid var(--bs-border-color);
     }
 
     .stat-box.highlight {
-        background: #d1e7dd;
+        background: rgba(25, 135, 84, 0.15);
         border-color: #198754;
     }
 
     .stat-value {
         font-size: 36px;
         font-weight: bold;
-        color: #212529;
+        color: var(--bs-body-color);
         display: block;
         margin-bottom: 5px;
     }
 
     .stat-label {
         font-size: 14px;
-        color: #6c757d;
+        color: var(--bs-secondary-color, #6c757d);
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
 
     .changes-list {
-        background: white;
+        background: var(--bs-card-bg, var(--bs-body-bg));
+        border: 1px solid var(--bs-border-color);
         border-radius: 12px;
         padding: 25px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -95,6 +97,7 @@
         display: flex;
         align-items: center;
         gap: 10px;
+        color: var(--bs-body-color);
     }
 
     .change-item {
@@ -102,7 +105,7 @@
         justify-content: space-between;
         align-items: center;
         padding: 15px;
-        background: #f8f9fa;
+        background: var(--bs-secondary-bg);
         border-radius: 8px;
         margin-bottom: 10px;
         border-left: 4px solid #0d6efd;
@@ -110,12 +113,12 @@
 
     .change-item.increase {
         border-left-color: #198754;
-        background: #d1e7dd;
+        background: rgba(25, 135, 84, 0.12);
     }
 
     .change-item.decrease {
         border-left-color: #dc3545;
-        background: #f8d7da;
+        background: rgba(220, 53, 69, 0.12);
     }
 
     .change-item.nochange {
@@ -125,12 +128,12 @@
     .change-name {
         font-size: 16px;
         font-weight: bold;
-        color: #212529;
+        color: var(--bs-body-color);
     }
 
     .change-details {
         font-size: 14px;
-        color: #6c757d;
+        color: var(--bs-secondary-color, #6c757d);
         margin-top: 3px;
     }
 
@@ -141,7 +144,7 @@
     .change-arrow {
         font-size: 18px;
         font-weight: bold;
-        color: #212529;
+        color: var(--bs-body-color);
     }
 
     .change-badge {

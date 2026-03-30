@@ -60,22 +60,19 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 {% if user.is_authenticated %}
                 <ul class="navbar-nav">
-                    <li class="nav-item"><a class="nav-link" href="{% url 'core:dashboard' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{% trans 'View your main dashboard' %}"><i class="fas fa-tachometer-alt"></i> {% trans "Dashboard" %}</a></li>
-                    {% if has_admin_permission or user.is_superuser %}
-                    <li class="nav-item"><a class="nav-link text-success" href="{% url 'accounts:quick_add_menu' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{% trans 'Quickly create passwords, assets, documents, and more' %}"><i class="fas fa-bolt"></i> {% trans "Quick Add" %}</a></li>
-                    {% endif %}
+                    <li class="nav-item"><a class="nav-link" href="{% url 'core:dashboard' %}"><i class="fas fa-tachometer-alt"></i> {% trans "Dashboard" %}</a></li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="assetsDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-box"></i> {% trans "Assets" %}
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{% url 'assets:asset_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'View and manage all assets' %}"><i class="fas fa-box"></i> {% trans "All Assets" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'assets:asset_list' %}"><i class="fas fa-box"></i> {% trans "All Assets" %}</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><h6 class="dropdown-header">{% trans "Infrastructure" %}</h6></li>
-                            <li><a class="dropdown-item" href="{% url 'monitoring:rack_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Manage server racks and equipment placement' %}"><i class="fas fa-server"></i> {% trans "Racks" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'monitoring:network_closet_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'View network closets and wiring infrastructure' %}"><i class="fas fa-network-wired"></i> {% trans "Network Closets" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'monitoring:subnet_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'IP address management and subnet tracking' %}"><i class="fas fa-sitemap"></i> {% trans "IPAM" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'monitoring:vlan_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Manage VLANs and network segmentation' %}"><i class="fas fa-layer-group"></i> {% trans "VLANs" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'monitoring:rack_list' %}"><i class="fas fa-server"></i> {% trans "Racks" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'monitoring:network_closet_list' %}"><i class="fas fa-network-wired"></i> {% trans "Network Closets" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'monitoring:subnet_list' %}"><i class="fas fa-sitemap"></i> {% trans "IPAM" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'monitoring:vlan_list' %}"><i class="fas fa-layer-group"></i> {% trans "VLANs" %}</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -83,10 +80,10 @@
                             <i class="fas fa-key"></i> {% trans "Vault" %}
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{% url 'vault:password_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Encrypted password storage for the organization' %}"><i class="fas fa-key"></i> {% trans "Passwords" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'vault:personal_vault_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Your private password vault (not accessible by admins)' %}"><i class="fas fa-sticky-note"></i> {% trans "My Vault" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'vault:password_list' %}"><i class="fas fa-key"></i> {% trans "Passwords" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'vault:personal_vault_list' %}"><i class="fas fa-sticky-note"></i> {% trans "My Vault" %}</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'core:secure_note_inbox' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Send encrypted ephemeral messages' %}"><i class="fas fa-lock"></i> {% trans "Secure Notes" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'core:secure_note_inbox' %}"><i class="fas fa-lock"></i> {% trans "Secure Notes" %}</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -94,74 +91,47 @@
                             <i class="fas fa-file-alt"></i> {% trans "Docs" %}
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{% url 'docs:document_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Knowledge base and documentation' %}"><i class="fas fa-file-alt"></i> {% trans "Documents" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'docs:diagram_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Network diagrams and visual documentation' %}"><i class="fas fa-project-diagram"></i> {% trans "Diagrams" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'locations:floor_plan_import' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Import floor plans from MagicPlan or upload images' %}"><i class="fas fa-file-upload"></i> {% trans "Import Floor Plans" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'docs:document_list' %}"><i class="fas fa-file-alt"></i> {% trans "Documents" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'docs:diagram_list' %}"><i class="fas fa-project-diagram"></i> {% trans "Diagrams" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'locations:floor_plan_import' %}"><i class="fas fa-file-upload"></i> {% trans "Import Floor Plans" %}</a></li>
                         </ul>
                     </li>
-                    {% if workflows_enabled %}
-                    <li class="nav-item"><a class="nav-link" href="{% url 'processes:process_list' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{% trans 'Process automation and workflow templates' %}"><i class="fas fa-tasks"></i> {% trans "Workflows" %}</a></li>
-                    {% endif %}
-                    {% if inventory_enabled %}
+                    {% if workflows_enabled or inventory_enabled or scheduling_enabled or monitoring_enabled or vehicles_enabled %}
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="inventoryDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-warehouse"></i> {% trans "Inventory" %}
+                        <a class="nav-link dropdown-toggle" href="#" id="opsDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-cogs"></i> {% trans "Operations" %}
                         </a>
                         <ul class="dropdown-menu">
+                            {% if workflows_enabled %}
+                            <li><a class="dropdown-item" href="{% url 'processes:process_list' %}"><i class="fas fa-tasks"></i> {% trans "Workflows" %}</a></li>
+                            {% endif %}
+                            {% if inventory_enabled %}
+                            {% if workflows_enabled %}<li><hr class="dropdown-divider"></li>{% endif %}
+                            <li><h6 class="dropdown-header">{% trans "Inventory" %}</h6></li>
                             <li><a class="dropdown-item" href="{% url 'inventory:inventory_dashboard' %}"><i class="fas fa-tachometer-alt"></i> {% trans "Dashboard" %}</a></li>
-                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'inventory:item_list' %}"><i class="fas fa-boxes"></i> {% trans "All Items" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'inventory:item_create' %}"><i class="fas fa-plus"></i> {% trans "Add Item" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'inventory:low_stock_report' %}"><i class="fas fa-exclamation-triangle"></i> {% trans "Low Stock" %}</a></li>
+                            {% endif %}
+                            {% if scheduling_enabled %}
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'inventory:category_list' %}"><i class="fas fa-tags"></i> {% trans "Categories" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'inventory:location_list' %}"><i class="fas fa-map-marker-alt"></i> {% trans "Locations" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'inventory:transaction_list' %}"><i class="fas fa-history"></i> {% trans "Transactions" %}</a></li>
-                        </ul>
-                    </li>
-                    {% endif %}
-                    {% if scheduling_enabled %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="schedulingDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-calendar-check"></i> {% trans "Scheduling" %}
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{% url 'scheduling:scheduling_dashboard' %}"><i class="fas fa-tachometer-alt"></i> {% trans "Dashboard" %}</a></li>
-                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">{% trans "Scheduling" %}</h6></li>
                             <li><a class="dropdown-item" href="{% url 'scheduling:task_list' %}"><i class="fas fa-tasks"></i> {% trans "All Tasks" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'scheduling:task_create' %}"><i class="fas fa-plus"></i> {% trans "New Task" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'scheduling:my_tasks' %}"><i class="fas fa-user-check"></i> {% trans "My Tasks" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'scheduling:overdue_tasks' %}"><i class="fas fa-clock"></i> {% trans "Overdue" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'scheduling:task_calendar' %}"><i class="fas fa-calendar-alt"></i> {% trans "Calendar" %}</a></li>
-                        </ul>
-                    </li>
-                    {% endif %}
-                    {% if monitoring_enabled %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="monitoringDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-heartbeat"></i> {% trans "Monitoring" %}
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{% url 'monitoring:website_monitor_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Website uptime and SSL certificate monitoring' %}"><i class="fas fa-globe"></i> {% trans "Website Monitors" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'monitoring:wan_monitor_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'WAN connection monitoring and status tracking' %}"><i class="fas fa-network-wired"></i> {% trans "WAN Connections" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'monitoring:expiration_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Track SSL certificates, domains, and credential expirations' %}"><i class="fas fa-calendar-times"></i> {% trans "Expirations" %}</a></li>
-                        </ul>
-                    </li>
-                    {% endif %}
-                    {% if vehicles_enabled %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="vehiclesDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-truck"></i> {% trans "Service Vehicles" %}
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{% url 'vehicles:vehicles_dashboard' %}"><i class="fas fa-tachometer-alt"></i> {% trans "Dashboard" %}</a></li>
+                            {% endif %}
+                            {% if monitoring_enabled %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">{% trans "Monitoring" %}</h6></li>
+                            <li><a class="dropdown-item" href="{% url 'monitoring:website_monitor_list' %}"><i class="fas fa-globe"></i> {% trans "Website Monitors" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'monitoring:wan_monitor_list' %}"><i class="fas fa-network-wired"></i> {% trans "WAN Connections" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'monitoring:expiration_list' %}"><i class="fas fa-calendar-times"></i> {% trans "Expirations" %}</a></li>
+                            {% endif %}
+                            {% if vehicles_enabled %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">{% trans "Vehicles" %}</h6></li>
+                            <li><a class="dropdown-item" href="{% url 'vehicles:vehicle_list' %}"><i class="fas fa-truck"></i> {% trans "All Vehicles" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'vehicles:service_alert_list' %}"><i class="fas fa-bell"></i> {% trans "Service Alerts" %}</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'vehicles:vehicle_list' %}"><i class="fas fa-list"></i> {% trans "All Vehicles" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'vehicles:vehicle_create' %}"><i class="fas fa-plus"></i> {% trans "Add Vehicle" %}</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'vehicles:inventory_list' %}"><i class="fas fa-warehouse"></i> {% trans "Inventory" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'vehicles:inventory_qr_print_all' %}"><i class="fas fa-qrcode"></i> {% trans "QR Codes" %}</a></li>
+                            {% endif %}
                         </ul>
                     </li>
                     {% endif %}
@@ -170,14 +140,12 @@
                             <i class="fas fa-chart-bar"></i> {% trans "Reports" %}
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{% url 'reports:home' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Reports and analytics home' %}"><i class="fas fa-home"></i> {% trans "Reports Home" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'reports:home' %}"><i class="fas fa-home"></i> {% trans "Reports Home" %}</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'reports:dashboard_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Custom dashboards and widgets' %}"><i class="fas fa-th-large"></i> {% trans "Dashboards" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'reports:template_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Generate reports from templates' %}"><i class="fas fa-file-pdf"></i> {% trans "Generate Reports" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'reports:generated_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'View generated reports' %}"><i class="fas fa-history"></i> {% trans "Report History" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'reports:scheduled_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Manage scheduled reports' %}"><i class="fas fa-calendar-check"></i> {% trans "Scheduled Reports" %}</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'reports:analytics_overview' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'System analytics and usage metrics' %}"><i class="fas fa-chart-line"></i> {% trans "Analytics" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'reports:dashboard_list' %}"><i class="fas fa-th-large"></i> {% trans "Dashboards" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'reports:template_list' %}"><i class="fas fa-file-pdf"></i> {% trans "Generate Reports" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'reports:generated_list' %}"><i class="fas fa-history"></i> {% trans "Report History" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'reports:analytics_overview' %}"><i class="fas fa-chart-line"></i> {% trans "Analytics" %}</a></li>
                         </ul>
                     </li>
                     {% if user.is_superuser %}
@@ -198,7 +166,6 @@
                             <li><hr class="dropdown-divider"></li>
                             <li><h6 class="dropdown-header">{% trans "Management" %}</h6></li>
                             <li><a class="dropdown-item" href="{% url 'accounts:organization_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Manage organizations and tenants' %}"><i class="fas fa-building"></i> {% trans "Organizations" %}</a></li>
-                            <li><a class="dropdown-item" href="{% url 'locations:location_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Physical locations and addresses' %}"><i class="fas fa-map-marker-alt"></i> {% trans "Locations" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'accounts:access_management' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'User management, roles, and permissions' %}"><i class="fas fa-users-cog"></i> {% trans "Access Management" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'core:webhook_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Configure webhooks for event notifications' %}"><i class="fas fa-bolt"></i> {% trans "Webhooks" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'imports:import_list' %}" data-bs-toggle="tooltip" data-bs-placement="right" title="{% trans 'Import data from CSV or other sources' %}"><i class="fas fa-download"></i> {% trans "Import Data" %}</a></li>
