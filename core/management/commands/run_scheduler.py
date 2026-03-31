@@ -67,6 +67,8 @@ class Command(BaseCommand):
             self.run_update_check()
         elif task.task_type == 'cleanup_stuck_scans':
             self.run_cleanup_stuck_scans()
+        elif task.task_type == 'scheduling_alerts':
+            self.run_scheduling_alerts()
         else:
             raise ValueError(f"Unknown task type: {task.task_type}")
 
@@ -169,3 +171,11 @@ class Command(BaseCommand):
             call_command('cleanup_stuck_scans', verbosity=1)
         except Exception as e:
             self.stdout.write(f"    Cleanup stuck scans failed: {e}")
+
+    def run_scheduling_alerts(self):
+        """Send email/SMS alerts for upcoming and overdue scheduled tasks."""
+        from django.core.management import call_command
+        try:
+            call_command('check_scheduled_task_alerts', verbosity=1)
+        except Exception as e:
+            self.stdout.write(f"    Scheduling alerts failed: {e}")

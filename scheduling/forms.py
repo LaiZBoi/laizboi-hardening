@@ -12,13 +12,25 @@ class ScheduledTaskForm(forms.ModelForm):
         fields = [
             'title', 'description', 'priority', 'due_date',
             'recurrence', 'recurrence_interval_days', 'require_all_signoffs',
+            'psa_ticket', 'alert_email', 'alert_sms', 'alert_before_hours',
         ]
         widgets = {
             'due_date': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
         }
 
     def __init__(self, *args, **kwargs):
+        org = kwargs.pop('org', None)
         super().__init__(*args, **kwargs)
+        if org:
+            from integrations.models import PSATicket
+            self.fields['psa_ticket'].queryset = PSATicket.objects.filter(
+                organization=org
+            ).order_by('-external_updated_at')
+        else:
+            from integrations.models import PSATicket
+            self.fields['psa_ticket'].queryset = PSATicket.objects.none()
+        self.fields['psa_ticket'].required = False
+        self.fields['psa_ticket'].empty_label = '— No linked ticket —'
         for field_name, field in self.fields.items():
             if isinstance(field.widget, (forms.Select, forms.SelectMultiple)):
                 field.widget.attrs['class'] = 'form-select'

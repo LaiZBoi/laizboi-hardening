@@ -556,6 +556,7 @@ class ScheduledTask(models.Model):
         ('password_breach_scan', 'Password Breach Scanning'),
         ('psa_sync', 'PSA Synchronization'),
         ('rmm_sync', 'RMM Synchronization'),
+        ('scheduling_alerts', 'Scheduled Task Alerts'),
         ('ssl_expiry_check', 'SSL Certificate Expiry Check'),
         ('update_check', 'System Update Check'),
         ('website_monitoring', 'Website Monitoring Checks'),
@@ -690,6 +691,12 @@ class ScheduledTask(models.Model):
             {
                 'task_type': 'cleanup_stuck_scans',
                 'description': 'Find and mark stuck security scans as timed out (scans running > 2 hours)',
+                'interval_minutes': 60,  # Every hour
+                'enabled': True,
+            },
+            {
+                'task_type': 'scheduling_alerts',
+                'description': 'Send email/SMS alerts for upcoming and overdue scheduled tasks',
                 'interval_minutes': 60,  # Every hour
                 'enabled': True,
             },

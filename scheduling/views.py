@@ -94,7 +94,7 @@ def task_create(request):
     org = get_request_organization(request)
 
     if request.method == 'POST':
-        form = ScheduledTaskForm(request.POST)
+        form = ScheduledTaskForm(request.POST, org=org)
         assign_form = TaskAssignUsersForm(request.POST, org=org)
         if form.is_valid() and assign_form.is_valid():
             task = form.save(commit=False)
@@ -109,7 +109,7 @@ def task_create(request):
             messages.success(request, f'Task "{task.title}" created successfully.')
             return redirect('scheduling:task_detail', pk=task.pk)
     else:
-        form = ScheduledTaskForm()
+        form = ScheduledTaskForm(org=org)
         assign_form = TaskAssignUsersForm(org=org)
 
     return render(request, 'scheduling/task_form.html', {
@@ -177,7 +177,7 @@ def task_edit(request, pk):
     task = get_object_or_404(ScheduledTask, pk=pk, organization=org)
 
     if request.method == 'POST':
-        form = ScheduledTaskForm(request.POST, instance=task)
+        form = ScheduledTaskForm(request.POST, instance=task, org=org)
         assign_form = TaskAssignUsersForm(request.POST, org=org)
         if form.is_valid() and assign_form.is_valid():
             form.save()
@@ -195,7 +195,7 @@ def task_edit(request, pk):
             messages.success(request, f'Task "{task.title}" updated.')
             return redirect('scheduling:task_detail', pk=task.pk)
     else:
-        form = ScheduledTaskForm(instance=task)
+        form = ScheduledTaskForm(instance=task, org=org)
         current_users = task.assigned_to.all()
         assign_form = TaskAssignUsersForm(org=org, initial={'users': current_users})
 

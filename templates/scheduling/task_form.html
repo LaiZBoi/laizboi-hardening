@@ -91,6 +91,45 @@
                     {% endif %}
                 </div>
             </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-bell"></i> Alerts</h5></div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="{{ form.alert_before_hours.id_for_label }}" class="form-label">Alert before due (hours)</label>
+                        {{ form.alert_before_hours }}
+                        <div class="form-text">Send an alert this many hours before the due date.</div>
+                    </div>
+                    <div class="mb-2">
+                        <div class="form-check">
+                            {{ form.alert_email }}
+                            <label class="form-check-label" for="{{ form.alert_email.id_for_label }}">
+                                <i class="fas fa-envelope me-1"></i> Email alerts
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-0">
+                        <div class="form-check">
+                            {{ form.alert_sms }}
+                            <label class="form-check-label" for="{{ form.alert_sms.id_for_label }}">
+                                <i class="fas fa-sms me-1"></i> SMS alerts
+                                <small class="text-muted d-block">Requires phone in E.164 format on user profile</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if form.psa_ticket.field.queryset.exists or form.instance.pk %}
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-ticket-alt"></i> Linked Ticket</h5></div>
+                <div class="card-body">
+                    <label for="{{ form.psa_ticket.id_for_label }}" class="form-label">PSA / Help Desk Ticket</label>
+                    {{ form.psa_ticket }}
+                    <div class="form-text">Optionally link this task to a PSA ticket.</div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 

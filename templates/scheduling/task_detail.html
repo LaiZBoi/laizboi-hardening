@@ -186,6 +186,53 @@
         </div>
         {% endif %}
 
+        {% if task.psa_ticket %}
+        <div class="card mt-3">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-ticket-alt"></i> Linked Ticket</h5></div>
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    {% if task.psa_ticket.status == 'closed' or task.psa_ticket.status == 'resolved' %}
+                    <span class="badge bg-success me-2">{{ task.psa_ticket.get_status_display }}</span>
+                    {% elif task.psa_ticket.status == 'in_progress' %}
+                    <span class="badge bg-primary me-2">{{ task.psa_ticket.get_status_display }}</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark me-2">{{ task.psa_ticket.get_status_display }}</span>
+                    {% endif %}
+                    <strong>#{{ task.psa_ticket.ticket_number|default:task.psa_ticket.external_id }}</strong>
+                </div>
+                <p class="mb-0 mt-1 small">{{ task.psa_ticket.subject }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mt-3">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-bell"></i> Alert Settings</h5></div>
+            <div class="card-body small">
+                <div class="mb-1">
+                    {% if task.alert_email %}
+                    <i class="fas fa-envelope text-success me-1"></i> Email alerts enabled
+                    {% else %}
+                    <i class="fas fa-envelope text-muted me-1"></i> <span class="text-muted">Email alerts off</span>
+                    {% endif %}
+                </div>
+                <div class="mb-1">
+                    {% if task.alert_sms %}
+                    <i class="fas fa-sms text-success me-1"></i> SMS alerts enabled
+                    {% else %}
+                    <i class="fas fa-sms text-muted me-1"></i> <span class="text-muted">SMS alerts off</span>
+                    {% endif %}
+                </div>
+                <div>
+                    <i class="fas fa-clock text-muted me-1"></i> Alert {{ task.alert_before_hours }}h before due
+                </div>
+                {% if task.last_alert_sent_at %}
+                <div class="text-muted mt-2">
+                    <i class="fas fa-paper-plane me-1"></i> Last alert: {{ task.last_alert_sent_at|date:"M j, Y H:i" }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
         {% if task.parent_task %}
         <div class="card mt-3">
             <div class="card-header"><h5 class="mb-0"><i class="fas fa-link"></i> Parent Task</h5></div>

@@ -73,6 +73,24 @@ class ScheduledTask(BaseModel):
     )
     tags = models.ManyToManyField(Tag, blank=True, related_name='scheduled_tasks')
 
+    # PSA ticket linkage (optional)
+    psa_ticket = models.ForeignKey(
+        'integrations.PSATicket',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='scheduled_tasks',
+        help_text='Linked PSA/helpdesk ticket (optional)',
+    )
+
+    # Alert preferences
+    alert_email = models.BooleanField(default=True, help_text='Send email alerts for this task')
+    alert_sms = models.BooleanField(default=False, help_text='Send SMS alerts for this task')
+    alert_before_hours = models.PositiveIntegerField(
+        default=24,
+        help_text='Send an alert this many hours before the due date',
+    )
+    last_alert_sent_at = models.DateTimeField(null=True, blank=True)
+
     objects = OrganizationManager()
 
     class Meta:
@@ -147,6 +165,10 @@ class ScheduledTask(BaseModel):
             is_template=False,
             parent_task=self.parent_task if self.parent_task else self,
             created_by=self.created_by,
+            psa_ticket=self.psa_ticket,
+            alert_email=self.alert_email,
+            alert_sms=self.alert_sms,
+            alert_before_hours=self.alert_before_hours,
         )
 
         # Copy tag M2M
