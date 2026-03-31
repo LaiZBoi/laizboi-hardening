@@ -164,20 +164,28 @@ def update_packages(request):
 
         # Run update command
         out = io.StringIO()
-        call_command('update_system_packages', *args, stdout=out)
+        err = io.StringIO()
+        call_command('update_system_packages', *args, stdout=out, stderr=err)
 
-        output = out.getvalue()
+        output = out.getvalue() + err.getvalue()
+
+        # Detect failure from output text (command doesn't raise on subprocess errors)
+        output_lower = output.lower()
+        failed = 'update failed' in output_lower or '✗' in output
 
         return JsonResponse({
-            'success': True,
+            'success': not failed,
             'message': 'Update completed successfully' if not dry_run else 'Dry run completed',
-            'output': output
+            'output': output,
+            'error': 'Update failed — see output above' if failed else None,
         })
 
-    except Exception:
+    except Exception as e:
+        import traceback
         return JsonResponse({
             'success': False,
-            'error': 'Update failed'
+            'error': str(e),
+            'output': traceback.format_exc(),
         }, status=500)
 
 

@@ -111,25 +111,32 @@ class Command(BaseCommand):
 
     def update_apt(self):
         """Update Debian/Ubuntu packages"""
+        import os
+        apt_env = os.environ.copy()
+        apt_env['DEBIAN_FRONTEND'] = 'noninteractive'
+
         try:
             # Update package cache
             self.stdout.write('Updating package cache...')
             result = subprocess.run(
-                ['sudo', 'apt-get', 'update'],
+                ['sudo', '-n', 'apt-get', '-q', 'update'],
                 capture_output=True,
                 text=True,
-                timeout=120
+                timeout=120,
+                env=apt_env,
             )
 
             if result.returncode != 0:
                 self.stdout.write(self.style.ERROR(f'Failed to update cache: {result.stderr}'))
-                return False
+                # Non-fatal — continue with potentially stale cache
+                self.stdout.write(self.style.WARNING('Continuing with existing cache...'))
 
             # Build update command
             if self.dry_run:
                 cmd = ['apt-get', '--dry-run']
             else:
-                cmd = ['sudo', 'apt-get', '-y']
+                cmd = ['sudo', '-n', 'apt-get', '-y', '-o', 'Dpkg::Options::=--force-confdef',
+                       '-o', 'Dpkg::Options::=--force-confold']
 
             if self.security_only:
                 # Install only security updates
@@ -170,22 +177,28 @@ class Command(BaseCommand):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600
+                timeout=600,
+                env=apt_env,
             )
 
             if self.dry_run:
                 self.stdout.write(result.stdout)
                 return True
 
+            if result.stdout:
+                self.stdout.write(result.stdout)
+            if result.stderr:
+                self.stdout.write(result.stderr)
+
             if result.returncode == 0:
                 self.stdout.write(self.style.SUCCESS('Packages updated successfully'))
                 return True
             else:
-                self.stdout.write(self.style.ERROR(f'Update failed: {result.stderr}'))
+                self.stdout.write(self.style.ERROR(f'Update failed (exit {result.returncode}): {result.stderr}'))
                 return False
 
         except subprocess.TimeoutExpired:
-            self.stdout.write(self.style.ERROR('Update timed out'))
+            self.stdout.write(self.style.ERROR('Update timed out after 10 minutes'))
             return False
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Error updating packages: {e}'))
