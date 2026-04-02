@@ -5,6 +5,12 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.14] - 2026-04-02
+
+### New Features
+- **Install App / Add to Home Screen page** (`/core/install/`) — no login required, shareable with staff; shows a QR code of the server URL, a downloadable QR PNG, a one-tap Install button (Android Chrome / desktop), and step-by-step Add to Home Screen instructions for Android, iPhone/iPad, and desktop
+- **Profile menu updated** — "Install App (PWA)" now links to the new install page instead of a JS-only prompt, making it work correctly on iOS Safari
+
 ## [3.17.13] - 2026-04-02
 
 ### New Features
