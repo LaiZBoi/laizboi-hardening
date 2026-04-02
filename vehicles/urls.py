@@ -79,8 +79,10 @@ urlpatterns = [
     path('providers/<int:pk>/delete/', views.service_provider_delete, name='service_provider_delete'),
 
     # Receipts
+    path('receipts/quick/', views.receipt_quick, name='receipt_quick'),
     path('vehicles/<int:vehicle_id>/receipts/create/', views.receipt_create, name='receipt_create'),
     path('vehicles/<int:vehicle_id>/receipts/ocr-extract/', views.receipt_ocr_extract, name='receipt_ocr_extract'),
+    path('vehicles/<int:vehicle_id>/receipts/qr/', views.receipt_qr_image, name='receipt_qr_image'),
     path('receipts/<int:pk>/edit/', views.receipt_edit, name='receipt_edit'),
     path('receipts/<int:pk>/delete/', views.receipt_delete, name='receipt_delete'),
 ]

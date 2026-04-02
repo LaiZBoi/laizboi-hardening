@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Scan Receipt - Client St0r{% endblock %}
+
+{% block content %}
+<div class="text-center mb-4 pt-2">
+    <i class="fas fa-receipt fa-3x text-primary mb-2"></i>
+    <h3 class="mb-1">Scan a Receipt</h3>
+    <p class="text-muted">Choose which vehicle this receipt is for:</p>
+</div>
+
+<div class="row g-3 justify-content-center">
+    {% for vehicle in vehicles %}
+    <div class="col-12 col-md-6 col-lg-4">
+        <a href="{% url 'vehicles:receipt_create' vehicle.pk %}"
+           class="card text-decoration-none h-100 border-0 shadow-sm vehicle-pick-card">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+                <div class="text-primary" style="font-size:2rem; min-width:2.5rem; text-align:center;">
+                    {% if vehicle.vehicle_type == 'van' or vehicle.vehicle_type == 'cargo_van' %}
+                    <i class="fas fa-shuttle-van"></i>
+                    {% elif vehicle.vehicle_type == 'truck' or vehicle.vehicle_type == 'pickup' %}
+                    <i class="fas fa-truck"></i>
+                    {% else %}
+                    <i class="fas fa-car"></i>
+                    {% endif %}
+                </div>
+                <div class="flex-fill overflow-hidden">
+                    <div class="fw-semibold text-truncate">{{ vehicle.display_name }}</div>
+                    <div class="small text-muted text-truncate">{{ vehicle.make }} {{ vehicle.model }}{% if vehicle.year %} &middot; {{ vehicle.year }}{% endif %}</div>
+                    {% if vehicle.license_plate %}
+                    <div class="small"><code>{{ vehicle.license_plate }}</code></div>
+                    {% endif %}
+                </div>
+                <i class="fas fa-chevron-right text-muted"></i>
+            </div>
+        </a>
+    </div>
+    {% empty %}
+    <div class="col-12 text-center text-muted py-5">
+        <i class="fas fa-car fa-3x opacity-25 mb-3"></i>
+        <p>No active vehicles found.</p>
+        <a href="{% url 'vehicles:vehicle_create' %}" class="btn btn-primary">Add a Vehicle</a>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+.vehicle-pick-card { transition: transform .15s, box-shadow .15s; }
+.vehicle-pick-card:hover, .vehicle-pick-card:focus { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.15) !important; }
+</style>
+{% endblock %}

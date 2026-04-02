@@ -57,5 +57,21 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["productivity", "business", "utilities"]
+  "categories": ["productivity", "business", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Scan Receipt",
+      "short_name": "Receipt",
+      "description": "Quickly scan and save a vehicle expense receipt",
+      "url": "/vehicles/receipts/quick/",
+      "icons": [{ "src": "/static/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Vehicles",
+      "short_name": "Vehicles",
+      "description": "Fleet vehicle management",
+      "url": "/vehicles/",
+      "icons": [{ "src": "/static/icons/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ]
 }

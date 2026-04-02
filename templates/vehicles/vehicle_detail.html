@@ -618,10 +618,72 @@
     <div class="tab-pane fade" id="receipts">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0"><i class="fas fa-receipt"></i> Expense Receipts</h5>
-            <a href="{% url 'vehicles:receipt_create' vehicle.pk %}" class="btn btn-success btn-sm">
-                <i class="fas fa-plus"></i> Add Receipt
-            </a>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#phoneShortcutModal">
+                    <i class="fas fa-mobile-alt"></i> Phone Shortcut
+                </button>
+                <a href="{% url 'vehicles:receipt_create' vehicle.pk %}" class="btn btn-success btn-sm">
+                    <i class="fas fa-plus"></i> Add Receipt
+                </a>
+            </div>
         </div>
+
+        <!-- Phone shortcut modal -->
+        <div class="modal fade" id="phoneShortcutModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-mobile-alt text-primary"></i> Add Receipt from Your Phone</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <p class="text-muted mb-3">Scan this QR code with your phone to open the Add Receipt page directly for <strong>{{ vehicle.display_name }}</strong>.</p>
+                        <img src="{% url 'vehicles:receipt_qr_image' vehicle.pk %}" alt="QR code"
+                             class="img-fluid mb-3" style="max-width:200px; border:1px solid #dee2e6; border-radius:8px; padding:8px;">
+                        <div class="mb-3">
+                            <div class="input-group input-group-sm">
+                                <input type="text" id="receiptDirectUrl" class="form-control font-monospace small"
+                                       value="{{ request.scheme }}://{{ request.get_host }}{% url 'vehicles:receipt_create' vehicle.pk %}"
+                                       readonly>
+                                <button class="btn btn-outline-secondary" type="button" id="copyReceiptUrl">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">Copy and paste this link into your phone's browser.</div>
+                        </div>
+                        <hr>
+                        <div class="text-start small">
+                            <p class="fw-semibold mb-2"><i class="fab fa-android text-success"></i> Android (Chrome)</p>
+                            <ol class="mb-3">
+                                <li>Open the link in Chrome</li>
+                                <li>Tap the <i class="fas fa-ellipsis-v"></i> menu → <strong>Add to Home screen</strong></li>
+                                <li>Tap <strong>Add</strong> — icon appears on your home screen</li>
+                            </ol>
+                            <p class="fw-semibold mb-2"><i class="fab fa-apple"></i> iPhone / iPad (Safari)</p>
+                            <ol class="mb-0">
+                                <li>Open the link in Safari</li>
+                                <li>Tap the <i class="fas fa-share-square"></i> Share button</li>
+                                <li>Tap <strong>Add to Home Screen</strong></li>
+                                <li>Tap <strong>Add</strong> — icon appears on your home screen</li>
+                            </ol>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        document.getElementById('copyReceiptUrl')?.addEventListener('click', function() {
+            const inp = document.getElementById('receiptDirectUrl');
+            inp.select();
+            navigator.clipboard?.writeText(inp.value).then(() => {
+                this.innerHTML = '<i class="fas fa-check text-success"></i>';
+                setTimeout(() => { this.innerHTML = '<i class="fas fa-copy"></i>'; }, 2000);
+            });
+        });
+        </script>
 
         <!-- Cost summary cards -->
         {% if receipt_grand_total > 0 %}

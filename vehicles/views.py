@@ -1649,3 +1649,45 @@ def _receipt_image_hash(image_file):
     digest = hashlib.sha256(image_file.read()).hexdigest()
     image_file.seek(0)
     return digest
+
+
+@login_required
+def receipt_quick(request):
+    """
+    Mobile-optimised landing page for the 'Scan Receipt' PWA shortcut.
+    If the user only has one vehicle, redirect straight to receipt_create.
+    Otherwise show a vehicle picker.
+    """
+    # QR codes embed ?v=<pk> so they land on the right vehicle immediately
+    vehicle_pk = request.GET.get('v')
+    if vehicle_pk:
+        vehicle = get_object_or_404(ServiceVehicle, pk=vehicle_pk)
+        return redirect('vehicles:receipt_create', vehicle_id=vehicle.pk)
+
+    vehicles = ServiceVehicle.objects.filter(status__in=['active', 'maintenance']).order_by('name')
+    if vehicles.count() == 1:
+        return redirect('vehicles:receipt_create', vehicle_id=vehicles.first().pk)
+    return render(request, 'vehicles/receipt_quick.html', {'vehicles': vehicles})
+
+
+@login_required
+def receipt_qr_image(request, vehicle_id):
+    """Return a PNG QR code that links to the Add Receipt page for this vehicle."""
+    import qrcode
+    from io import BytesIO
+    from django.http import HttpResponse
+
+    vehicle = get_object_or_404(ServiceVehicle, pk=vehicle_id)
+    url = _qr_base_url(request) + f'/vehicles/receipts/quick/?v={vehicle.pk}'
+
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color='black', back_color='white')
+
+    buf = BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    response = HttpResponse(buf.getvalue(), content_type='image/png')
+    response['Content-Disposition'] = f'inline; filename="receipt-qr-{vehicle.pk}.png"'
+    return response
