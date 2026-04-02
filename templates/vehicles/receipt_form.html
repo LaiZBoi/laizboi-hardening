@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - Client St0r{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicles_dashboard' %}">Vehicles</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicle_detail' vehicle.pk %}">{{ vehicle.display_name }}</a></li>
+        <li class="breadcrumb-item active">{{ title }}</li>
+    </ol>
+</nav>
+
+<h2><i class="fas fa-receipt"></i> {{ title }}</h2>
+<p class="text-muted">{{ vehicle.display_name }}</p>
+
+<form method="post" enctype="multipart/form-data" id="receiptForm">
+    {% csrf_token %}
+
+    <!-- Image Upload + AI Extract Section -->
+    <div class="card mb-3 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h6 class="mb-0"><i class="fas fa-camera"></i> Receipt Image</h6>
+        </div>
+        <div class="card-body">
+            <!-- Image preview -->
+            <div id="imagePreviewContainer" class="mb-3 text-center" style="display:none;">
+                <img id="imagePreview" src="#" alt="Receipt preview"
+                     style="max-width:100%; max-height:300px; border-radius:8px; border:1px solid #dee2e6;">
+            </div>
+
+            <div class="mb-3">
+                {{ form.receipt_image }}
+                <div class="form-text">Take a photo or choose an image file. On mobile, this will open your camera.</div>
+            </div>
+
+            <div id="aiExtractSection" style="display:none;">
+                <button type="button" id="aiExtractBtn" class="btn btn-success w-100">
+                    <i class="fas fa-magic"></i> AI Extract Receipt Data
+                </button>
+                <div id="aiStatus" class="mt-2" style="display:none;">
+                    <div class="d-flex align-items-center gap-2 text-muted">
+                        <div class="spinner-border spinner-border-sm"></div>
+                        <span>Analyzing receipt…</span>
+                    </div>
+                </div>
+            </div>
+
+            {% if receipt %}
+            {% with img=receipt.get_receipt_image %}
+            {% if img %}
+            <div class="mt-2">
+                <small class="text-muted"><i class="fas fa-paperclip"></i> Current image attached — upload a new one to replace it.</small>
+            </div>
+            {% endif %}
+            {% endwith %}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Receipt Details -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <h6 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Receipt Details</h6>
+        </div>
+        <div class="card-body">
+            <div id="aiConfidenceBanner" class="alert alert-info py-2" style="display:none;">
+                <i class="fas fa-robot"></i> <strong>AI extracted</strong> — confidence: <span id="aiConfidenceText"></span>. Please review and correct any errors.
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 col-12 mb-3">
+                    <label class="form-label fw-semibold">Date *</label>
+                    {{ form.receipt_date }}
+                    {% if form.receipt_date.errors %}<div class="text-danger small">{{ form.receipt_date.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6 col-12 mb-3">
+                    <label class="form-label fw-semibold">Vendor / Store</label>
+                    {{ form.vendor }}
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4 col-6 mb-3">
+                    <label class="form-label fw-semibold">Amount *</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        {{ form.amount }}
+                    </div>
+                    {% if form.amount.errors %}<div class="text-danger small">{{ form.amount.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4 col-6 mb-3">
+                    <label class="form-label fw-semibold">Tax</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        {{ form.tax_amount }}
+                    </div>
+                </div>
+                <div class="col-md-4 col-12 mb-3">
+                    <label class="form-label fw-semibold">Category *</label>
+                    {{ form.category }}
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 col-12 mb-3">
+                    <label class="form-label fw-semibold">Odometer Reading</label>
+                    {{ form.odometer }}
+                    <div class="form-text">If shown on receipt</div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Description</label>
+                {{ form.description }}
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Notes</label>
+                {{ form.notes }}
+            </div>
+        </div>
+    </div>
+
+    {% if form.errors %}
+    <div class="alert alert-danger">
+        <strong>Please correct the errors below:</strong>
+        {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    <div class="d-flex gap-2 mb-4">
+        <button type="submit" class="btn btn-primary flex-fill">
+            <i class="fas fa-save"></i> {{ button_text }}
+        </button>
+        <a href="{% url 'vehicles:vehicle_detail' vehicle.pk %}" class="btn btn-secondary">
+            <i class="fas fa-times"></i> Cancel
+        </a>
+    </div>
+</form>
+
+<script>
+(function () {
+    const imageInput = document.getElementById('id_receipt_image');
+    const imagePreview = document.getElementById('imagePreview');
+    const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+    const aiExtractSection = document.getElementById('aiExtractSection');
+    const aiExtractBtn = document.getElementById('aiExtractBtn');
+    const aiStatus = document.getElementById('aiStatus');
+    const aiConfidenceBanner = document.getElementById('aiConfidenceBanner');
+    const aiConfidenceText = document.getElementById('aiConfidenceText');
+
+    // Field refs
+    const fDate = document.getElementById('id_receipt_date');
+    const fVendor = document.getElementById('id_vendor');
+    const fAmount = document.getElementById('id_amount');
+    const fTax = document.getElementById('id_tax_amount');
+    const fCategory = document.getElementById('id_category');
+    const fOdometer = document.getElementById('id_odometer');
+    const fDescription = document.getElementById('id_description');
+
+    imageInput.addEventListener('change', function () {
+        const file = this.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            imagePreview.src = e.target.result;
+            imagePreviewContainer.style.display = '';
+            aiExtractSection.style.display = '';
+        };
+        reader.readAsDataURL(file);
+    });
+
+    aiExtractBtn.addEventListener('click', function () {
+        const file = imageInput.files[0];
+        if (!file) return;
+
+        aiExtractBtn.disabled = true;
+        aiStatus.style.display = '';
+
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+        const fd = new FormData();
+        fd.append('image', file);
+        fd.append('csrfmiddlewaretoken', csrf);
+
+        fetch('{% url "vehicles:receipt_ocr_extract" vehicle.pk %}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrf},
+            body: fd,
+        })
+        .then(r => r.json())
+        .then(data => {
+            aiStatus.style.display = 'none';
+            aiExtractBtn.disabled = false;
+
+            if (!data.success) {
+                alert('AI extraction failed: ' + (data.error || 'Unknown error'));
+                return;
+            }
+
+            const d = data.data;
+            if (d.date && fDate) fDate.value = d.date;
+            if (d.vendor && fVendor) fVendor.value = d.vendor;
+            if (d.amount != null && fAmount) fAmount.value = parseFloat(d.amount).toFixed(2);
+            if (d.tax_amount != null && fTax) fTax.value = parseFloat(d.tax_amount).toFixed(2);
+            if (d.category && fCategory) fCategory.value = d.category;
+            if (d.odometer != null && fOdometer) fOdometer.value = d.odometer;
+            if (d.description && fDescription) fDescription.value = d.description;
+
+            if (d.confidence) {
+                aiConfidenceText.textContent = d.confidence;
+                aiConfidenceBanner.style.display = '';
+            }
+        })
+        .catch(err => {
+            aiStatus.style.display = 'none';
+            aiExtractBtn.disabled = false;
+            alert('Request failed: ' + err);
+        });
+    });
+})();
+</script>
+{% endblock %}

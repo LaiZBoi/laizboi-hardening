@@ -82,6 +82,12 @@
         <a class="nav-link" data-bs-toggle="tab" href="#photos"><i class="fas fa-images"></i> Photos</a>
     </li>
     <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#receipts">
+            <i class="fas fa-receipt"></i> Receipts
+            {% if receipts.count > 0 %}<span class="badge bg-secondary ms-1">{{ receipts.count }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
         <a class="nav-link" data-bs-toggle="tab" href="#history"><i class="fas fa-history"></i> History</a>
     </li>
 </ul>
@@ -606,6 +612,115 @@
                 </div>
             {% endif %}
         </div>
+    </div>
+
+    <!-- Receipts Tab -->
+    <div class="tab-pane fade" id="receipts">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0"><i class="fas fa-receipt"></i> Expense Receipts</h5>
+            <a href="{% url 'vehicles:receipt_create' vehicle.pk %}" class="btn btn-success btn-sm">
+                <i class="fas fa-plus"></i> Add Receipt
+            </a>
+        </div>
+
+        <!-- Cost summary cards -->
+        {% if receipt_grand_total > 0 %}
+        <div class="row g-2 mb-3">
+            <div class="col-6 col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body py-2">
+                        <div class="text-warning fw-bold fs-5">${{ receipt_totals.fuel|floatformat:2 }}</div>
+                        <div class="small text-muted"><i class="fas fa-gas-pump"></i> Fuel</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body py-2">
+                        <div class="text-info fw-bold fs-5">${{ receipt_totals.maintenance|floatformat:2 }}</div>
+                        <div class="small text-muted"><i class="fas fa-oil-can"></i> Maintenance</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body py-2">
+                        <div class="text-danger fw-bold fs-5">${{ receipt_totals.repair|floatformat:2 }}</div>
+                        <div class="small text-muted"><i class="fas fa-tools"></i> Repair</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card text-center h-100 border-primary">
+                    <div class="card-body py-2">
+                        <div class="text-primary fw-bold fs-5">${{ receipt_grand_total|floatformat:2 }}</div>
+                        <div class="small text-muted"><i class="fas fa-sigma"></i> Total</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if receipts %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Vendor</th>
+                        <th>Category</th>
+                        <th class="text-end">Amount</th>
+                        <th class="d-none d-md-table-cell">Description</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in receipts %}
+                    <tr>
+                        <td class="text-nowrap">{{ r.receipt_date }}</td>
+                        <td>{{ r.vendor|default:"—" }}</td>
+                        <td>
+                            <span class="badge bg-{% if r.category == 'fuel' %}warning text-dark{% elif r.category == 'repair' %}danger{% elif r.category == 'maintenance' %}info{% elif r.category == 'insurance' %}primary{% else %}secondary{% endif %}">
+                                {{ r.get_category_display }}
+                            </span>
+                            {% if r.ai_processed %}
+                            <i class="fas fa-robot text-muted ms-1" title="AI extracted ({{ r.ai_confidence }} confidence)"></i>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-nowrap fw-semibold">${{ r.amount }}</td>
+                        <td class="small text-muted d-none d-md-table-cell">{{ r.description|truncatewords:10|default:"—" }}</td>
+                        <td class="text-end text-nowrap">
+                            <div class="btn-group btn-group-sm">
+                                <a href="{% url 'vehicles:receipt_edit' r.pk %}" class="btn btn-outline-primary" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{% url 'vehicles:receipt_delete' r.pk %}" class="btn btn-outline-danger" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light fw-semibold">
+                        <td colspan="3">Total</td>
+                        <td class="text-end">${{ receipt_grand_total|floatformat:2 }}</td>
+                        <td class="d-none d-md-table-cell"></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="fas fa-receipt fa-3x mb-3 opacity-25"></i>
+            <p class="mb-0">No receipts yet.</p>
+            <a href="{% url 'vehicles:receipt_create' vehicle.pk %}" class="btn btn-success mt-3">
+                <i class="fas fa-plus"></i> Add First Receipt
+            </a>
+        </div>
+        {% endif %}
     </div>
 
     <!-- History Tab -->

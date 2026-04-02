@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Delete Receipt - Client St0r{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicles_dashboard' %}">Vehicles</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'vehicles:vehicle_detail' vehicle.pk %}">{{ vehicle.display_name }}</a></li>
+        <li class="breadcrumb-item active">Delete Receipt</li>
+    </ol>
+</nav>
+
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="fas fa-receipt fa-3x text-danger mb-3"></i>
+        <h4>Delete this receipt?</h4>
+        <p class="text-muted">
+            {{ receipt.receipt_date }} &mdash; {{ receipt.get_category_display }}
+            {% if receipt.vendor %}&mdash; {{ receipt.vendor }}{% endif %}
+            &mdash; <strong>${{ receipt.amount }}</strong>
+        </p>
+        <p class="text-danger small">This action cannot be undone.</p>
+        <form method="post" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger me-2">
+                <i class="fas fa-trash"></i> Yes, Delete
+            </button>
+            <a href="{% url 'vehicles:vehicle_detail' vehicle.pk %}" class="btn btn-secondary">
+                <i class="fas fa-times"></i> Cancel
+            </a>
+        </form>
+    </div>
+</div>
+{% endblock %}

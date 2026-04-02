@@ -15,13 +15,13 @@ from .models import (
     ServiceVehicle, VehicleInventoryItem, VehicleDamageReport,
     VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment,
     VehicleServiceSchedule, VehicleServiceAlert, VehicleServiceProvider,
-    ShopInventoryItem
+    ShopInventoryItem, VehicleReceipt
 )
 from .forms import (
     ServiceVehicleForm, VehicleInventoryItemForm, VehicleDamageReportForm,
     VehicleMaintenanceRecordForm, VehicleFuelLogForm, VehicleAssignmentForm,
     VehicleServiceScheduleForm, VehicleServiceAlertAcknowledgeForm, VehicleServiceProviderForm,
-    ShopInventoryItemForm
+    ShopInventoryItemForm, VehicleReceiptForm
 )
 
 
@@ -217,6 +217,14 @@ def vehicle_detail(request, pk):
     total_fuel_cost = fuel_logs.aggregate(total=Sum('total_cost'))['total'] or 0
     avg_mpg = vehicle.get_recent_fuel_mpg() or 0
 
+    # Receipts
+    receipts = vehicle.receipts.all().order_by('-receipt_date')
+    receipt_totals = {}
+    for cat, _ in VehicleReceipt.CATEGORY_CHOICES:
+        agg = receipts.filter(category=cat).aggregate(total=Sum('amount'))['total'] or 0
+        receipt_totals[cat] = agg
+    receipt_grand_total = receipts.aggregate(total=Sum('amount'))['total'] or 0
+
     # Generate service alerts for this vehicle
     _generate_vehicle_service_alerts(vehicle)
 
@@ -289,6 +297,9 @@ def vehicle_detail(request, pk):
         'vehicle_health_remainder': 100 - health_score,
         'vehicle_health_label': vehicle_health_label,
         'vehicle_health_color': vehicle_health_color,
+        'receipts': receipts,
+        'receipt_totals': receipt_totals,
+        'receipt_grand_total': receipt_grand_total,
     }
 
     return render(request, 'vehicles/vehicle_detail.html', context)
@@ -1461,3 +1472,129 @@ def inventory_qr_print_all(request):
         'vehicles': vehicles,
         'selected_vehicle': selected_vehicle,
     })
+
+
+# ── Receipt views ────────────────────────────────────────────────────────────
+
+def _save_receipt_image(image, receipt, request):
+    """Store an uploaded image file as an Attachment for a receipt."""
+    from core.middleware import get_request_organization
+    org = get_request_organization(request)
+    if not org:
+        return
+    Attachment.objects.create(
+        organization=org,
+        entity_type='vehicle_receipt',
+        entity_id=receipt.pk,
+        file=image,
+        original_filename=image.name,
+        file_size=image.size,
+        content_type=getattr(image, 'content_type', None) or 'image/jpeg',
+        uploaded_by=request.user,
+    )
+
+
+@login_required
+def receipt_create(request, vehicle_id):
+    """Create a receipt for a vehicle, optionally with an uploaded image."""
+    vehicle = get_object_or_404(ServiceVehicle, pk=vehicle_id)
+
+    if request.method == 'POST':
+        form = VehicleReceiptForm(request.POST, request.FILES)
+        if form.is_valid():
+            receipt = form.save(commit=False)
+            receipt.vehicle = vehicle
+            receipt.created_by = request.user
+            receipt.save()
+
+            image = form.cleaned_data.get('receipt_image')
+            if image:
+                _save_receipt_image(image, receipt, request)
+
+            messages.success(request, 'Receipt saved.')
+            return redirect('vehicles:vehicle_detail', pk=vehicle.pk)
+    else:
+        form = VehicleReceiptForm(initial={'receipt_date': timezone.now().date()})
+
+    return render(request, 'vehicles/receipt_form.html', {
+        'form': form,
+        'vehicle': vehicle,
+        'title': 'Add Receipt',
+        'button_text': 'Save Receipt',
+    })
+
+
+@login_required
+def receipt_edit(request, pk):
+    """Edit an existing receipt."""
+    receipt = get_object_or_404(VehicleReceipt, pk=pk)
+
+    if request.method == 'POST':
+        form = VehicleReceiptForm(request.POST, request.FILES, instance=receipt)
+        if form.is_valid():
+            receipt = form.save()
+
+            image = form.cleaned_data.get('receipt_image')
+            if image:
+                # Delete old attachment files then records
+                old_attachments = Attachment.objects.filter(
+                    entity_type='vehicle_receipt', entity_id=receipt.pk
+                )
+                for att in old_attachments:
+                    att.file.delete(save=False)
+                old_attachments.delete()
+                _save_receipt_image(image, receipt, request)
+
+            messages.success(request, 'Receipt updated.')
+            return redirect('vehicles:vehicle_detail', pk=receipt.vehicle.pk)
+    else:
+        form = VehicleReceiptForm(instance=receipt)
+
+    return render(request, 'vehicles/receipt_form.html', {
+        'form': form,
+        'vehicle': receipt.vehicle,
+        'receipt': receipt,
+        'title': 'Edit Receipt',
+        'button_text': 'Save Changes',
+    })
+
+
+@login_required
+def receipt_delete(request, pk):
+    """Delete a receipt."""
+    receipt = get_object_or_404(VehicleReceipt, pk=pk)
+    vehicle = receipt.vehicle
+
+    if request.method == 'POST':
+        for att in Attachment.objects.filter(entity_type='vehicle_receipt', entity_id=receipt.pk):
+            att.file.delete(save=False)
+        Attachment.objects.filter(entity_type='vehicle_receipt', entity_id=receipt.pk).delete()
+        receipt.delete()
+        messages.success(request, 'Receipt deleted.')
+        return redirect('vehicles:vehicle_detail', pk=vehicle.pk)
+
+    return render(request, 'vehicles/receipt_confirm_delete.html', {
+        'receipt': receipt,
+        'vehicle': vehicle,
+    })
+
+
+@login_required
+@require_http_methods(['POST'])
+def receipt_ocr_extract(request, vehicle_id):
+    """AJAX: Extract receipt data from uploaded image using Claude vision."""
+    import json as _json
+    from .services.receipt_ocr import extract_receipt_data
+
+    image = request.FILES.get('image')
+    if not image:
+        return _json_response({'success': False, 'error': 'No image provided.'}, status=400)
+
+    result = extract_receipt_data(image)
+    from django.http import JsonResponse
+    return JsonResponse(result)
+
+
+def _json_response(data, status=200):
+    from django.http import JsonResponse
+    return JsonResponse(data, status=status)

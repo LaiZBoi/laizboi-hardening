@@ -932,3 +932,64 @@ class ShopInventoryItem(BaseModel):
         if not self.qr_code:
             self.generate_qr_code()
         super().save(*args, **kwargs)
+
+
+class VehicleReceipt(BaseModel):
+    """Scanned receipt for vehicle expenses — fuel, repairs, maintenance, etc."""
+
+    CATEGORY_CHOICES = [
+        ('fuel', 'Fuel'),
+        ('maintenance', 'Maintenance'),
+        ('repair', 'Repair / Parts'),
+        ('insurance', 'Insurance'),
+        ('registration', 'Registration / Licensing'),
+        ('toll', 'Tolls / Parking'),
+        ('cleaning', 'Cleaning / Detailing'),
+        ('inspection', 'Inspection'),
+        ('other', 'Other'),
+    ]
+
+    vehicle = models.ForeignKey(
+        ServiceVehicle, on_delete=models.CASCADE, related_name='receipts'
+    )
+    receipt_date = models.DateField()
+    vendor = models.CharField(max_length=255, blank=True)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='other')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    tax_amount = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    odometer = models.IntegerField(
+        null=True, blank=True,
+        help_text='Odometer / mileage reading shown on receipt (optional)'
+    )
+    description = models.TextField(blank=True, help_text='Line items or description from receipt')
+    notes = models.TextField(blank=True)
+
+    # AI extraction metadata
+    ai_processed = models.BooleanField(default=False)
+    ai_confidence = models.CharField(
+        max_length=10, blank=True,
+        choices=[('low', 'Low'), ('medium', 'Medium'), ('high', 'High')]
+    )
+
+    # Receipt image stored via Attachment (entity_type='vehicle_receipt')
+    # Attachment.entity_id = self.pk after save
+
+    created_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vehicle_receipts_created'
+    )
+
+    class Meta:
+        db_table = 'vehicle_receipts'
+        ordering = ['-receipt_date']
+
+    def __str__(self):
+        return f"{self.vehicle} — {self.get_category_display()} ${self.amount} ({self.receipt_date})"
+
+    def get_receipt_image(self):
+        """Return the Attachment for this receipt image, if any."""
+        from files.models import Attachment
+        return Attachment.objects.filter(
+            entity_type='vehicle_receipt',
+            entity_id=self.pk
+        ).order_by('-created_at').first()

@@ -7,7 +7,7 @@ from .models import (
     ServiceVehicle, VehicleInventoryItem, VehicleDamageReport,
     VehicleMaintenanceRecord, VehicleFuelLog, VehicleAssignment,
     VehicleServiceSchedule, VehicleServiceAlert, VehicleServiceProvider,
-    ShopInventoryItem
+    ShopInventoryItem, VehicleReceipt
 )
 
 User = get_user_model()
@@ -349,4 +349,36 @@ class VehicleServiceProviderForm(forms.ModelForm):
             'service_types': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Oil change, Tires, Brakes, State inspection'}),
             'is_preferred': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+
+class VehicleReceiptForm(forms.ModelForm):
+    """Form for creating/editing vehicle receipts"""
+
+    # Image upload field (not a model field — handled separately in view)
+    receipt_image = forms.ImageField(
+        required=False,
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': 'image/*',
+            'capture': 'environment',  # mobile: prefer rear camera
+        }),
+        label='Receipt Image (photo or scan)',
+    )
+
+    class Meta:
+        model = VehicleReceipt
+        fields = [
+            'receipt_date', 'vendor', 'category', 'amount', 'tax_amount',
+            'odometer', 'description', 'notes',
+        ]
+        widgets = {
+            'receipt_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'vendor': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Store or business name'}),
+            'category': forms.Select(attrs={'class': 'form-select'}),
+            'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
+            'tax_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
+            'odometer': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Optional mileage reading'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Items purchased'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Any additional notes'}),
         }
