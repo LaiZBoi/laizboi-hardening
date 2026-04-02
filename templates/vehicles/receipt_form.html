@@ -12,60 +12,74 @@
 </nav>
 
 <h2><i class="fas fa-receipt"></i> {{ title }}</h2>
-<p class="text-muted">{{ vehicle.display_name }}</p>
+<p class="text-muted mb-3">{{ vehicle.display_name }}</p>
 
 <form method="post" enctype="multipart/form-data" id="receiptForm">
     {% csrf_token %}
+    <!-- Hidden field to pass back the image hash from OCR so the server can store it on save -->
+    <input type="hidden" name="ocr_image_hash" id="ocrImageHash" value="">
 
-    <!-- Image Upload + AI Extract Section -->
+    <!-- ── Step 1: Image ─────────────────────────────────── -->
     <div class="card mb-3 border-primary">
-        <div class="card-header bg-primary text-white">
-            <h6 class="mb-0"><i class="fas fa-camera"></i> Receipt Image</h6>
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-camera"></i> Step 1 — Receipt Image <span class="fw-normal opacity-75">(optional)</span></h6>
         </div>
         <div class="card-body">
             <!-- Image preview -->
             <div id="imagePreviewContainer" class="mb-3 text-center" style="display:none;">
                 <img id="imagePreview" src="#" alt="Receipt preview"
-                     style="max-width:100%; max-height:300px; border-radius:8px; border:1px solid #dee2e6;">
+                     style="max-width:100%; max-height:280px; border-radius:8px; border:1px solid #dee2e6;">
             </div>
 
-            <div class="mb-3">
+            <div class="mb-2">
                 {{ form.receipt_image }}
-                <div class="form-text">Take a photo or choose an image file. On mobile, this will open your camera.</div>
-            </div>
-
-            <div id="aiExtractSection" style="display:none;">
-                <button type="button" id="aiExtractBtn" class="btn btn-success w-100">
-                    <i class="fas fa-magic"></i> AI Extract Receipt Data
-                </button>
-                <div id="aiStatus" class="mt-2" style="display:none;">
-                    <div class="d-flex align-items-center gap-2 text-muted">
-                        <div class="spinner-border spinner-border-sm"></div>
-                        <span>Analyzing receipt…</span>
-                    </div>
+                <div class="form-text">
+                    <i class="fas fa-mobile-alt text-primary"></i>
+                    <strong>On your phone:</strong> tap to open the camera or photo library.
+                    <strong>On desktop:</strong> choose an image file from disk.
                 </div>
             </div>
 
-            {% if receipt %}
-            {% with img=receipt.get_receipt_image %}
-            {% if img %}
-            <div class="mt-2">
-                <small class="text-muted"><i class="fas fa-paperclip"></i> Current image attached — upload a new one to replace it.</small>
+            <!-- AI Extract button — shown after image selected -->
+            <div id="aiExtractSection" style="display:none;" class="mt-3">
+                <button type="button" id="aiExtractBtn" class="btn btn-success w-100 btn-lg">
+                    <i class="fas fa-magic"></i> AI Extract Receipt Data
+                </button>
+                <div class="form-text text-center mt-1">
+                    Reads vendor, date, amount, category automatically using Claude AI.
+                    <a href="{% url 'core:settings_ai' %}" target="_blank" class="text-decoration-none">
+                        <i class="fas fa-cog"></i> Configure AI key
+                    </a>
+                </div>
+                <div id="aiStatus" class="mt-2 text-center" style="display:none;">
+                    <div class="d-inline-flex align-items-center gap-2 text-muted">
+                        <div class="spinner-border spinner-border-sm"></div>
+                        <span>Analyzing receipt with AI…</span>
+                    </div>
+                </div>
+                <div id="aiDuplicateAlert" class="alert alert-danger mt-2" style="display:none;">
+                    <i class="fas fa-ban"></i> <strong>Duplicate detected:</strong>
+                    <span id="aiDuplicateMsg"></span>
+                </div>
             </div>
-            {% endif %}
-            {% endwith %}
-            {% endif %}
+
+            {% if receipt %}{% with img=receipt.get_receipt_image %}{% if img %}
+            <div class="mt-2">
+                <small class="text-muted"><i class="fas fa-paperclip"></i> Image already attached — upload a new one to replace it.</small>
+            </div>
+            {% endif %}{% endwith %}{% endif %}
         </div>
     </div>
 
-    <!-- Receipt Details -->
+    <!-- ── Step 2: Receipt Details ───────────────────────── -->
     <div class="card mb-3">
         <div class="card-header">
-            <h6 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Receipt Details</h6>
+            <h6 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Step 2 — Receipt Details</h6>
         </div>
         <div class="card-body">
-            <div id="aiConfidenceBanner" class="alert alert-info py-2" style="display:none;">
-                <i class="fas fa-robot"></i> <strong>AI extracted</strong> — confidence: <span id="aiConfidenceText"></span>. Please review and correct any errors.
+            <div id="aiConfidenceBanner" class="alert alert-success py-2 mb-3" style="display:none;">
+                <i class="fas fa-robot"></i> <strong>AI extracted</strong> — confidence: <span id="aiConfidenceText" class="fw-semibold"></span>.
+                Please review the fields below and correct any errors before saving.
             </div>
 
             <div class="row">
@@ -149,8 +163,11 @@
     const aiStatus = document.getElementById('aiStatus');
     const aiConfidenceBanner = document.getElementById('aiConfidenceBanner');
     const aiConfidenceText = document.getElementById('aiConfidenceText');
+    const aiDuplicateAlert = document.getElementById('aiDuplicateAlert');
+    const aiDuplicateMsg = document.getElementById('aiDuplicateMsg');
+    const ocrImageHash = document.getElementById('ocrImageHash');
 
-    // Field refs
+    // Form fields
     const fDate = document.getElementById('id_receipt_date');
     const fVendor = document.getElementById('id_vendor');
     const fAmount = document.getElementById('id_amount');
@@ -162,6 +179,11 @@
     imageInput.addEventListener('change', function () {
         const file = this.files[0];
         if (!file) return;
+        // Reset AI state when a new image is chosen
+        aiDuplicateAlert.style.display = 'none';
+        aiConfidenceBanner.style.display = 'none';
+        ocrImageHash.value = '';
+
         const reader = new FileReader();
         reader.onload = function (e) {
             imagePreview.src = e.target.result;
@@ -177,6 +199,7 @@
 
         aiExtractBtn.disabled = true;
         aiStatus.style.display = '';
+        aiDuplicateAlert.style.display = 'none';
 
         const csrfMeta = document.querySelector('meta[name="csrf-token"]');
         const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
@@ -196,9 +219,18 @@
             aiExtractBtn.disabled = false;
 
             if (!data.success) {
-                alert('AI extraction failed: ' + (data.error || 'Unknown error'));
+                if (data.duplicate) {
+                    // Show inline duplicate warning — don't allow saving
+                    aiDuplicateMsg.textContent = data.error;
+                    aiDuplicateAlert.style.display = '';
+                } else {
+                    alert('AI extraction failed: ' + (data.error || 'Unknown error'));
+                }
                 return;
             }
+
+            // Store hash returned by OCR endpoint so the server records it on save
+            if (data.image_hash) ocrImageHash.value = data.image_hash;
 
             const d = data.data;
             if (d.date && fDate) fDate.value = d.date;

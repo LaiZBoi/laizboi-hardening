@@ -1509,6 +1509,10 @@ def receipt_create(request, vehicle_id):
 
             image = form.cleaned_data.get('receipt_image')
             if image:
+                # Use hash already computed by OCR endpoint if present, else compute now
+                img_hash = request.POST.get('ocr_image_hash') or _receipt_image_hash(image)
+                receipt.image_hash = img_hash
+                receipt.save(update_fields=['image_hash'])
                 _save_receipt_image(image, receipt, request)
 
             messages.success(request, 'Receipt saved.')
@@ -1536,6 +1540,25 @@ def receipt_edit(request, pk):
 
             image = form.cleaned_data.get('receipt_image')
             if image:
+                new_hash = _receipt_image_hash(image)
+                # Allow replacing the image on the SAME receipt but block if
+                # the new image matches a DIFFERENT receipt
+                duplicate = VehicleReceipt.objects.filter(
+                    image_hash=new_hash
+                ).exclude(pk=receipt.pk).select_related('vehicle').first()
+                if duplicate:
+                    messages.error(
+                        request,
+                        f'That receipt image was already imported on {duplicate.receipt_date} '
+                        f'({duplicate.get_category_display()}, ${duplicate.amount}) '
+                        f'for {duplicate.vehicle.display_name}. Upload a different image.'
+                    )
+                    return render(request, 'vehicles/receipt_form.html', {
+                        'form': form, 'vehicle': receipt.vehicle, 'receipt': receipt,
+                        'title': 'Edit Receipt', 'button_text': 'Save Changes',
+                    })
+                receipt.image_hash = new_hash
+                receipt.save(update_fields=['image_hash'])
                 # Delete old attachment files then records
                 old_attachments = Attachment.objects.filter(
                     entity_type='vehicle_receipt', entity_id=receipt.pk
@@ -1582,19 +1605,47 @@ def receipt_delete(request, pk):
 @login_required
 @require_http_methods(['POST'])
 def receipt_ocr_extract(request, vehicle_id):
-    """AJAX: Extract receipt data from uploaded image using Claude vision."""
-    import json as _json
+    """AJAX: Extract receipt data from uploaded image using Claude vision.
+    Returns duplicate warning if the same image has already been OCR-imported.
+    """
+    import hashlib
     from .services.receipt_ocr import extract_receipt_data
+    from django.http import JsonResponse
 
     image = request.FILES.get('image')
     if not image:
-        return _json_response({'success': False, 'error': 'No image provided.'}, status=400)
+        return JsonResponse({'success': False, 'error': 'No image provided.'}, status=400)
+
+    # Compute SHA-256 of the image bytes for duplicate detection
+    image.seek(0)
+    img_bytes = image.read()
+    image_hash = hashlib.sha256(img_bytes).hexdigest()
+    image.seek(0)
+
+    # Check for existing receipt with same image hash
+    existing = VehicleReceipt.objects.filter(image_hash=image_hash).select_related('vehicle').first()
+    if existing:
+        return JsonResponse({
+            'success': False,
+            'duplicate': True,
+            'error': (
+                f'This receipt image was already imported on {existing.receipt_date} '
+                f'({existing.get_category_display()}, ${existing.amount}) '
+                f'for {existing.vehicle.display_name}. '
+                f'Duplicate receipts are not allowed.'
+            ),
+        })
 
     result = extract_receipt_data(image)
-    from django.http import JsonResponse
+    if result.get('success'):
+        result['image_hash'] = image_hash  # pass back so the form can embed it
     return JsonResponse(result)
 
 
-def _json_response(data, status=200):
-    from django.http import JsonResponse
-    return JsonResponse(data, status=status)
+def _receipt_image_hash(image_file):
+    """Return SHA-256 hex digest of an uploaded image file."""
+    import hashlib
+    image_file.seek(0)
+    digest = hashlib.sha256(image_file.read()).hexdigest()
+    image_file.seek(0)
+    return digest

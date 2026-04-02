@@ -971,6 +971,9 @@ class VehicleReceipt(BaseModel):
         choices=[('low', 'Low'), ('medium', 'Medium'), ('high', 'High')]
     )
 
+    # SHA-256 hash of the receipt image — used to prevent duplicate OCR imports
+    image_hash = models.CharField(max_length=64, blank=True, db_index=True)
+
     # Receipt image stored via Attachment (entity_type='vehicle_receipt')
     # Attachment.entity_id = self.pk after save
 
