@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.17] - 2026-04-02
+
+### Bug Fixes
+- **TRMM MAC address sync (#108)** — fixed empty-string MAC address never updating on assets; `device.mac_address == ''` is falsy so the update was silently skipped; now correctly checks `is not None`
+- **M365 mailbox data missing from document (#106)** — fixed `_build_mailbox_usage()` returning an empty string when permissions are denied (silently omitting the section); now shows a clear permission error card with the required permission name; also shows an informational card when data is empty rather than hiding the section
+- **UniFi asset type always "other" (#105)** — added camelCase cloud Site Manager API productType values to `_TYPE_MAP` (`accessPoint`, `networkSwitch`, `securityGateway`, `dreamRouter`, `dreamMachine`, `cloudGateway`, `powerUnit`); the cloud API returns camelCase which lowercased to unsplit words that didn't match the underscore/hyphen entries
+
 ## [3.17.14] - 2026-04-02
 
 ### New Features

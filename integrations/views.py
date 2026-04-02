@@ -1534,7 +1534,16 @@ def unifi_import_assets(request, pk):
         ('usg', 'router'),
         ('ups', 'ups'),
         ('ucg', 'router'),
-        # Cloud API full strings
+        # Cloud Site Manager API — camelCase productType values
+        ('accesspoint', 'wireless_ap'),    # 'accessPoint'
+        ('networkswitch', 'switch'),       # 'networkSwitch'
+        ('securitygateway', 'router'),     # 'securityGateway'
+        ('dreamrouter', 'router'),         # 'dreamRouter'
+        ('dreamwall', 'router'),           # 'dreamWall'
+        ('dreammachine', 'router'),        # 'dreamMachine'
+        ('cloudgateway', 'router'),        # 'cloudGateway'
+        ('powerunit', 'ups'),              # 'powerUnit' (USP-RPS etc.)
+        # Cloud API full strings (snake_case / hyphenated)
         ('access_point', 'wireless_ap'),
         ('access-point', 'wireless_ap'),
         ('wireless', 'wireless_ap'),
@@ -2220,9 +2229,12 @@ def m365_sync(request, pk):
 
         def _build_mailbox_usage():
             raw_mb = data.get('mailbox_usage', [])
+            if raw_mb and raw_mb[0].get('permission_error'):
+                perm = raw_mb[0].get('required', 'MailboxSettings.Read / Reports.Read.All')
+                return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>Mailbox Usage</strong> — missing permission: <code>{html_lib.escape(perm)}</code>. Add this to your Azure AD app registration and grant admin consent.</div>'
             mb_rows = [r for r in raw_mb if not r.get('permission_error')]
             if not mb_rows:
-                return ''
+                return '<div class="card mb-3"><div class="card-header"><i class="fas fa-envelope me-2"></i>Mailbox Usage</div><div class="card-body"><p class="text-muted mb-0">No mailbox data returned. Ensure <code>Reports.Read.All</code> is granted and the M365 sync has run.</p></div></div>'
             def _fmt_bytes(b):
                 try:
                     b = int(b)

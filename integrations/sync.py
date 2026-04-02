@@ -865,7 +865,7 @@ class RMMSync:
         if device.ip_address and str(device.ip_address) != str(asset.ip_address or ''):
             asset.ip_address = device.ip_address
             update_fields.append('ip_address')
-        if device.mac_address and device.mac_address != asset.mac_address:
+        if device.mac_address is not None and device.mac_address != (asset.mac_address or ''):
             asset.mac_address = device.mac_address
             update_fields.append('mac_address')
 
