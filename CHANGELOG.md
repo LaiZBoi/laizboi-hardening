@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.13] - 2026-04-02
+
+### New Features
+- **Phone Home Screen Shortcut for Receipt Scanning** — "Phone Shortcut" button on vehicle Receipts tab opens a modal with a per-vehicle QR code, a copyable direct URL, and step-by-step Add to Home Screen instructions for Android (Chrome) and iOS (Safari)
+- **PWA Shortcuts** — manifest.json now includes "Scan Receipt" and "Vehicles" shortcuts; long-pressing the Client St0r icon on Android shows these shortcuts
+- **Quick Receipt landing page** (`/vehicles/receipts/quick/`) — vehicle picker that redirects to receipt_create; if only one active vehicle, skips straight to Add Receipt; QR codes in the shortcut modal link here with `?v=<pk>` for direct-to-vehicle access
+
+## [3.17.12] - 2026-04-02
+
+### New Features
+- **Receipt duplicate prevention** — receipt images are SHA-256 hashed on OCR extract and on upload; if the same image already exists on any receipt, saving is blocked with a clear error showing the original receipt details
+
+### Improvements
+- Receipt form redesigned with Step 1 / Step 2 layout
+- Inline duplicate alert replaces browser popup
+- "Configure AI key" link next to the AI Extract button points to Settings → AI
+- AI state resets when a new image is selected
+
+### Migrations
+- `vehicles/migrations/0007_receipt_image_hash.py` — Adds `image_hash` column (db_index) to `vehicle_receipts`
+
 ## [3.17.11] - 2026-04-02
 
 ### New Features

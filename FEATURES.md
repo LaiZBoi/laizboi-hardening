@@ -331,10 +331,17 @@ Complete feature documentation for Client St0r - Self-hosted IT documentation pl
 - **AI-Powered OCR** - Photograph or upload a receipt on any device; Claude vision API automatically extracts vendor, date, total amount, tax, expense category, and odometer reading
 - **Mobile Camera Capture** - Receipt upload form opens rear camera directly on Android and iOS (no app required)
 - **AI Confidence Indicator** - High / Medium / Low confidence banner prompts users to review uncertain extractions before saving
+- **Duplicate Prevention** - SHA-256 image hash blocks the same receipt from being imported twice across any vehicle
 - **Expense Categories** - Fuel, Maintenance, Repair, Insurance, Registration, Tolls/Parking, Cleaning/Detailing, Inspection, Other
 - **Cost Summary Dashboard** - Per-category totals (Fuel, Maintenance, Repair) plus grand total shown as summary cards on the vehicle detail Receipts tab
 - **Receipt Image Storage** - Original receipt image saved alongside the structured data record
 - **Odometer Integration** - If receipt shows a mileage reading, it is extracted and stored for service history correlation
+
+### Mobile Home Screen Shortcuts
+- **Phone Shortcut button** on every vehicle's Receipts tab — shows a QR code, copyable URL, and Add to Home Screen instructions for Android and iOS
+- **Per-vehicle QR code** — scanning opens Add Receipt directly for that vehicle; no navigation needed
+- **PWA shortcuts** — long-pressing the Client St0r home screen icon shows "Scan Receipt" and "Vehicles" shortcuts (Android Chrome)
+- **Quick Receipt page** (`/vehicles/receipts/quick/`) — vehicle picker landing page; auto-redirects if only one active vehicle
 
 ### Dashboard & Analytics
 - **Fleet Statistics** - Total vehicles, active count, in maintenance, total mileage
