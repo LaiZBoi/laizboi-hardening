@@ -128,8 +128,17 @@ class M365Provider:
                 'Accept': 'application/json',
             }
             url = f'{GRAPH_BASE}/reports/getMailboxUsageDetail(period=\'D7\')'
+            # Graph reporting endpoints redirect to a time-limited blob SAS URL.
+            # requests strips the Authorization header on cross-domain redirects, so
+            # the blob storage URL may return 403 — which is NOT a permission error.
+            # Handle the redirect manually: follow it without the auth header.
             resp = requests.get(url, headers=headers,
-                                params={'$format': 'application/json'}, timeout=30)
+                                params={'$format': 'application/json'},
+                                timeout=30, allow_redirects=False)
+            if resp.status_code in (301, 302, 303, 307, 308):
+                redirect_url = resp.headers.get('Location', '')
+                if redirect_url:
+                    resp = requests.get(redirect_url, timeout=30)
             if resp.status_code == 403:
                 return [{'permission_error': True, 'required': 'Reports.Read.All'}]
             resp.raise_for_status()

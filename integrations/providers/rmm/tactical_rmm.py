@@ -300,8 +300,11 @@ class TacticalRMMProvider(BaseRMMProvider):
 
         # Get IP address — prefer private/local IP; fall back to public IP
         # Also scan nics (network interfaces) for IP and MAC data
-        # TRMM returns network interfaces as 'nics' or 'interfaces' depending on version
-        nics = raw_data.get('nics') or raw_data.get('interfaces') or []
+        # TRMM returns network interfaces under several possible keys depending on version:
+        # 'nics', 'interfaces', or nested in 'wmi_detail.network_config' / 'wmi_detail.network_adapters'
+        wmi = raw_data.get('wmi_detail') or {}
+        nics = (raw_data.get('nics') or raw_data.get('interfaces') or
+                wmi.get('network_adapters') or wmi.get('network_config') or [])
         # Top-level MAC field — TRMM uses MACAddress, mac_address, mac, or mac_addresses (list)
         _mac_list = raw_data.get('mac_addresses') or []
         mac_address = (raw_data.get('MACAddress') or raw_data.get('mac_address') or
@@ -311,7 +314,8 @@ class TacticalRMMProvider(BaseRMMProvider):
         for nic in nics:
             if not mac_address:
                 mac_address = (nic.get('mac_address') or nic.get('mac') or
-                               nic.get('macAddress') or nic.get('physicalAddress') or '')
+                               nic.get('macAddress') or nic.get('physicalAddress') or
+                               nic.get('MACAddress') or '')
             nic_ip_list = nic.get('ip_addresses') or nic.get('ips') or nic.get('ipAddresses') or []
             if isinstance(nic_ip_list, list):
                 # Filter out link-local (169.254.x.x) and loopback addresses

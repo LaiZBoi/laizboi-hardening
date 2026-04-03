@@ -412,7 +412,20 @@ class UnifiCloudProvider:
         """Pull all cloud data and return a structured summary compatible with UnifiProvider.sync()."""
         hosts = self.get_hosts()
         sites = self.get_sites()
-        devices = self.get_devices()
+        # Fetch devices per-host first (more reliable than the flat /v1/devices endpoint
+        # which may require explicit hostId or return empty on some API key scopes).
+        devices = []
+        for host in hosts:
+            hid = host.get('id') or ''
+            if hid:
+                host_devices = self.get_devices(host_id=hid)
+                for d in host_devices:
+                    if not d.get('hostId'):
+                        d['hostId'] = hid
+                devices.extend(host_devices)
+        # Fallback to flat endpoint if per-host yielded nothing
+        if not devices:
+            devices = self.get_devices()
 
         host_map = {h.get('id') or h.get('hostId', ''): h for h in hosts}
         assigned_device_ids = set()

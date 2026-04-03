@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.19] - 2026-04-03
+
+### Bug Fixes
+- **TRMM MAC address (#108)** — also scan `wmi_detail.network_adapters` and `wmi_detail.network_config` for MAC; added `MACAddress` (capitalized) as NIC-level field variant
+- **M365 mailbox data (#106)** — Graph reporting endpoint redirects to a blob SAS URL; `requests` strips the `Authorization` header on cross-domain redirects causing a spurious 403; now follows the redirect manually without auth header
+- **UniFi cloud no devices (#105)** — flat `/v1/devices` endpoint may return empty without explicit `hostId`; now fetches devices per-host first, falling back to flat endpoint only if per-host yields nothing
+
 ## [3.17.18] - 2026-04-03
 
 ### Bug Fixes
