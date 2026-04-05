@@ -119,43 +119,52 @@ class M365Provider:
     def get_mailbox_usage(self) -> list:
         """Get mailbox usage stats — storage used, item count, type.
         Uses /reports/getMailboxUsageDetail which requires Reports.Read.All.
-        Note: Graph reports endpoint follows 302 redirect to a temp download URL.
-        The download may be JSON (array or {value:[...]}) or CSV depending on tenant."""
+
+        Graph reporting endpoints redirect (302) to a pre-authenticated Azure Blob
+        SAS URL serving a CSV file. We must follow the redirect manually because
+        requests strips Authorization on cross-domain redirects (graph→blob), which
+        causes a spurious 403. We always parse as CSV — the $format=json parameter
+        is unreliable across tenants and causes additional redirect complexity.
+        """
         import csv as _csv, io as _io
         try:
-            headers = {
+            auth_headers = {
                 'Authorization': f'Bearer {self._get_token()}',
-                'Accept': 'application/json',
+                'Accept': 'text/csv, application/json, */*',
             }
             url = f'{GRAPH_BASE}/reports/getMailboxUsageDetail(period=\'D7\')'
-            # Graph reporting endpoints redirect to a time-limited blob SAS URL.
-            # requests strips the Authorization header on cross-domain redirects, so
-            # the blob storage URL may return 403 — which is NOT a permission error.
-            # Handle the redirect manually: follow it without the auth header.
-            resp = requests.get(url, headers=headers,
-                                params={'$format': 'application/json'},
-                                timeout=30, allow_redirects=False)
+            resp = requests.get(url, headers=auth_headers, timeout=30, allow_redirects=False)
+
+            # Follow redirect manually — the Location URL is a blob SAS that needs no auth
             if resp.status_code in (301, 302, 303, 307, 308):
                 redirect_url = resp.headers.get('Location', '')
                 if redirect_url:
-                    resp = requests.get(redirect_url, timeout=30)
+                    resp = requests.get(redirect_url, timeout=60)
+
             if resp.status_code == 403:
                 return [{'permission_error': True, 'required': 'Reports.Read.All'}]
             resp.raise_for_status()
-            # Try JSON first regardless of content-type — Graph reports may use
-            # application/octet-stream or text/plain on redirect responses
-            try:
-                data = resp.json()
-                if isinstance(data, list):
-                    return data
-                return data.get('value', [])
-            except ValueError:
-                pass
-            # CSV fallback — Graph reports may serve CSV despite $format=json
-            reader = _csv.DictReader(_io.StringIO(resp.text))
+
+            # Try JSON first (some tenants return JSON directly at 200)
+            ct = resp.headers.get('Content-Type', '')
+            if 'json' in ct:
+                try:
+                    data = resp.json()
+                    if isinstance(data, list):
+                        return data
+                    return data.get('value', [])
+                except ValueError:
+                    pass
+
+            # CSV parsing — strip UTF-8 BOM if present, normalise line endings
+            text = resp.content.decode('utf-8-sig', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
+            reader = _csv.DictReader(_io.StringIO(text))
             rows = []
             for row in reader:
-                storage_raw = row.get('Storage Used (Byte)') or row.get('storageUsedInBytes') or '0'
+                # Strip BOM from first field key in case csv.DictReader didn't catch it
+                row = {k.lstrip('\ufeff').strip(): v for k, v in row.items()}
+                storage_raw = (row.get('Storage Used (Byte)') or row.get('Storage Used (Bytes)') or
+                               row.get('storageUsedInBytes') or '0')
                 item_raw = row.get('Item Count') or row.get('itemCount') or '0'
                 try:
                     storage_bytes = int(str(storage_raw).replace(',', '') or '0')
@@ -173,6 +182,10 @@ class M365Provider:
                     'itemCount': item_count,
                     'lastActivityDate': row.get('Last Activity Date') or row.get('lastActivityDate') or '',
                 })
+            if not rows:
+                logger.warning(f"M365 get_mailbox_usage: CSV parsed but returned 0 rows. "
+                               f"Status={resp.status_code}, CT={ct}, "
+                               f"First 200 chars: {text[:200]!r}")
             return rows
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0

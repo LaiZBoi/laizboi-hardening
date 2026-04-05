@@ -196,7 +196,9 @@ class UnifiProvider:
         for path in paths_v2:
             try:
                 raw = self._get(path)
-                items = raw if isinstance(raw, list) else raw.get('data', raw.get('trafficRules', raw.get('rules', [])))
+                items = (raw if isinstance(raw, list) else
+                         next((raw[k] for k in ('data', 'trafficRules', 'traffic_rules', 'rules')
+                               if k in raw and isinstance(raw[k], list)), []))
                 if items:
                     logger.debug(f"UniFi traffic rules (API key) found via {path}: {len(items)} items")
                     return items
@@ -208,7 +210,9 @@ class UnifiProvider:
             for path in paths_v2 + paths_legacy:
                 try:
                     raw = self._legacy_get(path)
-                    items = raw if isinstance(raw, list) else raw.get('data', raw.get('trafficRules', raw.get('rules', [])))
+                    items = (raw if isinstance(raw, list) else
+                             next((raw[k] for k in ('data', 'trafficRules', 'traffic_rules', 'rules')
+                                   if k in raw and isinstance(raw[k], list)), []))
                     if items:
                         logger.debug(f"UniFi traffic rules (legacy) found via {path}: {len(items)} items")
                         return items
@@ -230,8 +234,14 @@ class UnifiProvider:
         paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/firewallpolicy']
 
         def _parse(raw):
-            return (raw if isinstance(raw, list)
-                    else raw.get('data', raw.get('policies', raw.get('zonePolicies', []))))
+            if isinstance(raw, list):
+                return raw
+            # UniFi returns different wrapper keys across versions
+            for key in ('data', 'policies', 'zonePolicies', 'zone_policies',
+                        'firewallPolicies', 'firewall_policies', 'rules'):
+                if key in raw and isinstance(raw[key], list):
+                    return raw[key]
+            return []
 
         # Try v2 paths with API key first
         for path in paths_v2:

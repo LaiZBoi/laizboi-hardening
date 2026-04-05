@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.21] - 2026-04-05
+
+### Bug Fixes
+- **TRMM MAC address (#108)** — bulk `/agents/` response may return `mac_addresses: [""]` (list with one empty string) which is truthy; `_has_mac` was True so the detail fetch was skipped and the real `MACAddress` from `/agents/{id}/` was never retrieved; fixed by requiring non-empty entries in the list
+- **M365 mailbox data (#106)** — rewrote `get_mailbox_usage` to decode blob CSV with `utf-8-sig` (handles BOM), strip per-row BOM artifacts, handle `Storage Used (Bytes)` column name variant, and log what was received when 0 rows parse; removed unreliable `$format=application/json` parameter
+- **UniFi zone policies blank (#105)** — `_parse` for firewall policies and traffic rules only checked a few response keys; added all known UniFi API wrapper key variants (`zonePolicies`, `zone_policies`, `firewallPolicies`, `trafficRules`, `traffic_rules`, `rules`)
+
 ## [3.17.20] - 2026-04-03
 
 ### Bug Fixes

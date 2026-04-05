@@ -128,7 +128,8 @@ class TacticalRMMProvider(BaseRMMProvider):
                     # fetch full agent detail — some TRMM deployments only populate hardware
                     # and MAC address on the per-agent endpoint, not the bulk list.
                     _has_mac = (agent_data.get('MACAddress') or agent_data.get('mac_address') or
-                                agent_data.get('mac') or agent_data.get('mac_addresses') or
+                                agent_data.get('mac') or
+                                any(m for m in (agent_data.get('mac_addresses') or []) if m) or
                                 any(i.get('mac') or i.get('physicalAddress') or i.get('macAddress')
                                     for i in (agent_data.get('nics') or agent_data.get('interfaces') or [])))
                     if not agent_data.get('total_ram') or not agent_data.get('disks') or not _has_mac:
@@ -306,10 +307,11 @@ class TacticalRMMProvider(BaseRMMProvider):
         nics = (raw_data.get('nics') or raw_data.get('interfaces') or
                 wmi.get('network_adapters') or wmi.get('network_config') or [])
         # Top-level MAC field — TRMM uses MACAddress, mac_address, mac, or mac_addresses (list)
-        _mac_list = raw_data.get('mac_addresses') or []
+        # mac_addresses may contain empty strings [""] — skip them.
+        _mac_list = [m for m in (raw_data.get('mac_addresses') or []) if m]
         mac_address = (raw_data.get('MACAddress') or raw_data.get('mac_address') or
                        raw_data.get('mac') or
-                       (_mac_list[0] if isinstance(_mac_list, list) and _mac_list else '') or '')
+                       (_mac_list[0] if _mac_list else '') or '')
         nic_ips = []
         for nic in nics:
             if not mac_address:
