@@ -414,7 +414,7 @@ ALLOW_PRIVATE_IP_INTEGRATIONS = os.getenv('ALLOW_PRIVATE_IP_INTEGRATIONS', 'Fals
 
 # AI and External API Configuration
 # Multi-LLM Provider Support
-LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'anthropic')  # anthropic, moonshot, minimax, openai
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'anthropic')  # anthropic, moonshot, minimax, minimax_coding, openai, ollama
 
 # Anthropic Claude
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
@@ -436,6 +436,10 @@ MINIMAX_CODING_MODEL = os.getenv('MINIMAX_CODING_MODEL', 'MiniMax-M2.5')
 # OpenAI (future support)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')  # gpt-4o, gpt-4-turbo, gpt-3.5-turbo
+
+# Ollama (on-premises, no API key required)
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama3.2')
 
 # AI Abuse Controls (cost protection and PII redaction)
 AI_MAX_PROMPT_LENGTH = int(os.getenv('AI_MAX_PROMPT_LENGTH', '10000'))  # characters

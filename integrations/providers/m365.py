@@ -197,6 +197,73 @@ class M365Provider:
             logger.warning(f"M365 get_mailbox_usage failed: {e}")
             return []
 
+    def get_onedrive_usage(self) -> list:
+        """Get OneDrive usage per user. Requires Reports.Read.All.
+        Uses the same redirect+CSV pattern as getMailboxUsageDetail."""
+        import csv as _csv, io as _io
+        try:
+            auth_headers = {
+                'Authorization': f'Bearer {self._get_token()}',
+                'Accept': 'text/csv, application/json, */*',
+            }
+            url = f"{GRAPH_BASE}/reports/getOneDriveUsageAccountDetail(period='D30')"
+            resp = requests.get(url, headers=auth_headers, timeout=30, allow_redirects=False)
+
+            if resp.status_code in (301, 302, 303, 307, 308):
+                redirect_url = resp.headers.get('Location', '')
+                if redirect_url:
+                    resp = requests.get(redirect_url, timeout=60)
+
+            if resp.status_code == 403:
+                return [{'permission_error': True, 'required': 'Reports.Read.All'}]
+            resp.raise_for_status()
+
+            ct = resp.headers.get('Content-Type', '')
+            if 'json' in ct:
+                try:
+                    data = resp.json()
+                    return data if isinstance(data, list) else data.get('value', [])
+                except ValueError:
+                    pass
+
+            text = resp.content.decode('utf-8-sig', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
+            reader = _csv.DictReader(_io.StringIO(text))
+            rows = []
+            for row in reader:
+                row = {k.lstrip('\ufeff').strip(): v for k, v in row.items()}
+                used_raw = (row.get('Storage Used (Byte)') or row.get('Storage Used (Bytes)') or
+                            row.get('storageUsedInBytes') or '0')
+                alloc_raw = (row.get('Storage Allocated (Byte)') or row.get('Storage Allocated (Bytes)') or
+                             row.get('storageAllocatedInBytes') or '0')
+                try:
+                    used_bytes = int(str(used_raw).replace(',', '') or '0')
+                except (ValueError, TypeError):
+                    used_bytes = 0
+                try:
+                    alloc_bytes = int(str(alloc_raw).replace(',', '') or '0')
+                except (ValueError, TypeError):
+                    alloc_bytes = 0
+                rows.append({
+                    'displayName': row.get('Display Name') or row.get('displayName') or '',
+                    'userPrincipalName': row.get('User Principal Name') or row.get('userPrincipalName') or '',
+                    'siteUrl': row.get('Site URL') or row.get('siteUrl') or '',
+                    'storageUsedInBytes': used_bytes,
+                    'storageAllocatedInBytes': alloc_bytes,
+                    'lastActivityDate': row.get('Last Activity Date') or row.get('lastActivityDate') or '',
+                    'fileCount': int(str(row.get('File Count') or row.get('fileCount') or '0').replace(',', '') or '0'),
+                    'isDeleted': (row.get('Is Deleted') or '').lower() in ('true', '1', 'yes'),
+                })
+            return [r for r in rows if not r['isDeleted']]
+        except requests.exceptions.HTTPError as e:
+            code = e.response.status_code if e.response is not None else 0
+            if code == 403:
+                return [{'permission_error': True, 'required': 'Reports.Read.All'}]
+            logger.warning(f"M365 get_onedrive_usage failed (HTTP {code}): {e}")
+            return []
+        except Exception as e:
+            logger.warning(f"M365 get_onedrive_usage failed: {e}")
+            return []
+
     def get_teams(self) -> list:
         try:
             return self._get_all('/groups', params={
@@ -362,4 +429,5 @@ class M365Provider:
             'sharepoint_usage': self.get_sharepoint_usage(),
             'defender_alerts': self.get_defender_alerts(),
             'mailbox_usage': self.get_mailbox_usage(),
+            'onedrive_usage': self.get_onedrive_usage(),
         }

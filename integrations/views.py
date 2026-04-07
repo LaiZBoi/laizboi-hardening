@@ -2097,6 +2097,7 @@ def m365_detail(request, pk):
         r for r in raw_mailbox
         if not r.get('permission_error') and not r.get('_permission_error')
     ]
+    onedrive_usage = data.get('onedrive_usage', [])
     return render(request, 'integrations/m365_detail.html', {
         'connection': connection,
         'users': data.get('users', []),
@@ -2107,6 +2108,7 @@ def m365_detail(request, pk):
         'mailbox_rows': mailbox_rows,
         'mailbox_permission_error': mailbox_permission_error,
         'shared_mailboxes': data.get('shared_mailboxes', []),
+        'onedrive_usage': onedrive_usage,
     })
 
 
@@ -2196,6 +2198,7 @@ def m365_sync(request, pk):
         devices = data.get('devices', [])
         sp_usage = data.get('sharepoint_usage', [])
         defender_alerts = data.get('defender_alerts', [])
+        onedrive_usage = data.get('onedrive_usage', [])
 
         def _safe_section(fn, label):
             try:
@@ -2418,6 +2421,33 @@ def m365_sync(request, pk):
     <tbody>{sp_rows}</tbody>
   </table></div></div>'''
 
+        def _build_onedrive_usage():
+            if not onedrive_usage:
+                return ''
+            if onedrive_usage[0].get('permission_error'):
+                return f'<div class="alert alert-warning mb-3"><i class="fas fa-key me-2"></i><strong>OneDrive Storage</strong> — missing permission: <code>{onedrive_usage[0].get("required")}</code>. Add <code>Reports.Read.All</code> to your Azure AD app registration.</div>'
+            od_rows = ''
+            for u in onedrive_usage[:200]:
+                uname = html_lib.escape(u.get('displayName') or u.get('userPrincipalName') or '—')
+                upn = html_lib.escape(u.get('userPrincipalName') or '—')
+                used_bytes = u.get('storageUsedInBytes') or 0
+                alloc_bytes = u.get('storageAllocatedInBytes') or 0
+                file_count = u.get('fileCount') or 0
+                last_act = html_lib.escape(u.get('lastActivityDate') or '—')
+                used_gb = round(used_bytes / 1_073_741_824, 2) if used_bytes > 1_000_000 else round(used_bytes / 1024, 2)
+                alloc_gb = round(alloc_bytes / 1_073_741_824, 2) if alloc_bytes > 1_000_000 else round(alloc_bytes / 1024, 2)
+                pct = round(used_gb / alloc_gb * 100, 1) if alloc_gb else 0
+                bar = f'<div class="progress" style="height:6px;min-width:60px"><div class="progress-bar {"bg-danger" if pct>85 else "bg-warning" if pct>60 else "bg-success"}" style="width:{min(pct,100):.1f}%"></div></div>'
+                od_rows += f'<tr><td class="small">{uname}</td><td class="small text-muted">{upn}</td><td class="small">{used_gb:.2f} GB</td><td class="small">{alloc_gb:.2f} GB</td><td>{bar} {pct:.1f}%</td><td class="small">{file_count:,}</td><td class="small">{last_act}</td></tr>'
+            if not od_rows:
+                return '<div class="card mb-3"><div class="card-header"><i class="fas fa-cloud me-2"></i>OneDrive Storage</div><div class="card-body"><p class="text-muted mb-0">No OneDrive activity found in the last 30 days.</p></div></div>'
+            return f'''<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-cloud me-2"></i>OneDrive Storage ({len(onedrive_usage)} users)</div>
+  <div class="card-body p-0"><table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Name</th><th>User</th><th>Used</th><th>Quota</th><th>Usage</th><th>Files</th><th>Last Activity</th></tr></thead>
+    <tbody>{od_rows}</tbody>
+  </table></div></div>'''
+
         def _build_defender():
             if not defender_alerts:
                 return '<div class="card mb-3"><div class="card-header"><i class="fas fa-shield-virus me-2"></i>Microsoft Defender Alerts</div><div class="card-body"><p class="text-muted mb-0"><i class="fas fa-check-circle text-success me-1"></i>No active Defender alerts found.</p></div></div>'
@@ -2460,8 +2490,9 @@ def m365_sync(request, pk):
         devices_section  = _safe_section(_build_entra_devices,    'Entra Devices')
         roles_section    = _safe_section(_build_roles,            'Roles')
         ca_section       = _safe_section(_build_ca_policies,      'Conditional Access')
-        sp_usage_section = _safe_section(_build_sp_usage,         'SharePoint Usage')
-        defender_section = _safe_section(_build_defender,         'Defender Alerts')
+        sp_usage_section    = _safe_section(_build_sp_usage,         'SharePoint Usage')
+        onedrive_section    = _safe_section(_build_onedrive_usage,  'OneDrive Usage')
+        defender_section    = _safe_section(_build_defender,         'Defender Alerts')
 
         m365_synced_by = request.user.get_full_name() or request.user.username if request.user.is_authenticated else ''
         m365_synced_by_html = f' by <strong>{html_lib.escape(m365_synced_by)}</strong>' if m365_synced_by else ''
@@ -2479,6 +2510,7 @@ def m365_sync(request, pk):
 {teams_section}
 {sp_section}
 {sp_usage_section}
+{onedrive_section}
 {devices_section}
 {roles_section}
 {ca_section}

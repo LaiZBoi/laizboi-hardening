@@ -482,12 +482,58 @@ class OpenAIProvider(LLMProvider):
             }
 
 
+class OllamaProvider(LLMProvider):
+    """Ollama on-premises LLM provider. No API key required — just a base URL."""
+
+    def __init__(self, base_url: str = 'http://localhost:11434', model: str = 'llama3.2', **kwargs):
+        self.base_url = base_url.rstrip('/')
+        self.model = model
+
+    def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 4096) -> Dict[str, Any]:
+        try:
+            resp = requests.post(
+                f'{self.base_url}/api/chat',
+                json={
+                    'model': self.model,
+                    'messages': [
+                        {'role': 'system', 'content': system_prompt},
+                        {'role': 'user', 'content': user_prompt},
+                    ],
+                    'stream': False,
+                    'options': {'num_predict': max_tokens},
+                },
+                timeout=300,
+            )
+            resp.raise_for_status()
+            content = resp.json().get('message', {}).get('content', '')
+            return {'success': True, 'content': content}
+        except requests.exceptions.ConnectionError:
+            return {'success': False, 'error': f'Cannot reach Ollama at {self.base_url} — is it running?'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def get_model_name(self) -> str:
+        return self.model
+
+    def test_connection(self) -> Dict[str, Any]:
+        try:
+            resp = requests.get(f'{self.base_url}/api/tags', timeout=10)
+            resp.raise_for_status()
+            models = [m.get('name', '') for m in resp.json().get('models', [])]
+            model_list = ', '.join(models[:8]) if models else 'none found'
+            return {'success': True, 'message': f'Connected to Ollama. Available models: {model_list}'}
+        except requests.exceptions.ConnectionError:
+            return {'success': False, 'error': f'Cannot reach Ollama at {self.base_url} — ensure Ollama is running and accessible.'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+
 def get_llm_provider(provider_name: str, **kwargs) -> Optional[LLMProvider]:
     """
     Factory function to get the appropriate LLM provider.
 
     Args:
-        provider_name: Name of the provider ('anthropic', 'moonshot', 'minimax', 'minimax_coding', 'openai')
+        provider_name: Name of the provider ('anthropic', 'moonshot', 'minimax', 'minimax_coding', 'openai', 'ollama')
         **kwargs: Provider-specific configuration (api_key, model, etc.)
 
     Returns:
@@ -499,6 +545,7 @@ def get_llm_provider(provider_name: str, **kwargs) -> Optional[LLMProvider]:
         'minimax': MiniMaxProvider,
         'minimax_coding': MiniMaxCodingProvider,
         'openai': OpenAIProvider,
+        'ollama': OllamaProvider,
     }
 
     provider_class = providers.get(provider_name.lower())
@@ -535,5 +582,8 @@ def is_llm_configured() -> tuple[bool, str]:
     elif provider_name == 'openai':
         api_key = getattr(settings, 'OPENAI_API_KEY', '')
         return (bool(api_key), 'OpenAI')
+    elif provider_name == 'ollama':
+        base_url = getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434')
+        return (bool(base_url), 'Ollama (On-Premises)')
     else:
         return (False, 'Unknown')

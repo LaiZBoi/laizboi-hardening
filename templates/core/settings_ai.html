@@ -40,6 +40,7 @@
                             <option value="minimax" {% if current_llm_provider == 'minimax' %}selected{% endif %}>🇨🇳 MiniMax Chat API (Chinese, English)</option>
                             <option value="minimax_coding" {% if current_llm_provider == 'minimax_coding' %}selected{% endif %}>🇨🇳 MiniMax Coding Plan M2.5 (Code Generation)</option>
                             <option value="openai" {% if current_llm_provider == 'openai' %}selected{% endif %}>🇺🇸 OpenAI GPT (English, Multilingual)</option>
+                            <option value="ollama" {% if current_llm_provider == 'ollama' %}selected{% endif %}>🏠 Ollama (On-Premises / Self-Hosted)</option>
                         </select>
                         <div class="form-text">
                             Select which LLM provider to use for AI documentation generation, floor plans, and content enhancement.
@@ -211,6 +212,40 @@
                             </select>
                             <div class="form-text">
                                 Industry-standard models with excellent multilingual support.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ollama Section -->
+                    <div id="ollama-section" class="provider-section" style="display: none;">
+                        <h5 class="mb-3"><i class="fas fa-server"></i> Ollama (On-Premises)</h5>
+
+                        <div class="alert alert-success mb-3">
+                            <i class="fas fa-lock"></i>
+                            <strong>Privacy First:</strong> Ollama runs entirely on your own infrastructure — no data leaves your network.
+                            Install from <a href="https://ollama.com" target="_blank" class="alert-link">ollama.com</a> and pull a model (e.g. <code>ollama pull llama3.2</code>).
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="ollama_base_url" class="form-label">Ollama Base URL</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control font-monospace" id="ollama_base_url" name="ollama_base_url" value="{{ current_ollama_url }}" placeholder="http://localhost:11434">
+                                <button type="button" class="btn btn-outline-secondary" id="test-ollama-btn" onclick="testOllamaConnection()">
+                                    <i class="fas fa-vial"></i> Test
+                                </button>
+                            </div>
+                            <div id="ollama-test-result" class="mt-2" style="display: none;"></div>
+                            <div class="form-text">
+                                URL where Ollama is listening. Use <code>http://localhost:11434</code> for local installs, or your server's IP/hostname for remote.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="ollama_model" class="form-label">Model Name</label>
+                            <input type="text" class="form-control font-monospace" id="ollama_model" name="ollama_model" value="{{ current_ollama_model }}" placeholder="llama3.2">
+                            <div class="form-text">
+                                Name of the model to use (must already be pulled: <code>ollama pull llama3.2</code>).
+                                Recommended: <code>llama3.2</code>, <code>mistral</code>, <code>qwen2.5</code>, <code>phi3</code>.
                             </div>
                         </div>
                     </div>
@@ -449,7 +484,7 @@
 // Toggle provider sections based on selection
 function toggleProviderSections() {
     const provider = document.getElementById('llm_provider').value;
-    const sections = ['anthropic', 'moonshot', 'minimax', 'minimax_coding', 'openai'];
+    const sections = ['anthropic', 'moonshot', 'minimax', 'minimax_coding', 'openai', 'ollama'];
 
     sections.forEach(section => {
         const element = document.getElementById(section + '-section');
@@ -717,6 +752,51 @@ function testMinimaxCodingKey() {
             'X-CSRFToken': '{{ csrf_token }}'
         },
         body: JSON.stringify({ provider: 'minimax_coding', api_key: apiKey, model: model })
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-vial"></i> Test';
+
+        if (data.success) {
+            resultDiv.innerHTML = `<div class="alert alert-success small mb-0"><i class="fas fa-check-circle"></i> ${data.message}</div>`;
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger small mb-0"><i class="fas fa-times-circle"></i> ${data.error}</div>`;
+        }
+        resultDiv.style.display = 'block';
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-vial"></i> Test';
+        resultDiv.innerHTML = `<div class="alert alert-danger small mb-0"><i class="fas fa-times-circle"></i> Error: ${error.message}</div>`;
+        resultDiv.style.display = 'block';
+    });
+}
+
+function testOllamaConnection() {
+    const baseUrl = document.getElementById('ollama_base_url').value;
+    const model = document.getElementById('ollama_model').value;
+    const btn = document.getElementById('test-ollama-btn');
+    const resultDiv = document.getElementById('ollama-test-result');
+
+    if (!baseUrl) {
+        resultDiv.innerHTML = '<div class="alert alert-warning small mb-0"><i class="fas fa-exclamation-circle"></i> Please enter the Ollama URL first</div>';
+        resultDiv.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+    resultDiv.innerHTML = '<div class="alert alert-info small mb-0"><i class="fas fa-spinner fa-spin"></i> Testing Ollama connection...</div>';
+    resultDiv.style.display = 'block';
+
+    fetch('{% url "core:test_llm_connection" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({ provider: 'ollama', base_url: baseUrl, model: model })
     })
     .then(response => response.json())
     .then(data => {

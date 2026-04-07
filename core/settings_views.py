@@ -992,6 +992,8 @@ def settings_ai(request):
     current_minimax_coding_model = env_values.get('MINIMAX_CODING_MODEL', 'MiniMax-M2.5')
     current_openai_key = env_values.get('OPENAI_API_KEY', '')
     current_openai_model = env_values.get('OPENAI_MODEL', 'gpt-4o')
+    current_ollama_url = env_values.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+    current_ollama_model = env_values.get('OLLAMA_MODEL', 'llama3.2')
 
     # Mapping/Geocoding settings
     current_google_maps_key = env_values.get('GOOGLE_MAPS_API_KEY', '')
@@ -1012,6 +1014,8 @@ def settings_ai(request):
         minimax_coding_model = request.POST.get('minimax_coding_model', 'MiniMax-M2.5')
         openai_key = request.POST.get('openai_api_key', '').strip()
         openai_model = request.POST.get('openai_model', 'gpt-4o')
+        ollama_url = request.POST.get('ollama_base_url', 'http://localhost:11434').strip()
+        ollama_model = request.POST.get('ollama_model', 'llama3.2').strip()
         google_maps_key = request.POST.get('google_maps_api_key', '').strip()
         regrid_key = request.POST.get('regrid_api_key', '').strip()
         attom_key = request.POST.get('attom_api_key', '').strip()
@@ -1036,6 +1040,8 @@ def settings_ai(request):
             'MINIMAX_CODING_MODEL': minimax_coding_model,
             'OPENAI_API_KEY': openai_key,
             'OPENAI_MODEL': openai_model,
+            'OLLAMA_BASE_URL': ollama_url,
+            'OLLAMA_MODEL': ollama_model,
             'GOOGLE_MAPS_API_KEY': google_maps_key,
             'REGRID_API_KEY': regrid_key,
             'ATTOM_API_KEY': attom_key,
@@ -1119,6 +1125,8 @@ def settings_ai(request):
         'current_minimax_coding_model': current_minimax_coding_model,
         'current_openai_key': current_openai_key,
         'current_openai_model': current_openai_model,
+        'current_ollama_url': current_ollama_url,
+        'current_ollama_model': current_ollama_model,
         'current_google_maps_key': current_google_maps_key,
         'current_regrid_key': current_regrid_key,
         'current_attom_key': current_attom_key,
@@ -1198,6 +1206,11 @@ def test_llm_connection(request):
                     'error': 'OpenAI API key is required'
                 }, status=400)
             provider_kwargs = {'api_key': api_key, 'model': model}
+
+        elif provider_name == 'ollama':
+            base_url = data.get('base_url', 'http://localhost:11434').strip()
+            model = data.get('model', 'llama3.2').strip()
+            provider_kwargs = {'base_url': base_url, 'model': model}
 
         else:
             return JsonResponse({

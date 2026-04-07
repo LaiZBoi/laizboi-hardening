@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.24] - 2026-04-07
+
+### New Features
+- **M365 OneDrive storage usage (#106)** — new `get_onedrive_usage()` method fetches per-user OneDrive storage stats (used, allocated, file count, last activity) from the Graph Reports API; shown as a new section in the M365 tenant document alongside SharePoint usage. Requires `Reports.Read.All` permission (same as mailbox usage).
+- **Ollama on-premises AI provider (#112)** — added `OllamaProvider` to the multi-LLM system; configure a base URL (e.g. `http://localhost:11434`) and model name in Settings → AI & LLM; no API key required; all inference stays on your infrastructure; test connection button lists available models.
+
+### Bug Fixes
+- **UniFi cloud devices still empty (#105)** — `_get_all` only checked the `data` response key; the Site Manager API can return results under `items`, `devices`, or as a bare list; now tries all known key names; also added a `hostIds` (plural) filter param variant as a final fallback.
+- **UniFi local traffic rules / zone policies still blank (#105)** — v2 API paths were only tried with the API key, then with session cookie; added a third attempt using the legacy REST paths (`/proxy/network/api/s/{ref}/rest/trafficrule`) with the API key, which works on some firmware versions without needing username/password.
+
 ## [3.17.23] - 2026-04-05
 
 ### Bug Fixes

@@ -205,6 +205,19 @@ class UnifiProvider:
             except Exception as e:
                 logger.debug(f"UniFi traffic rules (API key) path {path} failed: {e}")
 
+        # Try legacy REST path with API key (works on some firmware versions)
+        for path in paths_legacy:
+            try:
+                raw = self._get(path)
+                items = (raw if isinstance(raw, list) else
+                         next((raw[k] for k in ('data', 'trafficRules', 'traffic_rules', 'rules')
+                               if k in raw and isinstance(raw[k], list)), []))
+                if items:
+                    logger.debug(f"UniFi traffic rules (API key, legacy path) found via {path}: {len(items)} items")
+                    return items
+            except Exception as e:
+                logger.debug(f"UniFi traffic rules (API key, legacy path) {path} failed: {e}")
+
         # Fallback: legacy session cookie auth
         if self.username and self.password:
             for path in paths_v2 + paths_legacy:
@@ -254,6 +267,16 @@ class UnifiProvider:
                     return items
             except Exception as e:
                 logger.debug(f"UniFi firewall policies (API key) path {path} failed: {e}")
+
+        # Try legacy REST path with API key
+        for path in paths_legacy:
+            try:
+                items = _parse(self._get(path))
+                if items:
+                    logger.debug(f"UniFi firewall policies (API key, legacy path) found via {path}: {len(items)} items")
+                    return items
+            except Exception as e:
+                logger.debug(f"UniFi firewall policies (API key, legacy path) {path} failed: {e}")
 
         # Fallback: legacy session cookie auth
         if self.username and self.password:
@@ -369,14 +392,19 @@ class UnifiCloudProvider:
         return resp.json()
 
     def _get_all(self, path: str, params: dict = None) -> list:
-        """Follow nextToken/nextPageToken pagination."""
+        """Follow nextToken/nextPageToken pagination. Handles 'data', 'items', or bare-list responses."""
         results = []
         p = dict(params or {})
         while True:
-            data = self._get(path, params=p)
-            items = data.get('data', [])
+            raw = self._get(path, params=p)
+            # Site Manager API wraps results in 'data' but some endpoints use other keys
+            if isinstance(raw, list):
+                items = raw
+            else:
+                items = (raw.get('data') or raw.get('items') or raw.get('devices') or
+                         raw.get('sites') or raw.get('hosts') or [])
             results.extend(items)
-            next_token = data.get('nextToken') or data.get('nextPageToken') or ''
+            next_token = raw.get('nextToken') or raw.get('nextPageToken') or '' if isinstance(raw, dict) else ''
             if not next_token or not items:
                 break
             p['nextToken'] = next_token
@@ -424,6 +452,13 @@ class UnifiCloudProvider:
                         return results
                 except Exception as e:
                     logger.debug(f"UniFi Cloud get_devices path {path} failed: {e}")
+            # Also try plural 'hostIds' param variant
+            try:
+                results = self._get_all('/v1/devices', params={'hostIds': host_id})
+                if results:
+                    return results
+            except Exception as e:
+                logger.debug(f"UniFi Cloud get_devices hostIds param failed: {e}")
             return []
         try:
             return self._get_all('/v1/devices')
