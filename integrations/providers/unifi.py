@@ -33,6 +33,8 @@ class UnifiProvider:
         self._session_cookie = None
         self._auth_token = ''
         self._csrf_token = ''
+        self._fp_diag: list = []
+        self._tr_diag: list = []
 
         self.session = requests.Session()
         self.session.headers.update({
@@ -52,6 +54,33 @@ class UnifiProvider:
         resp = self.session.get(url, verify=self.verify_ssl, timeout=15, **kwargs)
         resp.raise_for_status()
         return resp.json()
+
+    def _try_path(self, path: str, use_legacy: bool = False) -> tuple:
+        """Returns (raw_json_or_None, status_str, body_snippet).
+        Captures 200-with-error-body responses (some UniFi versions return these)."""
+        auth = 'legacy' if use_legacy else 'api_key'
+        try:
+            raw = self._legacy_get(path) if use_legacy else self._get(path)
+            # Some UniFi firmwares return HTTP 200 with an error envelope
+            if isinstance(raw, dict):
+                fake_status = raw.get('httpStatusCode') or raw.get('errorCode')
+                if fake_status and int(fake_status) >= 400:
+                    snippet = raw.get('message') or raw.get('error') or str(raw)[:120]
+                    logger.warning(f"UniFi {auth} {path} → HTTP 200 with embedded error {fake_status}: {snippet}")
+                    return None, f'200/{fake_status}', str(snippet)[:120]
+            return raw, '200', ''
+        except requests.exceptions.HTTPError as e:
+            status = str(e.response.status_code) if e.response is not None else '?'
+            snippet = ''
+            try:
+                snippet = (e.response.text or '')[:150]
+            except Exception:
+                pass
+            logger.warning(f"UniFi {auth} {path} → {status}: {snippet[:80]}")
+            return None, status, snippet
+        except Exception as e:
+            logger.warning(f"UniFi {auth} {path} → error: {e}")
+            return None, 'err', str(e)[:100]
 
     def test_connection(self) -> dict:
         """Test credentials by fetching the site list via official API."""
@@ -183,30 +212,42 @@ class UnifiProvider:
             logger.warning(f"UniFi get_firewall_rules({site_ref}) failed: {e}")
             return []
 
-    def get_traffic_rules(self, site_ref: str, site_id: str = '') -> list:
+    def get_legacy_site_refs(self) -> list:
+        """Fetch site short-names from legacy API as alternative refs. Returns list of names."""
+        if not (self.username and self.password):
+            return []
+        try:
+            data = self._legacy_get('/api/self/sites')
+            return [s.get('name') for s in data.get('data', []) if s.get('name')]
+        except Exception as e:
+            logger.debug(f"UniFi get_legacy_site_refs failed: {e}")
+            return []
+
+    def get_traffic_rules(self, site_ref: str, site_id: str = '',
+                          extra_refs: list = None) -> list:
         """Get Traffic Rules (UniFi OS 3.x+). Tries v2 API first, falls back to legacy REST."""
-        # Try short name (internalReference) first — v2 API works with this on most versions.
-        # UUID (siteId from official API) is a fallback since v2 may not accept it.
-        paths_v2 = [
-            # Network 9.x/10.x security prefix
-            f'/proxy/network/v2/api/site/{site_ref}/security/traffic-rules',
-            f'/proxy/network/v2/api/site/{site_ref}/security/trafficrules',
-            # Legacy 7.x/8.x paths
-            f'/proxy/network/v2/api/site/{site_ref}/trafficrules',
-        ]
-        if site_id and site_id != site_ref:
-            paths_v2 += [
-                f'/proxy/network/v2/api/site/{site_id}/security/traffic-rules',
-                f'/proxy/network/v2/api/site/{site_id}/security/trafficrules',
-                f'/proxy/network/v2/api/site/{site_id}/trafficrules',
+        self._tr_diag = []
+
+        def _build_paths(ref):
+            return [
+                f'/proxy/network/v2/api/site/{ref}/security/traffic-rules',
+                f'/proxy/network/v2/api/site/{ref}/security/trafficrules',
+                f'/proxy/network/v2/api/site/{ref}/trafficrules',
             ]
-        paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/trafficrule']
-        # Integration v1 API paths — these work with X-API-Key on newer firmware
-        paths_integration = []
-        if site_id:
-            paths_integration.append(f'/proxy/network/integration/v1/sites/{site_id}/trafficRules')
-        if site_ref and site_ref != site_id:
-            paths_integration.append(f'/proxy/network/integration/v1/sites/{site_ref}/trafficRules')
+
+        def _build_integration(ref):
+            return [f'/proxy/network/integration/v1/sites/{ref}/trafficRules']
+
+        refs = [site_ref]
+        if site_id and site_id != site_ref:
+            refs.append(site_id)
+        for r in (extra_refs or []):
+            if r and r not in refs:
+                refs.append(r)
+
+        paths_v2 = [p for r in refs for p in _build_paths(r)]
+        paths_legacy_rest = [f'/proxy/network/api/s/{site_ref}/rest/trafficrule']
+        paths_integration = [p for r in refs for p in _build_integration(r)]
 
         def _parse_rules(raw):
             if isinstance(raw, list):
@@ -216,94 +257,121 @@ class UnifiProvider:
                     return raw[k]
             return []
 
-        # Try all API key paths (v2, integration v1, legacy REST)
-        for path in paths_v2 + paths_integration + paths_legacy:
-            try:
-                items = _parse_rules(self._get(path))
+        # API key attempts
+        for path in paths_v2 + paths_integration + paths_legacy_rest:
+            raw, status, snippet = self._try_path(path)
+            diag = {'path': path, 'auth': 'api_key', 'status': status}
+            if raw is not None:
+                items = _parse_rules(raw)
+                diag['count'] = len(items)
+                if not items:
+                    diag['keys'] = list(raw.keys()) if isinstance(raw, dict) else 'list'
+                self._tr_diag.append(diag)
                 if items:
-                    logger.debug(f"UniFi traffic rules (API key) found via {path}: {len(items)} items")
+                    logger.info(f"UniFi traffic rules (api_key) found via {path}: {len(items)}")
                     return items
-            except Exception as e:
-                logger.debug(f"UniFi traffic rules (API key) path {path} failed: {e}")
+            else:
+                diag['snippet'] = snippet[:80]
+                self._tr_diag.append(diag)
 
-        # Fallback: legacy session cookie auth
+        # Legacy session cookie fallback
         if self.username and self.password:
-            for path in paths_v2 + paths_legacy:
-                try:
-                    items = _parse_rules(self._legacy_get(path))
+            for path in paths_v2 + paths_legacy_rest:
+                raw, status, snippet = self._try_path(path, use_legacy=True)
+                diag = {'path': path, 'auth': 'legacy', 'status': status}
+                if raw is not None:
+                    items = _parse_rules(raw)
+                    diag['count'] = len(items)
+                    if not items:
+                        diag['keys'] = list(raw.keys()) if isinstance(raw, dict) else 'list'
+                    self._tr_diag.append(diag)
                     if items:
-                        logger.debug(f"UniFi traffic rules (legacy) found via {path}: {len(items)} items")
+                        logger.info(f"UniFi traffic rules (legacy) found via {path}: {len(items)}")
                         return items
-                except Exception as e:
-                    logger.debug(f"UniFi traffic rules (legacy) path {path} failed: {e}")
+                else:
+                    diag['snippet'] = snippet[:80]
+                    self._tr_diag.append(diag)
         return []
 
-    def get_firewall_policies(self, site_ref: str, site_id: str = '') -> list:
+    def get_firewall_policies(self, site_ref: str, site_id: str = '',
+                              extra_refs: list = None) -> list:
         """Get zone-based Firewall Policies (UniFi OS 3.x+).
         UniFi 8.x renamed firewall/policies → firewall/zone-policies.
         UniFi Network 9.x/10.x moved to security/ prefix."""
-        # Try short name first — v2 API works with internalReference on most versions
-        paths_v2 = [
-            # Network 9.x/10.x security prefix
-            f'/proxy/network/v2/api/site/{site_ref}/security/zone-policies',
-            f'/proxy/network/v2/api/site/{site_ref}/security/policies',
-            f'/proxy/network/v2/api/site/{site_ref}/security/firewall-policies',
-            # Legacy 7.x/8.x paths
-            f'/proxy/network/v2/api/site/{site_ref}/firewall/zone-policies',
-            f'/proxy/network/v2/api/site/{site_ref}/firewall/policies',
-        ]
+        self._fp_diag = []
+
+        def _build_paths(ref):
+            return [
+                f'/proxy/network/v2/api/site/{ref}/security/zone-policies',
+                f'/proxy/network/v2/api/site/{ref}/security/policies',
+                f'/proxy/network/v2/api/site/{ref}/security/firewall-policies',
+                f'/proxy/network/v2/api/site/{ref}/firewall/zone-policies',
+                f'/proxy/network/v2/api/site/{ref}/firewall/policies',
+            ]
+
+        def _build_legacy_rest(ref):
+            return [f'/proxy/network/api/s/{ref}/rest/firewallpolicy']
+
+        def _build_integration(ref):
+            return [
+                f'/proxy/network/integration/v1/sites/{ref}/firewallPolicies',
+                f'/proxy/network/integration/v1/sites/{ref}/firewall/zone-policies',
+            ]
+
+        refs = [site_ref]
         if site_id and site_id != site_ref:
-            paths_v2 += [
-                f'/proxy/network/v2/api/site/{site_id}/security/zone-policies',
-                f'/proxy/network/v2/api/site/{site_id}/security/policies',
-                f'/proxy/network/v2/api/site/{site_id}/security/firewall-policies',
-                f'/proxy/network/v2/api/site/{site_id}/firewall/zone-policies',
-                f'/proxy/network/v2/api/site/{site_id}/firewall/policies',
-            ]
-        paths_legacy = [f'/proxy/network/api/s/{site_ref}/rest/firewallpolicy']
-        # Integration v1 API paths — work with X-API-Key on newer firmware
-        paths_integration = []
-        if site_id:
-            paths_integration += [
-                f'/proxy/network/integration/v1/sites/{site_id}/firewallPolicies',
-                f'/proxy/network/integration/v1/sites/{site_id}/firewall/zone-policies',
-            ]
-        if site_ref and site_ref != site_id:
-            paths_integration += [
-                f'/proxy/network/integration/v1/sites/{site_ref}/firewallPolicies',
-                f'/proxy/network/integration/v1/sites/{site_ref}/firewall/zone-policies',
-            ]
+            refs.append(site_id)
+        for r in (extra_refs or []):
+            if r and r not in refs:
+                refs.append(r)
+
+        paths_v2 = [p for r in refs for p in _build_paths(r)]
+        paths_legacy_rest = [p for r in refs for p in _build_legacy_rest(r)]
+        paths_integration = [p for r in refs for p in _build_integration(r)]
 
         def _parse(raw):
             if isinstance(raw, list):
                 return raw
-            # UniFi returns different wrapper keys across versions
             for key in ('data', 'policies', 'zonePolicies', 'zone_policies',
                         'firewallPolicies', 'firewall_policies', 'rules', 'items'):
                 if key in raw and isinstance(raw[key], list):
                     return raw[key]
             return []
 
-        # Try all API key paths (v2, integration v1, legacy REST)
-        for path in paths_v2 + paths_integration + paths_legacy:
-            try:
-                items = _parse(self._get(path))
+        # API key attempts
+        for path in paths_v2 + paths_integration + paths_legacy_rest:
+            raw, status, snippet = self._try_path(path)
+            diag = {'path': path, 'auth': 'api_key', 'status': status}
+            if raw is not None:
+                items = _parse(raw)
+                diag['count'] = len(items)
+                if not items:
+                    diag['keys'] = list(raw.keys()) if isinstance(raw, dict) else 'list'
+                self._fp_diag.append(diag)
                 if items:
-                    logger.debug(f"UniFi firewall policies (API key) found via {path}: {len(items)} items")
+                    logger.info(f"UniFi firewall policies (api_key) found via {path}: {len(items)}")
                     return items
-            except Exception as e:
-                logger.debug(f"UniFi firewall policies (API key) path {path} failed: {e}")
+            else:
+                diag['snippet'] = snippet[:80]
+                self._fp_diag.append(diag)
 
-        # Fallback: legacy session cookie auth
+        # Legacy session cookie fallback
         if self.username and self.password:
-            for path in paths_v2 + paths_legacy:
-                try:
-                    items = _parse(self._legacy_get(path))
+            for path in paths_v2 + paths_legacy_rest:
+                raw, status, snippet = self._try_path(path, use_legacy=True)
+                diag = {'path': path, 'auth': 'legacy', 'status': status}
+                if raw is not None:
+                    items = _parse(raw)
+                    diag['count'] = len(items)
+                    if not items:
+                        diag['keys'] = list(raw.keys()) if isinstance(raw, dict) else 'list'
+                    self._fp_diag.append(diag)
                     if items:
-                        logger.debug(f"UniFi firewall policies (legacy) found via {path}: {len(items)} items")
+                        logger.info(f"UniFi firewall policies (legacy) found via {path}: {len(items)}")
                         return items
-                except Exception as e:
-                    logger.debug(f"UniFi firewall policies (legacy) path {path} failed: {e}")
+                else:
+                    diag['snippet'] = snippet[:80]
+                    self._fp_diag.append(diag)
         return []
 
     def get_device_serials(self, site_ref: str) -> dict:
@@ -346,6 +414,9 @@ class UnifiProvider:
         legacy_login_ok = self._legacy_login() if has_legacy else False
         result = {'sites': [], 'has_legacy_data': has_legacy, 'legacy_login_ok': legacy_login_ok}
 
+        # Fetch site short-names from the legacy API as extra fallback refs for v2 paths
+        extra_refs = self.get_legacy_site_refs() if legacy_login_ok else []
+
         for site in sites:
             # Official API uses 'siteId' (UUID); legacy API uses 'internalReference' (short name)
             site_id = site.get('siteId') or site.get('id') or ''
@@ -362,8 +433,12 @@ class UnifiProvider:
             wlans = self.get_wlans(site_ref)
             vlans = self.get_vlans(site_ref)
             firewall_rules = self.get_firewall_rules(site_ref)
-            firewall_policies = self.get_firewall_policies(site_ref, site_id=site_id)
-            traffic_rules = self.get_traffic_rules(site_ref, site_id=site_id)
+            firewall_policies = self.get_firewall_policies(site_ref, site_id=site_id,
+                                                           extra_refs=extra_refs)
+            fp_diag = list(self._fp_diag)
+            traffic_rules = self.get_traffic_rules(site_ref, site_id=site_id,
+                                                   extra_refs=extra_refs)
+            tr_diag = list(self._tr_diag)
             client_count = self.get_client_count(site_ref)
 
             type_counts = {}
@@ -382,6 +457,8 @@ class UnifiProvider:
                 'firewall_policies': firewall_policies,
                 'traffic_rules': traffic_rules,
                 'client_count': client_count,
+                '_fp_diag': fp_diag,
+                '_tr_diag': tr_diag,
             })
         return result
 

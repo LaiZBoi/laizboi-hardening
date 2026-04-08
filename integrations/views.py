@@ -1411,7 +1411,24 @@ def unifi_sync(request, pk):
             elif not legacy_login_ok:
                 fp_empty = "<tr><td colspan='4' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — verify the username and password in the connection settings are correct for this controller.</td></tr>"
             else:
-                fp_empty = "<tr><td colspan='4' class='text-muted'>No firewall policies found for this site.</td></tr>"
+                fp_diag = site.get('_fp_diag', [])
+                if fp_diag:
+                    diag_rows = ''.join(
+                        f"<tr><td class='font-monospace small'>{html_lib.escape(d.get('path',''))}</td>"
+                        f"<td>{html_lib.escape(d.get('auth',''))}</td>"
+                        f"<td>{html_lib.escape(str(d.get('status','')))} "
+                        f"{'✓ empty (' + str(d.get('keys','')) + ')' if 'keys' in d else html_lib.escape(str(d.get('snippet','')))}</td></tr>"
+                        for d in fp_diag
+                    )
+                    fp_empty = (
+                        "<tr><td colspan='4' class='text-muted'>No firewall policies found for this site. "
+                        "API diagnostic (re-sync to refresh):</td></tr>"
+                        f"<tr><td colspan='4' class='p-0'><table class='table table-sm mb-0 small'>"
+                        f"<thead><tr><th>Path</th><th>Auth</th><th>Result</th></tr></thead>"
+                        f"<tbody>{diag_rows}</tbody></table></td></tr>"
+                    )
+                else:
+                    fp_empty = "<tr><td colspan='4' class='text-muted'>No firewall policies found for this site.</td></tr>"
             fp_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-shield-alt me-2"></i>Firewall Policies / Zone Rules ({len(fp_rules)})</div>
@@ -1438,7 +1455,24 @@ def unifi_sync(request, pk):
             elif not legacy_login_ok:
                 tr_empty = "<tr><td colspan='3' class='text-warning small'><i class='fas fa-exclamation-triangle me-1'></i>Legacy API login failed — verify the username and password in the connection settings are correct for this controller.</td></tr>"
             else:
-                tr_empty = "<tr><td colspan='3' class='text-muted'>No traffic rules found.</td></tr>"
+                tr_diag = site.get('_tr_diag', [])
+                if tr_diag:
+                    diag_rows = ''.join(
+                        f"<tr><td class='font-monospace small'>{html_lib.escape(d.get('path',''))}</td>"
+                        f"<td>{html_lib.escape(d.get('auth',''))}</td>"
+                        f"<td>{html_lib.escape(str(d.get('status','')))} "
+                        f"{'✓ empty (' + str(d.get('keys','')) + ')' if 'keys' in d else html_lib.escape(str(d.get('snippet','')))}</td></tr>"
+                        for d in tr_diag
+                    )
+                    tr_empty = (
+                        "<tr><td colspan='3' class='text-muted'>No traffic rules found for this site. "
+                        "API diagnostic (re-sync to refresh):</td></tr>"
+                        f"<tr><td colspan='3' class='p-0'><table class='table table-sm mb-0 small'>"
+                        f"<thead><tr><th>Path</th><th>Auth</th><th>Result</th></tr></thead>"
+                        f"<tbody>{diag_rows}</tbody></table></td></tr>"
+                    )
+                else:
+                    tr_empty = "<tr><td colspan='3' class='text-muted'>No traffic rules found.</td></tr>"
             tr_table = f'''
 <div class="card mb-3">
   <div class="card-header"><i class="fas fa-traffic-light me-2"></i>Traffic Rules ({len(tr_rules)})</div>
