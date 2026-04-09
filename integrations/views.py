@@ -1484,6 +1484,28 @@ def unifi_sync(request, pk):
   </div>
 </div>'''
 
+            # Endpoint probe results (shown when both policies and rules are empty)
+            probe = site.get('_probe', {})
+            probe_section = ''
+            if probe:
+                probe_rows = ''.join(
+                    f"<tr><td class='font-monospace small'>{html_lib.escape(p)}</td>"
+                    f"<td class='small text-truncate' style='max-width:400px'>{html_lib.escape(b[:120])}</td></tr>"
+                    for p, b in probe.items()
+                )
+                probe_section = f'''
+<div class="card mb-3 border-info">
+  <div class="card-header bg-info text-white small">
+    <i class="fas fa-search me-2"></i>Endpoint Discovery — paths that returned HTTP 200 (re-sync to refresh)
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0 small">
+      <thead><tr><th>Path</th><th>Response snippet</th></tr></thead>
+      <tbody>{probe_rows or "<tr><td colspan='2' class='text-muted'>No endpoints discovered at 200 — controller may use a completely different path structure.</td></tr>"}</tbody>
+    </table>
+  </div>
+</div>'''
+
             site_sections += f'''
 <div class="card mb-4">
   <div class="card-header bg-primary text-white">
@@ -1491,7 +1513,7 @@ def unifi_sync(request, pk):
     <span class="badge bg-light text-dark ms-2">{site["client_count"]} clients connected</span>
   </div>
   <div class="card-body">
-    {devices_table}{wlans_table}{vlans_table}{fw_table}{fp_table}{tr_table}
+    {devices_table}{wlans_table}{vlans_table}{fw_table}{fp_table}{tr_table}{probe_section}
   </div>
 </div>'''
 

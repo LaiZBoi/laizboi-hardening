@@ -240,6 +240,33 @@ class UnifiProvider:
             logger.debug(f"UniFi get_legacy_site_refs failed: {e}")
             return []
 
+    def probe_site_endpoints(self, site_ref: str) -> dict:
+        """Probe potential endpoint roots to discover what the controller exposes.
+        Returns dict of path → (status, body_snippet) for any that return 200."""
+        probe_paths = [
+            f'/proxy/network/v2/api/site/{site_ref}',
+            f'/proxy/network/v2/api/site/{site_ref}/security',
+            f'/proxy/network/v2/api/site/{site_ref}/firewall',
+            f'/proxy/network/v2/api/site/{site_ref}/policies',
+            f'/proxy/network/v2/api/site/{site_ref}/policy',
+            f'/proxy/network/v2/api/site/{site_ref}/zone-policies',
+            f'/proxy/network/v2/api/site/{site_ref}/zonepolicies',
+            f'/proxy/network/v2/api/site/{site_ref}/traffic-rules',
+            f'/proxy/network/v2/api/site/{site_ref}/config',
+            f'/proxy/network/v2/api/site/{site_ref}/setting',
+            f'/proxy/network/v2/api/site/{site_ref}/setting/super_mgmt',
+            f'/proxy/network/api/s/{site_ref}/rest',
+            f'/proxy/network/api/s/{site_ref}/stat/sysinfo',
+        ]
+        found = {}
+        for path in probe_paths:
+            raw, status, snippet = self._try_path(path)
+            if status == '200':
+                body = str(raw)[:200] if raw is not None else ''
+                found[path] = body
+                logger.info(f"UniFi probe 200: {path} → {body[:80]}")
+        return found
+
     def get_traffic_rules(self, site_ref: str, site_id: str = '',
                           extra_refs: list = None) -> list:
         """Get Traffic Rules (UniFi OS 3.x+). Tries v2 API first, falls back to legacy REST."""
@@ -250,7 +277,10 @@ class UnifiProvider:
                 # Network 9.x/10.x security prefix (via proxy)
                 f'/proxy/network/v2/api/site/{ref}/security/traffic-rules',
                 f'/proxy/network/v2/api/site/{ref}/security/trafficrules',
-                # Legacy 7.x/8.x (via proxy)
+                # Network 10.x alternate naming (hyphenated, no security prefix)
+                f'/proxy/network/v2/api/site/{ref}/traffic-rules',
+                f'/proxy/network/v2/api/site/{ref}/traffic_rules',
+                # Legacy 7.x/8.x (via proxy) — confirmed 200 on Network 10.x (empty)
                 f'/proxy/network/v2/api/site/{ref}/trafficrules',
                 # Direct paths (UOS 4.x/5.x may expose Network app without /proxy prefix)
                 f'/v2/api/site/{ref}/security/traffic-rules',
@@ -324,16 +354,22 @@ class UnifiProvider:
 
         def _build_paths(ref):
             return [
-                # Network 9.x/10.x security prefix (via proxy)
+                # Network 9.x/10.x — security prefix
                 f'/proxy/network/v2/api/site/{ref}/security/zone-policies',
                 f'/proxy/network/v2/api/site/{ref}/security/policies',
                 f'/proxy/network/v2/api/site/{ref}/security/firewall-policies',
-                # Legacy 7.x/8.x (via proxy)
+                # Network 10.x alternate naming — no security/ prefix, various forms
+                f'/proxy/network/v2/api/site/{ref}/zone-policies',
+                f'/proxy/network/v2/api/site/{ref}/zonepolicies',
+                f'/proxy/network/v2/api/site/{ref}/policies',
+                f'/proxy/network/v2/api/site/{ref}/firewall-policies',
+                f'/proxy/network/v2/api/site/{ref}/policy',
+                # Legacy 7.x/8.x paths
                 f'/proxy/network/v2/api/site/{ref}/firewall/zone-policies',
                 f'/proxy/network/v2/api/site/{ref}/firewall/policies',
-                # Direct paths (UOS 4.x/5.x may expose Network app without /proxy prefix)
+                # Direct paths (UOS 4.x/5.x)
                 f'/v2/api/site/{ref}/security/zone-policies',
-                f'/v2/api/site/{ref}/firewall/zone-policies',
+                f'/v2/api/site/{ref}/zone-policies',
             ]
 
         def _build_legacy_rest(ref):
@@ -470,6 +506,10 @@ class UnifiProvider:
             traffic_rules = self.get_traffic_rules(site_ref, site_id=site_id,
                                                    extra_refs=extra_refs)
             tr_diag = list(self._tr_diag)
+            # If still empty, run broader endpoint probe to find what paths exist
+            probe_results = {}
+            if not firewall_policies and not traffic_rules:
+                probe_results = self.probe_site_endpoints(site_ref)
             client_count = self.get_client_count(site_ref)
 
             type_counts = {}
@@ -490,6 +530,7 @@ class UnifiProvider:
                 'client_count': client_count,
                 '_fp_diag': fp_diag,
                 '_tr_diag': tr_diag,
+                '_probe': probe_results,
             })
         return result
 
