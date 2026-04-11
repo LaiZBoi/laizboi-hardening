@@ -230,40 +230,66 @@ class TacticalRMMProvider(BaseRMMProvider):
             logger.error(f"Error listing Tactical RMM alerts: {e}")
             raise ProviderError(f"Failed to list alerts: {e}")
 
-    def list_software(self, device_id: str) -> List[Dict[str, Any]]:
+    def list_software(self, device_id: str, uuid: str = '') -> List[Dict[str, Any]]:
         """
         List software installed on an agent.
 
+        Tries multiple endpoint paths to handle different TRMM versions:
+        - /software/{numeric_pk}/ — primary path, requires numeric PK
+        - /agents/{device_id}/software/ — alternative path
+        - /agents/{uuid}/software/ — UUID-based fallback
+
         Args:
-            device_id: Tactical RMM agent ID
+            device_id: Tactical RMM numeric agent PK (preferred) or UUID
+            uuid: Agent UUID (agent_id field) for fallback path
 
         Returns:
             List of normalized software dictionaries
         """
-        software_list = []
+        # Build ordered list of paths to try
+        paths_to_try = [f'/software/{device_id}/']
+        if device_id != uuid:
+            paths_to_try.append(f'/agents/{device_id}/software/')
+        if uuid and uuid != device_id:
+            paths_to_try.append(f'/agents/{uuid}/software/')
 
-        try:
-            response = self._make_request('GET', f'/software/{device_id}/')
-            data = self._safe_json(response)
+        last_error = None
+        for path in paths_to_try:
+            try:
+                response = self._make_request('GET', path)
+                if response.status_code == 404:
+                    logger.debug(f"Tactical RMM: 404 at {path}, trying next")
+                    continue
+                data = self._safe_json(response)
 
-            if not isinstance(data, list):
-                logger.error(f"Unexpected response format from Tactical RMM software: {type(data)}")
+                # Some paths return {"software": [...]} wrapper
+                if isinstance(data, dict):
+                    data = data.get('software') or data.get('installed_software') or []
+
+                if not isinstance(data, list):
+                    logger.debug(f"Tactical RMM: unexpected format at {path}: {type(data)}")
+                    continue
+
+                software_list = []
+                for sw_data in data:
+                    try:
+                        software_list.append(self.normalize_software(sw_data))
+                    except Exception as e:
+                        logger.error(f"Error normalizing Tactical RMM software: {e}")
+
+                logger.info(f"Tactical RMM: Retrieved {len(software_list)} software items via {path}")
                 return software_list
 
-            for sw_data in data:
-                try:
-                    software_list.append(self.normalize_software(sw_data))
-                except Exception as e:
-                    logger.error(f"Error normalizing Tactical RMM software: {e}")
+            except Exception as e:
+                last_error = e
+                logger.debug(f"Tactical RMM: error at {path}: {e}")
+                continue
 
-            logger.info(f"Tactical RMM: Retrieved {len(software_list)} software items for agent {device_id}")
-            return software_list
-
-        except Exception as e:
-            logger.error(f"Error listing Tactical RMM software for agent {device_id}: {e} "
-                         f"(ensure device_id is the numeric agent PK, not UUID)")
-            # Don't raise - software listing is optional
-            return software_list
+        logger.error(
+            f"Tactical RMM: could not fetch software for agent {device_id} "
+            f"(tried {paths_to_try}); last error: {last_error}"
+        )
+        return []
 
     def normalize_device(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """

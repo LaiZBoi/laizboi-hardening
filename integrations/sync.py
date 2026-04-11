@@ -547,23 +547,26 @@ class RMMSync:
             self.stats['alerts']['errors'] += 1
 
     def sync_software(self):
-        """Sync software inventory for all online devices."""
+        """Sync software inventory for all devices (online and offline)."""
         logger.info(f"Syncing software for {self.connection}")
 
         try:
-            # Get all online devices
-            devices = RMMDevice.objects.filter(
-                connection=self.connection,
-                is_online=True
-            )
+            # Sync all devices — software inventory is valid regardless of current online status
+            devices = RMMDevice.objects.filter(connection=self.connection)
 
             for device in devices:
                 try:
-                    # TRMM software endpoint uses the numeric agent PK (e.g. /software/42/),
-                    # not the UUID agent_id stored in external_id. Pull the numeric id from
-                    # raw_data which holds the original API response.
-                    rmm_id = str((device.raw_data or {}).get('id') or device.external_id)
-                    software_data = self.provider.list_software(rmm_id)
+                    raw = device.raw_data or {}
+                    # TRMM's /software/<int:pk>/ endpoint needs the numeric DB PK, not UUID.
+                    # raw_data['id'] is the numeric PK when present. Fall back to external_id
+                    # (UUID) so the provider can also try UUID-based paths.
+                    numeric_id = raw.get('id')
+                    # Only use as numeric if it's actually an integer (not a UUID string)
+                    if numeric_id and not str(numeric_id).replace('-', '').isalpha():
+                        rmm_id = str(numeric_id)
+                    else:
+                        rmm_id = device.external_id
+                    software_data = self.provider.list_software(rmm_id, uuid=device.external_id)
                     
                     # Track existing software IDs
                     existing_software_ids = set()
