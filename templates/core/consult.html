@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Free Consultation — MSP Reboot{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-8">
+
+<div class="text-center mb-4">
+    <h1><i class="fas fa-handshake text-primary"></i> Free MSP Consultation</h1>
+    <p class="lead text-muted">We built what you're using because we lived it — 25 years running an MSP, 0 ransomware incidents. Tell us what's on your mind and we'll set up a call.</p>
+</div>
+
+{% if messages %}
+{% for msg in messages %}
+<div class="alert alert-{{ msg.tags|default:'info' }}">{{ msg }}</div>
+{% endfor %}
+{% endif %}
+
+<div class="card shadow-sm">
+    <div class="card-body p-4">
+        <form method="post" novalidate>
+            {% csrf_token %}
+
+            <h5 class="mb-3 border-bottom pb-2"><i class="fas fa-user me-1"></i> Your Info</h5>
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+                    <input type="text" name="name" class="form-control" value="{{ request.POST.name|default:'' }}" required placeholder="Your name">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
+                    <input type="email" name="email" class="form-control" value="{{ request.POST.email|default:'' }}" required placeholder="you@company.com">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Company</label>
+                    <input type="text" name="company" class="form-control" value="{{ request.POST.company|default:'' }}" placeholder="Your MSP or company name">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Phone <span class="text-muted small">(optional)</span></label>
+                    <input type="tel" name="phone" class="form-control" value="{{ request.POST.phone|default:'' }}" placeholder="555-555-5555">
+                </div>
+            </div>
+
+            <h5 class="mb-3 border-bottom pb-2"><i class="fas fa-bullseye me-1"></i> Areas of Interest or Concern</h5>
+            <p class="text-muted small mb-3">Check everything that applies — no judgment, this helps us come prepared.</p>
+            <div class="row g-2 mb-4">
+                {% for key, label in area_choices %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="areas" value="{{ key }}" id="area_{{ key }}"
+                            {% if key in request.POST.getlist('areas') %}checked{% endif %}>
+                        <label class="form-check-label" for="area_{{ key }}">{{ label }}</label>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <h5 class="mb-3 border-bottom pb-2"><i class="fas fa-comment-alt me-1"></i> Tell Us More</h5>
+            <div class="row g-3 mb-4">
+                <div class="col-12">
+                    <label class="form-label fw-semibold">What's going on? What does success look like for you?</label>
+                    <textarea name="description" class="form-control" rows="5" placeholder="No pitch needed — just talk to us like a peer. Where are you stuck? What's frustrating? What would a win look like?">{{ request.POST.description|default:'' }}</textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Best time to reach you</label>
+                    <input type="text" name="best_time" class="form-control" value="{{ request.POST.best_time|default:'' }}" placeholder="e.g. Weekday mornings, after 3pm ET">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">How did you hear about us?</label>
+                    <input type="text" name="heard_from" class="form-control" value="{{ request.POST.heard_from|default:'' }}" placeholder="GitHub, Reddit, referral, etc.">
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <small class="text-muted"><i class="fas fa-lock me-1"></i> Your info stays private. No spam, no sales calls without your consent.</small>
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="fas fa-paper-plane me-1"></i> Request Consultation
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="text-center mt-3">
+    <a href="{% url 'core:about' %}" class="text-muted small"><i class="fas fa-arrow-left me-1"></i> Back to About</a>
+</div>
+
+</div>
+</div>
+{% endblock %}

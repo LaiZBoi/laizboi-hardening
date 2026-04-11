@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Request Received — MSP Reboot{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-6 text-center py-5">
+    <div class="mb-4">
+        <i class="fas fa-check-circle text-success" style="font-size:4rem;"></i>
+    </div>
+    <h2>Got it, {{ name }}.</h2>
+    <p class="lead text-muted">Your consultation request has been submitted. We'll be in touch — no pitch, just a conversation.</p>
+    <a href="{% url 'core:about' %}" class="btn btn-outline-secondary mt-3">
+        <i class="fas fa-arrow-left me-1"></i> Back to About
+    </a>
+</div>
+</div>
+{% endblock %}

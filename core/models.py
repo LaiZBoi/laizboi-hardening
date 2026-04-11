@@ -103,6 +103,60 @@ class Organization(models.Model):
         super().save(*args, **kwargs)
 
 
+class ConsultRequest(models.Model):
+    """
+    Free consultation request submitted via the About / MSP Reboot page.
+    """
+    # Contact info
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    company = models.CharField(max_length=255, blank=True)
+    phone = models.CharField(max_length=50, blank=True)
+
+    # Areas of interest — stored as comma-separated keys
+    areas_of_interest = models.TextField(blank=True, help_text="Comma-separated area keys")
+
+    # Free-form details
+    description = models.TextField(blank=True, help_text="Tell us about your situation")
+    best_time = models.CharField(max_length=100, blank=True, help_text="Best time to reach you")
+    heard_from = models.CharField(max_length=255, blank=True, help_text="How did you hear about us?")
+
+    # Meta
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+    notes = models.TextField(blank=True, help_text="Internal notes")
+
+    AREA_CHOICES = [
+        ('sales', 'Sales & New Business'),
+        ('growth', 'Business Growth'),
+        ('technical', 'Technical Challenges'),
+        ('margins', 'Margin Improvement'),
+        ('efficiency', 'Operational Efficiency'),
+        ('tools', 'Tool Consolidation / Stack'),
+        ('security', 'Security & Compliance'),
+        ('staff', 'Staff & HR'),
+        ('processes', 'MSP Processes & Workflows'),
+        ('pricing', 'Pricing Strategy'),
+        ('other', 'Other'),
+    ]
+
+    class Meta:
+        db_table = 'consult_requests'
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.email}) — {self.submitted_at:%Y-%m-%d}"
+
+    def get_areas_list(self):
+        if not self.areas_of_interest:
+            return []
+        return [a.strip() for a in self.areas_of_interest.split(',') if a.strip()]
+
+    def get_areas_display(self):
+        area_map = dict(self.AREA_CHOICES)
+        return [area_map.get(a, a) for a in self.get_areas_list()]
+
+
 class SupportRating(models.Model):
     """
     Admin-assigned support difficulty ratings for an organization, broken down by category.

@@ -13,6 +13,7 @@ from django.utils import timezone
 from django_ratelimit.decorators import ratelimit
 from config.version import get_version, get_full_version
 from .updater import UpdateService
+from .models import ConsultRequest
 from audit.models import AuditLog
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,56 @@ def about(request):
         'version': get_version(),
         'full_version': get_full_version(),
         'equipment_stats': equipment_stats,
+    })
+
+
+def free_consult(request):
+    """Free consultation request form (public — no login required)."""
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        email = request.POST.get('email', '').strip()
+        company = request.POST.get('company', '').strip()
+        phone = request.POST.get('phone', '').strip()
+        areas = request.POST.getlist('areas')
+        description = request.POST.get('description', '').strip()
+        best_time = request.POST.get('best_time', '').strip()
+        heard_from = request.POST.get('heard_from', '').strip()
+
+        if not name or not email:
+            messages.error(request, 'Name and email are required.')
+        else:
+            # Validate areas against allowed choices
+            valid_keys = {k for k, _ in ConsultRequest.AREA_CHOICES}
+            areas = [a for a in areas if a in valid_keys]
+            ConsultRequest.objects.create(
+                name=name,
+                email=email,
+                company=company,
+                phone=phone,
+                areas_of_interest=','.join(areas),
+                description=description,
+                best_time=best_time,
+                heard_from=heard_from,
+            )
+            return render(request, 'core/consult_thanks.html', {'name': name})
+
+    return render(request, 'core/consult.html', {
+        'area_choices': ConsultRequest.AREA_CHOICES,
+    })
+
+
+@login_required
+@user_passes_test(is_superuser)
+def consult_requests(request):
+    """Superuser view — list all consult form submissions."""
+    requests_qs = ConsultRequest.objects.all()
+    if request.method == 'POST' and 'mark_read' in request.POST:
+        req_id = request.POST.get('mark_read')
+        ConsultRequest.objects.filter(id=req_id).update(is_read=True)
+        return redirect('core:consult_requests')
+    return render(request, 'core/consult_requests.html', {
+        'consult_requests': requests_qs,
+        'unread_count': requests_qs.filter(is_read=False).count(),
     })
 
 
