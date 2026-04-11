@@ -74,6 +74,23 @@ def asset_list(request):
         if cf and cf.get('location'):
             locations.add(cf['location'])
 
+    # Asset health feature flags
+    from core.models import SystemSetting
+    from assets.health import AssetAgeService
+    sys_settings = SystemSetting.get_settings()
+    health_enabled = (
+        sys_settings.asset_age_warnings_enabled or
+        sys_settings.firmware_checks_enabled or
+        sys_settings.warranty_checks_enabled
+    )
+    asset_age_statuses = {}
+    if sys_settings.asset_age_warnings_enabled:
+        svc = AssetAgeService(sys_settings)
+        for a in assets:
+            status = svc.get_age_status(a)
+            if status:
+                asset_age_statuses[a.pk] = status
+
     return render(request, 'assets/asset_list.html', {
         'assets': assets,
         'manufacturers': manufacturers,
@@ -86,6 +103,11 @@ def asset_list(request):
         'filter_location': filter_location,
         'filter_needs_reorder': filter_needs_reorder,
         'in_global_view': in_global_view,
+        'health_enabled': health_enabled,
+        'asset_age_enabled': sys_settings.asset_age_warnings_enabled,
+        'firmware_enabled': sys_settings.firmware_checks_enabled,
+        'warranty_enabled': sys_settings.warranty_checks_enabled,
+        'asset_age_statuses': asset_age_statuses,
     })
 
 
@@ -133,6 +155,14 @@ def asset_detail(request, pk):
     from integrations.models import RMMDevice
     rmm_devices = asset.rmm_devices.select_related('connection').prefetch_related('software', 'alerts').all()
 
+    # Asset health context
+    from core.models import SystemSetting
+    from assets.health import AssetAgeService
+    sys_settings = SystemSetting.get_settings()
+    asset_age_status = None
+    if sys_settings.asset_age_warnings_enabled:
+        asset_age_status = AssetAgeService(sys_settings).get_age_status(asset)
+
     return render(request, 'assets/asset_detail.html', {
         'asset': asset,
         'relationships': relationships,
@@ -140,6 +170,10 @@ def asset_detail(request, pk):
         'in_global_view': in_global_view,
         'has_ai': has_ai,
         'rmm_devices': rmm_devices,
+        'asset_age_enabled': sys_settings.asset_age_warnings_enabled,
+        'firmware_enabled': sys_settings.firmware_checks_enabled,
+        'warranty_enabled': sys_settings.warranty_checks_enabled,
+        'asset_age_status': asset_age_status,
     })
 
 

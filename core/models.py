@@ -587,6 +587,18 @@ class SystemSetting(models.Model):
     inventory_enabled = models.BooleanField(default=True, help_text='Enable Inventory management')
     scheduling_enabled = models.BooleanField(default=True, help_text='Enable Scheduling and Task Management')
 
+    # Asset Health Features
+    asset_age_warnings_enabled = models.BooleanField(default=False, help_text='Show warnings when assets approach or exceed their age threshold')
+    asset_age_warning_years = models.PositiveIntegerField(default=3, help_text='Age (years) at which to show a yellow warning for assets without a lifespan set')
+    asset_age_critical_years = models.PositiveIntegerField(default=5, help_text='Age (years) at which to show a red critical warning for assets without a lifespan set')
+    firmware_checks_enabled = models.BooleanField(default=False, help_text='Enable automatic firmware update checks for network devices (Ubiquiti, TP-Link, Grandstream, etc.)')
+    warranty_checks_enabled = models.BooleanField(default=False, help_text='Enable warranty expiry lookups for PCs and servers via vendor APIs (Dell, HP, Lenovo)')
+    dell_api_key = models.CharField(max_length=255, blank=True, help_text='Dell TechDirect API key for warranty lookups')
+    hp_client_id = models.CharField(max_length=255, blank=True, help_text='HP API client ID for warranty lookups')
+    hp_client_secret = models.CharField(max_length=255, blank=True, help_text='HP API client secret for warranty lookups')
+    lenovo_client_id = models.CharField(max_length=255, blank=True, help_text='Lenovo warranty API client ID')
+    lenovo_client_secret = models.CharField(max_length=255, blank=True, help_text='Lenovo warranty API client secret')
+
     # UI/UX Settings (Issue #59)
     stay_on_page_after_org_switch = models.BooleanField(default=True, help_text='Stay on current page when switching organizations instead of redirecting to dashboard')
 
@@ -662,9 +674,11 @@ class ScheduledTask(models.Model):
     Defines recurring tasks with their schedules.
     """
     TASK_TYPES = [
+        ('asset_age_check', 'Asset Age Warning Check'),
         ('cleanup_stuck_scans', 'Cleanup Stuck Security Scans'),
         ('domain_expiry_check', 'Domain Expiry Check'),
         ('equipment_catalog_update', 'Equipment Catalog Update'),
+        ('firmware_check', 'Firmware Update Check'),
         ('password_breach_scan', 'Password Breach Scanning'),
         ('psa_sync', 'PSA Synchronization'),
         ('rmm_sync', 'RMM Synchronization'),
@@ -672,6 +686,7 @@ class ScheduledTask(models.Model):
         ('security_scan', 'Automated Security Scan'),
         ('ssl_expiry_check', 'SSL Certificate Expiry Check'),
         ('update_check', 'System Update Check'),
+        ('warranty_check', 'Warranty Expiry Check'),
         ('website_monitoring', 'Website Monitoring Checks'),
     ]
 

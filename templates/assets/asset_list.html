@@ -84,6 +84,19 @@
                     <td>
                         <a href="{% url 'assets:asset_detail' asset.pk %}">{{ asset.name }}</a>
                         {% if asset.needs_reorder %}<span class="badge bg-warning text-dark ms-1" title="Flagged for reorder"><i class="fas fa-redo"></i> Reorder</span>{% endif %}
+                        {% if health_enabled %}
+                            {% if asset_age_enabled %}
+                                {% with status=asset_age_statuses|get_item:asset.pk %}
+                                    {% if status == 'critical' %}<span class="badge bg-danger ms-1" title="Asset age critical"><i class="fas fa-exclamation-triangle"></i> Age</span>
+                                    {% elif status == 'warning' %}<span class="badge bg-warning text-dark ms-1" title="Asset age warning"><i class="fas fa-clock"></i> Age</span>{% endif %}
+                                {% endwith %}
+                            {% endif %}
+                            {% if firmware_enabled and asset.has_firmware_update %}<span class="badge bg-info ms-1" title="Firmware update available: {{ asset.firmware_latest }}"><i class="fas fa-microchip"></i> FW Update</span>{% endif %}
+                            {% if warranty_enabled %}
+                                {% if asset.is_warranty_expired %}<span class="badge bg-danger ms-1" title="Warranty expired {{ asset.warranty_expiry }}"><i class="fas fa-shield-alt"></i> Warranty Expired</span>
+                                {% elif asset.is_warranty_expiring_soon %}<span class="badge bg-warning text-dark ms-1" title="Warranty expires {{ asset.warranty_expiry }}"><i class="fas fa-shield-alt"></i> Warranty Expiring</span>{% endif %}
+                            {% endif %}
+                        {% endif %}
                     </td>
                     <td>
                         {% asset_type_icon asset.asset_type "me-1" %}

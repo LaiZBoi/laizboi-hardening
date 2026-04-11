@@ -199,6 +199,16 @@ class Asset(BaseModel):
     lifespan_reminder_enabled = models.BooleanField(default=False, help_text='Enable reminders for upcoming end-of-life')
     lifespan_reminder_months = models.PositiveIntegerField(default=6, help_text='Send reminder X months before end-of-life')
 
+    # Firmware tracking (for network devices, APs, phones, etc.)
+    firmware_version = models.CharField(max_length=100, blank=True, help_text='Currently installed firmware version')
+    firmware_latest = models.CharField(max_length=100, blank=True, help_text='Latest available firmware version (populated by scheduler)')
+    firmware_checked_at = models.DateTimeField(null=True, blank=True, help_text='When firmware was last checked')
+
+    # Warranty tracking (for PCs, servers, network gear)
+    warranty_expiry = models.DateField(null=True, blank=True, help_text='Warranty or support contract expiry date')
+    warranty_status = models.CharField(max_length=100, blank=True, help_text='Warranty status description (e.g. Active, Expired, ProSupport)')
+    warranty_checked_at = models.DateTimeField(null=True, blank=True, help_text='When warranty was last checked via vendor API')
+
     # Physical reorder flag (can be toggled from browser extension)
     needs_reorder = models.BooleanField(default=False, help_text='Flag asset as needing physical reorder/replacement')
 
@@ -298,6 +308,38 @@ class Asset(BaseModel):
             delta = eol_date - date.today()
             return delta.days
         return None
+
+    def get_age_years(self):
+        """Return asset age in years based on purchase_date, or None."""
+        if not self.purchase_date:
+            return None
+        from datetime import date
+        delta = date.today() - self.purchase_date
+        return delta.days / 365.25
+
+    def has_firmware_update(self):
+        """True if a newer firmware version is known."""
+        if not self.firmware_version or not self.firmware_latest:
+            return False
+        return self.firmware_version.strip() != self.firmware_latest.strip()
+
+    def warranty_days_remaining(self):
+        """Days until warranty expires, negative if already expired."""
+        if not self.warranty_expiry:
+            return None
+        from datetime import date
+        delta = self.warranty_expiry - date.today()
+        return delta.days
+
+    def is_warranty_expired(self):
+        """True if warranty_expiry is set and in the past."""
+        days = self.warranty_days_remaining()
+        return days is not None and days < 0
+
+    def is_warranty_expiring_soon(self, within_days=90):
+        """True if warranty expires within `within_days` days."""
+        days = self.warranty_days_remaining()
+        return days is not None and 0 <= days <= within_days
 
     def has_ports(self):
         """Check if this asset type supports ports."""

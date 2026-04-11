@@ -25,6 +25,7 @@ class AssetForm(forms.ModelForm):
                   'is_rackmount', 'rack_units',
                   'port_count',
                   'purchase_date', 'lifespan_years', 'lifespan_reminder_enabled', 'lifespan_reminder_months',
+                  'firmware_version', 'warranty_expiry', 'warranty_status',
                   'primary_contact', 'tags', 'notes']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -49,6 +50,9 @@ class AssetForm(forms.ModelForm):
             'lifespan_years': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'max': '20', 'placeholder': 'e.g., 3, 5, 7'}),
             'lifespan_reminder_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'id_lifespan_reminder_enabled'}),
             'lifespan_reminder_months': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'max': '24', 'placeholder': 'e.g., 3, 6, 12'}),
+            'firmware_version': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., 6.5.55, v8.4.59'}),
+            'warranty_expiry': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'warranty_status': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., ProSupport Plus, Basic Warranty'}),
             'primary_contact': forms.Select(attrs={'class': 'form-control'}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
             'tags': forms.SelectMultiple(attrs={'class': 'form-select', 'size': '5'}),

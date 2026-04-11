@@ -190,7 +190,65 @@
                             <dt class="col-sm-4">End of Life</dt>
                             <dd class="col-sm-8">{% if eol %}{{ eol }}{% if asset.is_nearing_end_of_life %} <span class="badge bg-warning text-dark">Nearing EOL</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</dd>
                             {% endwith %}
+                            {% if asset_age_enabled and asset_age_status %}
+                            <dt class="col-sm-4">Age Status</dt>
+                            <dd class="col-sm-8">
+                                {% if asset_age_status == 'critical' %}<span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>Critical Age</span>{% with age=asset.get_age_years %} {{ age|floatformat:1 }} yrs old{% endwith %}
+                                {% elif asset_age_status == 'warning' %}<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Aging</span>{% with age=asset.get_age_years %} {{ age|floatformat:1 }} yrs old{% endwith %}
+                                {% else %}<span class="badge bg-success">Good</span>{% endif %}
+                            </dd>
+                            {% endif %}
                         </dl>
+
+                        {% if firmware_enabled and asset.firmware_version or asset.firmware_latest %}
+                        <!-- Firmware -->
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-microchip me-1"></i>Firmware</h6>
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Installed</dt>
+                            <dd class="col-sm-8">{% if asset.firmware_version %}{{ asset.firmware_version }}{% else %}<span class="text-muted">—</span>{% endif %}</dd>
+                            <dt class="col-sm-4">Latest Available</dt>
+                            <dd class="col-sm-8">
+                                {% if asset.firmware_latest %}
+                                    {{ asset.firmware_latest }}
+                                    {% if asset.has_firmware_update %}<span class="badge bg-info ms-1"><i class="fas fa-arrow-up me-1"></i>Update Available</span>{% else %}<span class="badge bg-success ms-1">Up to date</span>{% endif %}
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </dd>
+                            {% if asset.firmware_checked_at %}
+                            <dt class="col-sm-4">Last Checked</dt>
+                            <dd class="col-sm-8 text-muted small">{{ asset.firmware_checked_at|date:"Y-m-d H:i" }}</dd>
+                            {% endif %}
+                        </dl>
+                        {% elif firmware_enabled %}
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-microchip me-1"></i>Firmware</h6>
+                        <p class="text-muted small mb-0">No firmware data recorded. Set <em>Installed</em> version via Edit to track updates.</p>
+                        {% endif %}
+
+                        {% if warranty_enabled %}
+                        <!-- Warranty -->
+                        <hr class="my-2">
+                        <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-shield-alt me-1"></i>Warranty / Support</h6>
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Expiry</dt>
+                            <dd class="col-sm-8">
+                                {% if asset.warranty_expiry %}
+                                    {{ asset.warranty_expiry }}
+                                    {% if asset.is_warranty_expired %}<span class="badge bg-danger ms-1">Expired</span>
+                                    {% elif asset.is_warranty_expiring_soon %}<span class="badge bg-warning text-dark ms-1">Expiring Soon</span>
+                                    {% else %}<span class="badge bg-success ms-1">Active</span>{% endif %}
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </dd>
+                            {% if asset.warranty_status %}
+                            <dt class="col-sm-4">Coverage</dt>
+                            <dd class="col-sm-8">{{ asset.warranty_status }}</dd>
+                            {% endif %}
+                            {% if asset.warranty_checked_at %}
+                            <dt class="col-sm-4">Last Checked</dt>
+                            <dd class="col-sm-8 text-muted small">{{ asset.warranty_checked_at|date:"Y-m-d H:i" }}</dd>
+                            {% endif %}
+                        </dl>
+                        {% endif %}
 
                         {% if asset.tags.all %}
                         <hr class="my-2">

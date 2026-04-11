@@ -71,6 +71,12 @@ class Command(BaseCommand):
             self.run_scheduling_alerts()
         elif task.task_type == 'security_scan':
             self.run_security_scan()
+        elif task.task_type == 'asset_age_check':
+            self.run_asset_age_check()
+        elif task.task_type == 'firmware_check':
+            self.run_firmware_check()
+        elif task.task_type == 'warranty_check':
+            self.run_warranty_check()
         else:
             raise ValueError(f"Unknown task type: {task.task_type}")
 
@@ -189,3 +195,36 @@ class Command(BaseCommand):
             call_command('run_security_scan', verbosity=1)
         except Exception as e:
             self.stdout.write(f"    Security scan failed: {e}")
+
+    def run_asset_age_check(self):
+        """Evaluate asset age warnings against configured thresholds."""
+        from core.models import SystemSetting
+        settings = SystemSetting.get_settings()
+        if not settings.asset_age_warnings_enabled:
+            self.stdout.write("    Asset age warnings disabled — skipping")
+            return
+        from assets.health import AssetAgeService
+        counts = AssetAgeService(settings).check_all()
+        self.stdout.write(f"    Asset age check: {counts['warning']} warning, {counts['critical']} critical")
+
+    def run_firmware_check(self):
+        """Check for firmware updates on network devices."""
+        from core.models import SystemSetting
+        settings = SystemSetting.get_settings()
+        if not settings.firmware_checks_enabled:
+            self.stdout.write("    Firmware checks disabled — skipping")
+            return
+        from assets.health import FirmwareCheckService
+        updated = FirmwareCheckService(settings).check_all()
+        self.stdout.write(f"    Firmware check: {updated} assets updated")
+
+    def run_warranty_check(self):
+        """Check warranty expiry for PCs and servers via vendor APIs."""
+        from core.models import SystemSetting
+        settings = SystemSetting.get_settings()
+        if not settings.warranty_checks_enabled:
+            self.stdout.write("    Warranty checks disabled — skipping")
+            return
+        from assets.health import WarrantyCheckService
+        updated = WarrantyCheckService(settings).check_all()
+        self.stdout.write(f"    Warranty check: {updated} assets updated")

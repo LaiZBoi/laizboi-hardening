@@ -106,3 +106,14 @@ def asset_icon_fa(asset_type):
     """
     icon, _ = ASSET_TYPE_ICONS.get(asset_type, _DEFAULT_ICON)
     return icon
+
+
+@register.filter(name='get_item')
+def get_item(dictionary, key):
+    """
+    Dict lookup by key in templates.
+    Usage: {{ my_dict|get_item:key }}
+    """
+    if isinstance(dictionary, dict):
+        return dictionary.get(key)
+    return None
