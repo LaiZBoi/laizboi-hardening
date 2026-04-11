@@ -240,6 +240,65 @@
         </div>
     </div>
 
+    <!-- Support Difficulty Ratings -->
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-tachometer-alt"></i> Support Difficulty</h5>
+                <small class="text-muted">Admin-only</small>
+            </div>
+            <div class="card-body">
+                {% if user_membership.role == 'owner' or user_membership.role == 'admin' or user.is_superuser %}
+                <div class="row g-3" id="support-ratings">
+                    {% for cat_key, cat_label, rating in support_ratings %}
+                    <div class="col-md-4 col-lg-2">
+                        <div class="card h-100 border text-center p-2" id="rating-card-{{ cat_key }}">
+                            <div class="small fw-bold mb-2">{{ cat_label }}</div>
+                            <div class="btn-group-vertical w-100" role="group">
+                                {% for val, label in rating_choices %}
+                                <button type="button"
+                                    class="btn btn-sm rating-btn {% if rating and rating.rating == val %}active{% endif %}"
+                                    data-org="{{ organization.id }}"
+                                    data-category="{{ cat_key }}"
+                                    data-rating="{{ val }}"
+                                    data-label="{{ label }}"
+                                    style="{% if rating and rating.rating == val %}{% if val == 1 %}background-color:#198754;color:#fff;{% elif val == 2 %}background-color:#0dcaf0;color:#000;{% elif val == 3 %}background-color:#ffc107;color:#000;{% elif val == 4 %}background-color:#fd7e14;color:#fff;{% elif val == 5 %}background-color:#dc3545;color:#fff;{% endif %}{% else %}{% endif %}">
+                                    {{ label }}
+                                </button>
+                                {% endfor %}
+                            </div>
+                            {% if rating and rating.notes %}
+                            <div class="small text-muted mt-1" id="rating-notes-{{ cat_key }}">{{ rating.notes }}</div>
+                            {% else %}
+                            <div class="small text-muted mt-1" id="rating-notes-{{ cat_key }}"></div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div id="rating-feedback" class="mt-2 small text-muted" style="min-height:1.2em;"></div>
+                {% else %}
+                <div class="row g-3">
+                    {% for cat_key, cat_label, rating in support_ratings %}
+                    {% if rating %}
+                    <div class="col-auto">
+                        <span class="fw-semibold me-1">{{ cat_label }}:</span>
+                        <span class="badge"
+                            style="{% if rating.rating == 1 %}background-color:#198754;{% elif rating.rating == 2 %}background-color:#0dcaf0;color:#000;{% elif rating.rating == 3 %}background-color:#ffc107;color:#000;{% elif rating.rating == 4 %}background-color:#fd7e14;{% elif rating.rating == 5 %}background-color:#dc3545;{% endif %}color:{% if rating.rating == 2 or rating.rating == 3 %}#000{% else %}#fff{% endif %};">
+                            {{ rating.get_rating_display }}
+                        </span>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                    {% if not support_ratings %}
+                    <p class="text-muted mb-0">No ratings set.</p>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
     <!-- Members -->
     <div class="col-md-12">
         <div class="card">
@@ -300,4 +359,55 @@
         </div>
     </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const RATING_COLORS = {
+    1: {bg:'#198754', color:'#fff'},
+    2: {bg:'#0dcaf0', color:'#000'},
+    3: {bg:'#ffc107', color:'#000'},
+    4: {bg:'#fd7e14', color:'#fff'},
+    5: {bg:'#dc3545', color:'#fff'},
+};
+document.querySelectorAll('.rating-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const orgId = this.dataset.org;
+        const category = this.dataset.category;
+        const rating = parseInt(this.dataset.rating);
+        const csrfToken = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+        fetch(`/accounts/organizations/${orgId}/support-rating/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrfToken},
+            body: `category=${category}&rating=${rating}`
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.ok) {
+                document.getElementById('rating-feedback').textContent = 'Error: ' + data.error;
+                return;
+            }
+            document.querySelectorAll(`.rating-btn[data-category="${category}"]`).forEach(b => {
+                const bRating = parseInt(b.dataset.rating);
+                const c = RATING_COLORS[bRating];
+                if (bRating === rating) {
+                    b.style.backgroundColor = c.bg;
+                    b.style.color = c.color;
+                    b.classList.add('active');
+                } else {
+                    b.style.backgroundColor = '';
+                    b.style.color = '';
+                    b.classList.remove('active');
+                }
+            });
+            const fb = document.getElementById('rating-feedback');
+            fb.textContent = `${category.charAt(0).toUpperCase()+category.slice(1)} set to ${data.label}`;
+            setTimeout(() => fb.textContent = '', 3000);
+        })
+        .catch(() => {
+            document.getElementById('rating-feedback').textContent = 'Save failed — please try again.';
+        });
+    });
+});
+</script>
 {% endblock %}

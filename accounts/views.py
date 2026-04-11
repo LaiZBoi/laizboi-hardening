@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.contrib.auth import update_session_auth_hash
-from core.models import Organization
+from core.models import Organization, SupportRating
 from core.decorators import require_owner
 from audit.models import AuditLog
 from .models import Membership, UserProfile
@@ -488,11 +488,20 @@ def organization_detail(request, org_id):
         organization=org
     ).order_by('name')
 
+    # Support ratings — build a dict keyed by category for easy template access
+    ratings_qs = SupportRating.objects.filter(organization=org)
+    ratings_by_category = {r.category: r for r in ratings_qs}
+    # Ensure all categories present (None if not yet rated)
+    all_categories = SupportRating.CATEGORY_CHOICES
+    ratings = [(key, label, ratings_by_category.get(key)) for key, label in all_categories]
+
     return render(request, 'accounts/organization_detail.html', {
         'organization': org,
         'members': members,
         'user_membership': membership,
         'locations': locations,
+        'support_ratings': ratings,
+        'rating_choices': SupportRating.RATING_CHOICES,
     })
 
 
@@ -654,6 +663,51 @@ def member_reactivate(request, member_id):
 
     messages.success(request, f'User {member.user.username} has been reactivated.')
     return redirect('accounts:member_list')
+
+
+@login_required
+def organization_support_rating(request, org_id):
+    """
+    AJAX endpoint — save a support difficulty rating for one category.
+    Accessible to owners, admins, and superusers.
+    """
+    from django.http import JsonResponse
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+
+    org = get_object_or_404(Organization, id=org_id)
+
+    membership = Membership.objects.filter(
+        user=request.user, organization=org, is_active=True
+    ).first()
+    if not membership and not request.user.is_superuser:
+        return JsonResponse({'ok': False, 'error': 'Access denied'}, status=403)
+    if membership and membership.role not in ('owner', 'admin') and not request.user.is_superuser:
+        return JsonResponse({'ok': False, 'error': 'Admins only'}, status=403)
+
+    category = request.POST.get('category', '')
+    rating_val = request.POST.get('rating', '')
+    notes = request.POST.get('notes', '').strip()
+
+    valid_categories = dict(SupportRating.CATEGORY_CHOICES).keys()
+    valid_ratings = {str(r[0]) for r in SupportRating.RATING_CHOICES}
+
+    if category not in valid_categories:
+        return JsonResponse({'ok': False, 'error': 'Invalid category'}, status=400)
+    if rating_val not in valid_ratings:
+        return JsonResponse({'ok': False, 'error': 'Invalid rating'}, status=400)
+
+    obj, _ = SupportRating.objects.update_or_create(
+        organization=org,
+        category=category,
+        defaults={'rating': int(rating_val), 'notes': notes, 'rated_by': request.user},
+    )
+    return JsonResponse({
+        'ok': True,
+        'rating': obj.rating,
+        'label': obj.get_rating_display(),
+        'notes': obj.notes,
+    })
 
 
 @login_required

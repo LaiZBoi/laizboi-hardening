@@ -103,6 +103,64 @@ class Organization(models.Model):
         super().save(*args, **kwargs)
 
 
+class SupportRating(models.Model):
+    """
+    Admin-assigned support difficulty ratings for an organization, broken down by category.
+    One record per organization + category (upserted on save).
+    """
+    CATEGORY_APPLICATION = 'application'
+    CATEGORY_NETWORK = 'network'
+    CATEGORY_CUSTOMER = 'customer'
+    CATEGORY_HARDWARE = 'hardware'
+    CATEGORY_OVERALL = 'overall'
+
+    CATEGORY_CHOICES = [
+        (CATEGORY_APPLICATION, 'Application'),
+        (CATEGORY_NETWORK, 'Network'),
+        (CATEGORY_CUSTOMER, 'Customer / Users'),
+        (CATEGORY_HARDWARE, 'Hardware'),
+        (CATEGORY_OVERALL, 'Overall'),
+    ]
+
+    RATING_CHOICES = [
+        (1, 'Low'),
+        (2, 'Moderate'),
+        (3, 'Elevated'),
+        (4, 'High'),
+        (5, 'Critical'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='support_ratings'
+    )
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    rating = models.PositiveSmallIntegerField(choices=RATING_CHOICES)
+    notes = models.CharField(max_length=255, blank=True)
+    rated_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, related_name='+'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'support_ratings'
+        unique_together = [['organization', 'category']]
+        ordering = ['category']
+
+    def __str__(self):
+        return f"{self.organization} — {self.get_category_display()}: {self.get_rating_display()}"
+
+    @property
+    def color_class(self):
+        return {1: 'success', 2: 'info', 3: 'warning', 4: 'orange', 5: 'danger'}.get(self.rating, 'secondary')
+
+    @property
+    def badge_style(self):
+        """Inline style for the orange level which Bootstrap doesn't have natively."""
+        if self.rating == 4:
+            return 'background-color:#fd7e14;color:#fff;'
+        return ''
+
+
 class Tag(models.Model):
     """
     Generic tagging model for various entities.
