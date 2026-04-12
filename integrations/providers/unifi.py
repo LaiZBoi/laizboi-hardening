@@ -220,21 +220,36 @@ class UnifiProvider:
     def get_zones(self, site_ref: str, extra_refs: list = None) -> list:
         """Get zone definitions (Network 9.x/10.x). Returns list of zone dicts."""
         refs = [site_ref] + [r for r in (extra_refs or []) if r and r != site_ref]
-        for ref in refs:
-            for path in (
-                f'/proxy/network/v2/api/site/{ref}/zones',
+
+        def _zone_paths(ref):
+            return [
                 f'/proxy/network/v2/api/site/{ref}/security/zones',
-            ):
-                raw, status, _ = self._try_path(path)
-                if raw is not None:
-                    items = raw if isinstance(raw, list) else raw.get('data', raw.get('zones', []))
-                    if items:
-                        return items
-                raw, status, _ = self._try_path(path, use_legacy=True)
-                if raw is not None:
-                    items = raw if isinstance(raw, list) else raw.get('data', raw.get('zones', []))
-                    if items:
-                        return items
+                f'/proxy/network/v2/api/site/{ref}/zones',
+                f'/proxy/network/v2/api/site/{ref}/security/zone',
+                f'/proxy/network/v2/api/site/{ref}/zone',
+                f'/proxy/network/integration/v1/sites/{ref}/zones',
+                f'/v2/api/site/{ref}/security/zones',
+            ]
+
+        def _parse_zones(raw):
+            if isinstance(raw, list):
+                return raw
+            for key in ('data', 'zones', 'items', 'result'):
+                if key in raw and isinstance(raw[key], list):
+                    return raw[key]
+            return []
+
+        for ref in refs:
+            for path in _zone_paths(ref):
+                for use_legacy in (False, True):
+                    if use_legacy and not (self.username and self.password):
+                        continue
+                    raw, status, _ = self._try_path(path, use_legacy=use_legacy)
+                    if raw is not None:
+                        items = _parse_zones(raw)
+                        if items:
+                            logger.info(f"UniFi zones found via {path}: {len(items)}")
+                            return items
         return []
 
     def get_traffic_routes(self, site_ref: str, extra_refs: list = None) -> list:
@@ -575,7 +590,8 @@ class UnifiProvider:
             wlans = self.get_wlans(site_ref)
             vlans = self.get_vlans(site_ref)
             firewall_rules = self.get_firewall_rules(site_ref)
-            zones = self.get_zones(site_ref, extra_refs=extra_refs)
+            zone_extra_refs = ([site_id] if site_id and site_id != site_ref else []) + extra_refs
+            zones = self.get_zones(site_ref, extra_refs=zone_extra_refs)
             zone_map = {z.get('_id') or z.get('id', ''): z.get('name', '') for z in zones}
             firewall_policies = self.get_firewall_policies(site_ref, site_id=site_id,
                                                            extra_refs=extra_refs)

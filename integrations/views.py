@@ -1406,8 +1406,12 @@ def unifi_sync(request, pk):
                 action = html_lib.escape(r.get('action') or r.get('ruleAction') or '—')
                 src = r.get('source', {})
                 dst = r.get('destination', {})
-                src_zid = src.get('zone') or src.get('zone_id') or r.get('sourceZone') or ''
-                dst_zid = dst.get('zone') or dst.get('zone_id') or r.get('destinationZone') or ''
+                src_zid = (src.get('zone') or src.get('zone_id') or src.get('zoneId') or
+                           r.get('sourceZone') or r.get('source_zone') or r.get('sourceZoneId') or
+                           r.get('from_zone') or r.get('fromZone') or '')
+                dst_zid = (dst.get('zone') or dst.get('zone_id') or dst.get('zoneId') or
+                           r.get('destinationZone') or r.get('destination_zone') or r.get('destinationZoneId') or
+                           r.get('to_zone') or r.get('toZone') or '')
                 src_zone = html_lib.escape(zone_map.get(src_zid, src_zid) or 'any')
                 dst_zone = html_lib.escape(zone_map.get(dst_zid, dst_zid) or 'any')
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'

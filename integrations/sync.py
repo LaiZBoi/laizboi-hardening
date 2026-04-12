@@ -793,7 +793,8 @@ class RMMSync:
             device=device,
             external_id=external_id,
             defaults={
-                'organization': self.organization,
+                'organization': device.organization,
+                'connection': device.connection,
                 'name': name,
                 'version': version,
                 'vendor': sw_data.get('vendor', ''),
