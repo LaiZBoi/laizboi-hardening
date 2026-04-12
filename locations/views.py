@@ -123,6 +123,25 @@ def location_create(request):
     """Create new location with optional AI-assisted setup."""
     organization = request.current_organization
 
+    # #116: Allow creating a location for a specific org via query param
+    # (e.g. "Add Location" button on org detail page)
+    org_id_param = request.GET.get('organization_id')
+    if org_id_param:
+        from core.models import Organization as OrgModel
+        try:
+            candidate = OrgModel.objects.get(id=org_id_param, is_active=True)
+            # Verify access: superuser, staff, or has membership
+            from accounts.models import Membership
+            has_access = (
+                request.user.is_superuser
+                or request.is_staff_user
+                or Membership.objects.filter(user=request.user, organization=candidate, is_active=True).exists()
+            )
+            if has_access:
+                organization = candidate
+        except OrgModel.DoesNotExist:
+            pass
+
     # Require organization context for creating locations
     if not organization:
         messages.error(request, 'Organization context required to create locations.')

@@ -527,7 +527,44 @@ def organization_edit(request, org_id):
         form = OrganizationForm(request.POST, instance=org)
         if form.is_valid():
             org = form.save()
-            messages.success(request, f"Organization '{org.name}' updated successfully.")
+
+            # #116: Support auto-creating a location from the edit form too
+            auto_create = form.cleaned_data.get('auto_create_location', False)
+            if auto_create and org.street_address and org.city:
+                from locations.models import Location
+                from locations.services.geocoding import GeocodingService
+
+                location_name = form.cleaned_data.get('location_name') or 'Headquarters'
+
+                location = Location.objects.create(
+                    organization=org,
+                    name=location_name,
+                    location_type='office',
+                    street_address=org.street_address,
+                    street_address_2=org.street_address_2 or '',
+                    city=org.city,
+                    state=org.state or '',
+                    postal_code=org.postal_code or '',
+                    country=org.country,
+                    status='active',
+                    is_primary=True,
+                )
+
+                try:
+                    geocoder = GeocodingService()
+                    result = geocoder.geocode_address(location.full_address)
+                    if result:
+                        location.latitude = result['latitude']
+                        location.longitude = result['longitude']
+                        location.save()
+                        messages.success(request, f"Organization '{org.name}' updated and location '{location_name}' created (geocoded).")
+                    else:
+                        messages.success(request, f"Organization '{org.name}' updated and location '{location_name}' created.")
+                except Exception as e:
+                    messages.warning(request, f"Organization '{org.name}' updated and location '{location_name}' created, but geocoding failed: {e}")
+            else:
+                messages.success(request, f"Organization '{org.name}' updated successfully.")
+
             return redirect('accounts:organization_detail', org_id=org.id)
     else:
         form = OrganizationForm(instance=org)

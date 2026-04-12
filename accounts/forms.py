@@ -167,7 +167,7 @@ class UserProfileForm(forms.ModelForm):
     
     class Meta:
         model = UserProfile
-        fields = ['phone', 'title', 'department', 'timezone', 'time_format', 'locale', 'theme', 'background_mode', 'background_color', 'preset_background', 'background_image', 'email_notifications', 'notification_frequency', 'tooltips_enabled']
+        fields = ['phone', 'title', 'department', 'timezone', 'time_format', 'locale', 'theme', 'background_mode', 'background_color', 'preset_background', 'background_image', 'email_notifications', 'notification_frequency', 'tooltips_enabled', 'preferred_organization']
         widgets = {
             'phone': forms.TextInput(attrs={
                 'class': 'form-control',
@@ -229,6 +229,10 @@ class UserProfileForm(forms.ModelForm):
                 'class': 'form-check-input',
                 'autocomplete': 'off'
             }),
+            'preferred_organization': forms.Select(attrs={
+                'class': 'form-select',
+                'autocomplete': 'off'
+            }),
         }
     
     def __init__(self, *args, **kwargs):
@@ -273,6 +277,19 @@ class UserProfileForm(forms.ModelForm):
             self.fields['first_name'].initial = self.user.first_name
             self.fields['last_name'].initial = self.user.last_name
             self.fields['email'].initial = self.user.email
+
+        # Limit preferred_organization to orgs the user is a member of (#115)
+        if self.user and 'preferred_organization' in self.fields:
+            from core.models import Organization
+            if self.user.is_superuser or (self.instance and getattr(self.instance, 'user_type', '') == 'staff'):
+                self.fields['preferred_organization'].queryset = Organization.objects.filter(is_active=True).order_by('name')
+            else:
+                member_org_ids = Membership.objects.filter(
+                    user=self.user, is_active=True, organization__is_active=True
+                ).values_list('organization_id', flat=True)
+                self.fields['preferred_organization'].queryset = Organization.objects.filter(id__in=member_org_ids).order_by('name')
+            self.fields['preferred_organization'].required = False
+            self.fields['preferred_organization'].empty_label = '--- No preference (auto-select) ---'
 
         # Debug logging (can be removed later)
         if self.instance and self.instance.pk:

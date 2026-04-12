@@ -173,7 +173,7 @@
                     {% if locations %}<span class="badge bg-secondary ms-1">{{ locations|length }}</span>{% endif %}
                 </h5>
                 {% if user_membership.role == 'owner' or user_membership.role == 'admin' or user.is_superuser %}
-                <a href="{% url 'locations:location_create' %}" class="btn btn-sm btn-primary">
+                <a href="{% url 'locations:location_create' %}?organization_id={{ organization.id }}" class="btn btn-sm btn-primary">
                     <i class="fas fa-plus"></i> Add Location
                 </a>
                 {% endif %}

@@ -39,12 +39,28 @@ class CurrentOrganizationMiddleware:
                 except Organization.DoesNotExist:
                     pass
 
-            # If no org selected, auto-select first available org (unless in global view mode)
+            # If no org selected, auto-select based on preferred org or first available
             if not request.current_organization:
                 # Check if user explicitly wants global view (superusers only)
                 global_view_mode = request.session.get('global_view_mode', False)
 
-                if request.user.is_superuser or request.is_staff_user:
+                # Check preferred_organization from user profile (#115)
+                preferred_org = None
+                if profile is not None:
+                    pref = getattr(profile, 'preferred_organization', None)
+                    if pref is not None and pref.is_active:
+                        # Verify access
+                        if request.user.is_superuser or request.is_staff_user:
+                            preferred_org = pref
+                        elif hasattr(request.user, 'memberships'):
+                            if request.user.memberships.filter(organization=pref, is_active=True).exists():
+                                preferred_org = pref
+
+                if preferred_org and not global_view_mode:
+                    request.current_organization = preferred_org
+                    request.session['current_organization_id'] = preferred_org.id
+                    request.session.modified = True
+                elif request.user.is_superuser or request.is_staff_user:
                     # Skip auto-select if in global view mode
                     if not global_view_mode:
                         # Superusers and staff users: select first active organization

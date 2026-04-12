@@ -280,6 +280,16 @@ class UserProfile(BaseModel):
         ('weekly', 'Weekly Digest'),
     ], default='realtime')
 
+    # Organization Preferences
+    preferred_organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        help_text='Default organization to load on login'
+    )
+
     # UI Preferences
     tooltips_enabled = models.BooleanField(
         default=True,
