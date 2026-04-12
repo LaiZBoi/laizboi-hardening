@@ -232,10 +232,11 @@ def apply_update(request):
     """
     Start system update using UpdateService with proper progress tracking.
     """
-    from core.updater import UpdateService
-    from core.update_progress import UpdateProgress
-
     try:
+        from core.updater import UpdateService
+        from core.update_progress import UpdateProgress
+        import threading
+
         # Clear cache
         cache.delete('system_update_check')
 
@@ -244,7 +245,6 @@ def apply_update(request):
         progress.start()
 
         # Start update in background thread
-        import threading
         updater = UpdateService()
 
         def run_update():
@@ -258,13 +258,16 @@ def apply_update(request):
         update_thread.daemon = True
         update_thread.start()
 
-        # Log the action
-        AuditLog.objects.create(
-            action='system_update',
-            description=f'Update triggered by {request.user.username}',
-            user=request.user,
-            username=request.user.username
-        )
+        # Log the action (best-effort)
+        try:
+            AuditLog.objects.create(
+                action='system_update',
+                description=f'Update triggered by {request.user.username}',
+                user=request.user,
+                username=request.user.username
+            )
+        except Exception:
+            pass
 
         return JsonResponse({
             'status': 'started',
@@ -272,7 +275,7 @@ def apply_update(request):
         })
 
     except Exception as e:
-        messages.error(request, f"Failed to start update: {e}")
+        logger.exception("apply_update failed")
         return JsonResponse({
             'status': 'error',
             'message': str(e)
