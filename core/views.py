@@ -192,14 +192,25 @@ def check_updates_now(request):
     # Update cache
     cache.set('system_update_check', update_info, 300)  # Cache for 5 minutes
 
-    # Log the check
-    AuditLog.objects.create(
-        action='update_check',
-        description=f'Manual update check by {request.user.username}',
-        user=request.user,
-        username=request.user.username,
-        extra_data=update_info
-    )
+    # Log the check (best-effort — older DB schemas may not have extra_data column yet)
+    try:
+        AuditLog.objects.create(
+            action='update_check',
+            description=f'Manual update check by {request.user.username}',
+            user=request.user,
+            username=request.user.username,
+            extra_data=update_info
+        )
+    except Exception:
+        try:
+            AuditLog.objects.create(
+                action='update_check',
+                description=f'Manual update check by {request.user.username}',
+                user=request.user,
+                username=request.user.username,
+            )
+        except Exception:
+            pass
 
     if update_info.get('error'):
         messages.error(request, f"Failed to check for updates: {update_info['error']}")
