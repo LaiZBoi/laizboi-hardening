@@ -308,14 +308,24 @@ class UnifiProvider:
             f'/proxy/network/v2/api/site/{site_ref}/setting/super_mgmt',
             f'/proxy/network/api/s/{site_ref}/rest',
             f'/proxy/network/api/s/{site_ref}/stat/sysinfo',
+            # Network 8.x+ non-REST paths
+            f'/proxy/network/api/s/{site_ref}/zone-policies',
+            f'/proxy/network/api/s/{site_ref}/firewall-policies',
+            f'/proxy/network/api/s/{site_ref}/firewall/policies',
+            f'/proxy/network/api/s/{site_ref}/firewall/zone-policies',
         ]
         found = {}
         for path in probe_paths:
-            raw, status, snippet = self._try_path(path)
-            if status == '200':
-                body = str(raw)[:200] if raw is not None else ''
-                found[path] = body
-                logger.info(f"UniFi probe 200: {path} → {body[:80]}")
+            for use_legacy in (False, True):
+                if use_legacy and not (self.username and self.password):
+                    continue
+                raw, status, snippet = self._try_path(path, use_legacy=use_legacy)
+                auth = 'legacy' if use_legacy else 'api_key'
+                if status == '200':
+                    body = str(raw)[:200] if raw is not None else ''
+                    found[f"{path} ({auth})"] = body
+                    logger.info(f"UniFi probe 200 ({auth}): {path} → {body[:80]}")
+                    break  # don't double-count if api_key works
         return found
 
     def get_traffic_rules(self, site_ref: str, site_id: str = '',
@@ -435,6 +445,11 @@ class UnifiProvider:
                 f'/proxy/network/api/s/{ref}/rest/firewall',
                 f'/proxy/network/api/s/{ref}/rest/firewallrule',
                 f'/proxy/network/api/s/{ref}/rest/firewallrules',
+                # Network 8.x+ zone-based firewall — non-/rest/ paths (v1 API, no REST prefix)
+                f'/proxy/network/api/s/{ref}/zone-policies',
+                f'/proxy/network/api/s/{ref}/firewall-policies',
+                f'/proxy/network/api/s/{ref}/firewall/policies',
+                f'/proxy/network/api/s/{ref}/firewall/zone-policies',
             ]
 
         def _build_integration(ref):
@@ -458,8 +473,9 @@ class UnifiProvider:
             if isinstance(raw, list):
                 return raw
             for key in ('data', 'policies', 'zonePolicies', 'zone_policies',
-                        'firewallPolicies', 'firewall_policies', 'rules', 'items',
-                        'firewall_rules', 'firewallRules', 'result'):
+                        'firewallPolicies', 'firewall_policies', 'firewallPolicy',
+                        'firewall_policy', 'firewall-policies', 'zonePolicy',
+                        'rules', 'firewall_rules', 'firewallRules', 'items', 'result'):
                 if key in raw and isinstance(raw[key], list):
                     return raw[key]
             return []
