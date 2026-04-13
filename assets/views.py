@@ -753,13 +753,23 @@ def asset_ai_doc(request, pk):
 
     # Append RMM data if available
     try:
-        rmm = asset.rmm_devices.select_related('connection').first()
+        rmm = asset.rmm_devices.select_related('connection').prefetch_related('software').first()
         if rmm:
             asset_data['rmm_provider'] = rmm.connection.get_provider_type_display() if rmm.connection else ''
             asset_data['rmm_status'] = 'Online' if rmm.is_online else 'Offline'
             asset_data['rmm_last_seen'] = rmm.last_seen.strftime('%Y-%m-%d %H:%M') if rmm.last_seen else ''
             asset_data['rmm_site'] = rmm.site_name
             asset_data['rmm_os'] = f'{rmm.os_type} {rmm.os_version}'.strip()
+            # Include software inventory so AI blueprint can document installed software
+            software_qs = rmm.software.order_by('name')
+            if software_qs.exists():
+                sw_lines = []
+                for sw in software_qs[:100]:  # cap at 100 to keep prompt reasonable
+                    entry = sw.name
+                    if sw.version:
+                        entry += f' {sw.version}'
+                    sw_lines.append(entry)
+                asset_data['installed_software'] = '\n'.join(sw_lines)
     except Exception:
         pass
 

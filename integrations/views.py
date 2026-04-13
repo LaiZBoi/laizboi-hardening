@@ -1307,13 +1307,15 @@ def unifi_sync(request, pk):
             for d in site.get('devices', []):
                 name = html_lib.escape(d.get('name') or d.get('hostname') or '—')
                 model = html_lib.escape(d.get('model') or d.get('shortname') or '—')
-                dtype = html_lib.escape(d.get('type') or d.get('productType') or '—')
+                dtype = html_lib.escape(d.get('type') or d.get('productType') or d.get('productLine') or '—')
                 ip = html_lib.escape(str(d.get('ip') or d.get('ipAddress') or '—'))
                 mac = html_lib.escape(str(d.get('mac') or d.get('macAddress') or '—'))
                 serial = html_lib.escape(str(d.get('serial') or d.get('serialNumber') or d.get('serialno') or '—'))
                 firmware = html_lib.escape(str(d.get('version') or d.get('firmwareVersion') or '—'))
-                # Site Manager uses online:bool; self-hosted uses state:int (1=online)
-                is_online = d.get('online') if d.get('online') is not None else (d.get('state', 0) == 1)
+                # Self-hosted: state=1 or online=True; Cloud Site Manager: status="online"
+                is_online = (d.get('online') if d.get('online') is not None
+                             else (d.get('state', 0) == 1
+                                   or str(d.get('status', '')).lower() == 'online'))
                 status_badge = '<span class="badge bg-success">Online</span>' if is_online else '<span class="badge bg-secondary">Offline</span>'
                 device_rows += f'<tr><td>{name}</td><td>{dtype}</td><td>{model}</td><td>{ip}</td><td>{mac}</td><td>{serial}</td><td>{firmware}</td><td>{status_badge}</td></tr>'
 
@@ -1456,8 +1458,14 @@ def unifi_sync(request, pk):
             tr_rows = ''
             for r in tr_rules:
                 rname = html_lib.escape(r.get('description') or r.get('name') or r.get('_id') or '—')
-                action = html_lib.escape(r.get('action', '—'))
-                matching = html_lib.escape(r.get('matching_target') or 'all')
+                action_raw = r.get('action', '—')
+                if isinstance(action_raw, dict):
+                    action_raw = action_raw.get('type') or action_raw.get('name') or str(action_raw)
+                action = html_lib.escape(str(action_raw))
+                matching_raw = r.get('matching_target') or 'all'
+                if isinstance(matching_raw, dict):
+                    matching_raw = matching_raw.get('type') or matching_raw.get('name') or str(matching_raw)
+                matching = html_lib.escape(str(matching_raw))
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
                 action_badge = 'bg-danger' if action in ('BLOCK', 'REJECT') else ('bg-warning text-dark' if action == 'THROTTLE' else 'bg-success')
                 tr_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{matching}</td></tr>'

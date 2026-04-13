@@ -701,50 +701,43 @@ class UnifiCloudProvider:
             return []
 
     def get_devices(self, host_id: str = '') -> list:
-        """List devices. When host_id given, tries the per-host endpoint first,
-        then falls back to the flat /v1/devices endpoint with hostId filter."""
-        if host_id:
-            # Per-host path is most reliable; flat endpoint may ignore hostId param
-            for path in (f'/v1/hosts/{host_id}/devices', '/v1/devices'):
-                try:
-                    params = None if 'hosts' in path else {'hostId': host_id}
-                    results = self._get_all(path, params=params)
-                    if results:
-                        return results
-                except Exception as e:
-                    logger.debug(f"UniFi Cloud get_devices path {path} failed: {e}")
-            # Also try plural 'hostIds' param variant
-            try:
-                results = self._get_all('/v1/devices', params={'hostIds': host_id})
-                if results:
-                    return results
-            except Exception as e:
-                logger.debug(f"UniFi Cloud get_devices hostIds param failed: {e}")
-            return []
+        """List devices from /v1/devices, unpacking the host-grouped response format.
+
+        The Site Manager API returns /v1/devices as a list of host-groups:
+            [{"hostId": "...", "hostName": "...", "devices": [...]}, ...]
+        This method unpacks each group into a flat device list, injecting hostId
+        onto each device so sync() can match them to sites.
+        """
+        flat = []
         try:
-            return self._get_all('/v1/devices')
+            raw_list = self._get_all('/v1/devices')
+            for item in raw_list:
+                nested = item.get('devices')
+                group_host_id = item.get('hostId', '')
+                if isinstance(nested, list):
+                    # Grouped format: {"hostId": "...", "devices": [...]}
+                    for dev in nested:
+                        d = dict(dev)
+                        d.setdefault('hostId', group_host_id)
+                        flat.append(d)
+                elif item.get('mac') or item.get('id') or item.get('deviceId'):
+                    # Already a flat device dict (some API versions return flat)
+                    item.setdefault('hostId', host_id)
+                    flat.append(item)
         except Exception as e:
             logger.warning(f"UniFi Cloud get_devices failed: {e}")
-            return []
+
+        if host_id:
+            return [d for d in flat if d.get('hostId') == host_id]
+        return flat
 
     def sync(self) -> dict:
         """Pull all cloud data and return a structured summary compatible with UnifiProvider.sync()."""
         hosts = self.get_hosts()
         sites = self.get_sites()
-        # Fetch devices per-host first (more reliable than the flat /v1/devices endpoint
-        # which may require explicit hostId or return empty on some API key scopes).
-        devices = []
-        for host in hosts:
-            hid = host.get('id') or ''
-            if hid:
-                host_devices = self.get_devices(host_id=hid)
-                for d in host_devices:
-                    if not d.get('hostId'):
-                        d['hostId'] = hid
-                devices.extend(host_devices)
-        # Fallback 1: flat /v1/devices endpoint
-        if not devices:
-            devices = self.get_devices()
+        # Fetch all devices in one call — get_devices() unpacks the grouped format
+        devices = self.get_devices()
+        logger.info(f"UniFi Cloud sync: {len(hosts)} hosts, {len(sites)} sites, {len(devices)} devices")
 
         # Fallback 2: extract device inventory embedded in host.reportedState
         # (Site Manager API embeds device lists in the host object on some API scopes)
@@ -790,7 +783,7 @@ class UnifiCloudProvider:
 
             type_counts = {}
             for d in site_devices:
-                dtype = d.get('productType') or d.get('type', 'unknown')
+                dtype = d.get('productType') or d.get('type') or d.get('productLine', 'unknown')
                 type_counts[dtype] = type_counts.get(dtype, 0) + 1
 
             site_list.append({
@@ -826,12 +819,12 @@ class UnifiCloudProvider:
                 if existing:
                     existing['devices'].extend(hdevices)
                     for d in hdevices:
-                        dtype = d.get('productType') or d.get('type', 'unknown')
+                        dtype = d.get('productType') or d.get('type') or d.get('productLine', 'unknown')
                         existing['device_type_counts'][dtype] = existing['device_type_counts'].get(dtype, 0) + 1
                 else:
                     type_counts = {}
                     for d in hdevices:
-                        dtype = d.get('productType') or d.get('type', 'unknown')
+                        dtype = d.get('productType') or d.get('type') or d.get('productLine', 'unknown')
                         type_counts[dtype] = type_counts.get(dtype, 0) + 1
                     site_list.append({
                         'id': hid,
