@@ -341,11 +341,16 @@ Return the enhanced documentation in this JSON format:
         tmpl = templates.get(template_type, templates['general'])
         sections_list = '\n'.join(f'  - {s}' for s in tmpl['sections'])
 
-        # Build asset context string
+        # Build asset context string — handle multiline values with indented continuation
         asset_lines = []
         for key, val in asset_data.items():
             if val:
-                asset_lines.append(f'  {key}: {val}')
+                val_str = str(val)
+                if '\n' in val_str:
+                    indented = val_str.replace('\n', '\n      ')
+                    asset_lines.append(f'  {key}:\n      {indented}')
+                else:
+                    asset_lines.append(f'  {key}: {val_str}')
         asset_context = '\n'.join(asset_lines) if asset_lines else '  (no data recorded)'
 
         notes_section = f'\nAdditional context from engineer:\n{user_notes}\n' if user_notes else ''

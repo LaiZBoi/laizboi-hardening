@@ -1414,8 +1414,8 @@ def unifi_sync(request, pk):
                 dst_zid = (dst.get('zone') or dst.get('zone_id') or dst.get('zoneId') or
                            r.get('destinationZone') or r.get('destination_zone') or r.get('destinationZoneId') or
                            r.get('to_zone') or r.get('toZone') or '')
-                src_zone = html_lib.escape(zone_map.get(src_zid, src_zid) or 'any')
-                dst_zone = html_lib.escape(zone_map.get(dst_zid, dst_zid) or 'any')
+                src_zone = html_lib.escape(zone_map.get(src_zid) or zone_map.get(str(src_zid)) or src_zid or 'any')
+                dst_zone = html_lib.escape(zone_map.get(dst_zid) or zone_map.get(str(dst_zid)) or dst_zid or 'any')
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
                 action_badge = 'bg-danger' if action.upper() in ('DROP', 'REJECT', 'BLOCK') else 'bg-success'
                 fp_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{src_zone}</td><td>{dst_zone}</td></tr>'
@@ -1463,7 +1463,11 @@ def unifi_sync(request, pk):
                     action_raw = action_raw.get('type') or action_raw.get('name') or str(action_raw)
                 action = html_lib.escape(str(action_raw))
                 matching_raw = r.get('matching_target') or 'all'
-                if isinstance(matching_raw, dict):
+                if isinstance(matching_raw, list):
+                    shown = matching_raw[:8]
+                    extra = len(matching_raw) - len(shown)
+                    matching_raw = ', '.join(str(x) for x in shown) + (f' (+{extra} more)' if extra else '')
+                elif isinstance(matching_raw, dict):
                     matching_raw = matching_raw.get('type') or matching_raw.get('name') or str(matching_raw)
                 matching = html_lib.escape(str(matching_raw))
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
@@ -1508,9 +1512,19 @@ def unifi_sync(request, pk):
             troute_rows = ''
             for r in troute_rules:
                 rname = html_lib.escape(r.get('name') or r.get('description') or r.get('_id') or '—')
-                action = html_lib.escape(r.get('action') or r.get('type') or '—')
-                target = html_lib.escape(r.get('matchingTarget') or r.get('matching_target') or
-                                         r.get('domains') or r.get('ipAddresses') or 'all')
+                action_tr = r.get('action') or r.get('type') or '—'
+                if isinstance(action_tr, dict):
+                    action_tr = action_tr.get('type') or action_tr.get('name') or str(action_tr)
+                action = html_lib.escape(str(action_tr))
+                target_raw = (r.get('matchingTarget') or r.get('matching_target') or
+                              r.get('domains') or r.get('ipAddresses') or 'all')
+                if isinstance(target_raw, list):
+                    shown = target_raw[:8]
+                    extra = len(target_raw) - len(shown)
+                    target_raw = ', '.join(str(x) for x in shown) + (f' (+{extra} more)' if extra else '')
+                elif isinstance(target_raw, dict):
+                    target_raw = target_raw.get('type') or target_raw.get('name') or str(target_raw)
+                target = html_lib.escape(str(target_raw))
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
                 action_badge = 'bg-danger' if action.upper() in ('BLOCK', 'DROP', 'REJECT') else 'bg-success'
                 troute_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td class="small text-muted">{target}</td></tr>'
