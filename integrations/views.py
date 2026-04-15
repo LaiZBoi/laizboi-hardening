@@ -1214,8 +1214,8 @@ def unifi_detail(request, pk):
         dst = r.get('destination') or {}
         src_zid = src.get('zone') or src.get('zone_id') or ''
         dst_zid = dst.get('zone') or dst.get('zone_id') or ''
-        r['_src_zone_name'] = _resolve_zone(zone_map, src_zid)
-        r['_dst_zone_name'] = _resolve_zone(zone_map, dst_zid)
+        r['src_zone_name'] = _resolve_zone(zone_map, src_zid)
+        r['dst_zone_name'] = _resolve_zone(zone_map, dst_zid)
         # Flatten action if needed
         action = r.get('action', '')
         if isinstance(action, dict):
@@ -1227,7 +1227,7 @@ def unifi_detail(request, pk):
     def _norm_traffic_rule(r):
         r = dict(r)
         mt = r.get('matching_target') or r.get('matchingTarget')
-        r['_target_display'] = _target_str(mt) if mt else 'all'
+        r['target_display'] = _target_str(mt) if mt else 'all'
         action = r.get('action', '')
         if isinstance(action, dict):
             r['action'] = action.get('type') or action.get('name') or str(action)
@@ -1236,7 +1236,7 @@ def unifi_detail(request, pk):
     def _norm_traffic_route(r):
         r = dict(r)
         mt = r.get('matchingTarget') or r.get('matching_target') or r.get('domains') or r.get('ipAddresses')
-        r['_target_display'] = _target_str(mt) if mt else 'all'
+        r['target_display'] = _target_str(mt) if mt else 'all'
         return r
 
     sites = []

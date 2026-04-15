@@ -214,8 +214,8 @@
                             {% else %}<span class="badge bg-success text-white">{{ a|default:"ALLOW" }}</span>{% endif %}
                             {% endwith %}
                         </td>
-                        <td class="small">{{ r._src_zone_name|default:"any" }}</td>
-                        <td class="small">{{ r._dst_zone_name|default:"any" }}</td>
+                        <td class="small">{{ r.src_zone_name|default:"any" }}</td>
+                        <td class="small">{{ r.dst_zone_name|default:"any" }}</td>
                     </tr>
                     {% endfor %}
                     {% elif not has_legacy %}
@@ -250,7 +250,7 @@
                             {% else %}<span class="badge bg-success text-white">{{ a|default:"allow" }}</span>{% endif %}
                             {% endwith %}
                         </td>
-                        <td class="small text-muted">{{ r._target_display|default:"all" }}</td>
+                        <td class="small text-muted">{{ r.target_display|default:"all" }}</td>
                     </tr>
                     {% endfor %}
                     {% elif not has_legacy %}
@@ -285,7 +285,7 @@
                             {% else %}<span class="badge bg-success text-white">{{ a|default:"route" }}</span>{% endif %}
                             {% endwith %}
                         </td>
-                        <td class="small text-muted">{{ r._target_display|default:"all" }}</td>
+                        <td class="small text-muted">{{ r.target_display|default:"all" }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

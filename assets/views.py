@@ -764,12 +764,12 @@ def asset_ai_doc(request, pk):
             software_qs = rmm.software.order_by('name')
             if software_qs.exists():
                 sw_lines = []
-                for sw in software_qs[:100]:  # cap at 100 to keep prompt reasonable
-                    entry = sw.name
-                    if sw.version:
-                        entry += f' {sw.version}'
+                for sw in software_qs[:80]:
+                    entry = sw.name + (f' {sw.version}' if sw.version else '')
                     sw_lines.append(entry)
-                asset_data['installed_software'] = '\n'.join(sw_lines)
+                total = software_qs.count()
+                suffix = f' (+ {total - len(sw_lines)} more)' if total > len(sw_lines) else ''
+                asset_data['installed_software'] = '; '.join(sw_lines) + suffix
     except Exception:
         pass
 
