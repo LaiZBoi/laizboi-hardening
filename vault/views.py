@@ -116,15 +116,18 @@ def password_list_datatables(request):
         url_html = f'<a href="{password.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i></a>' if password.url else '—'
 
         # Actions
+        from django.urls import reverse
+        detail_url = reverse('vault:password_detail', args=[password.pk])
+        edit_url = reverse('vault:password_edit', args=[password.pk])
         actions_html = f'''
         <div class="btn-group btn-group-sm">
-            <a href="/vault/passwords/{password.pk}/" class="btn btn-outline-primary" title="View"><i class="fas fa-eye"></i></a>
-            <a href="/vault/passwords/{password.pk}/edit/" class="btn btn-outline-secondary" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{detail_url}" class="btn btn-outline-primary" title="View"><i class="fas fa-eye"></i></a>
+            <a href="{edit_url}" class="btn btn-outline-secondary" title="Edit"><i class="fas fa-edit"></i></a>
         </div>
         '''
 
         data.append([
-            f'<a href="/vault/passwords/{password.pk}/">{password.title}</a>',
+            f'<a href="{detail_url}">{password.title}</a>',
             password.username or '—',
             url_html,
             f'<span class="badge bg-primary">{password.get_password_type_display()}</span>',
