@@ -1161,8 +1161,7 @@ def unifi_create(request):
 @login_required
 def unifi_detail(request, pk):
     """View UniFi connection details and cached data."""
-    org = get_request_organization(request)
-    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+    connection = _get_unifi_connection(request, pk)
     data = connection.cached_data or {}
     is_cloud = data.get('mode') == 'cloud'
     has_legacy = data.get('has_legacy_data', False)
@@ -1217,10 +1216,21 @@ def unifi_detail(request, pk):
         r = dict(r)
         src = r.get('source') or {}
         dst = r.get('destination') or {}
-        src_zid = src.get('zone') or src.get('zone_id') or ''
-        dst_zid = dst.get('zone') or dst.get('zone_id') or ''
-        r['src_zone_name'] = _resolve_zone(zone_map, src_zid)
-        r['dst_zone_name'] = _resolve_zone(zone_map, dst_zid)
+        src_zid = (src.get('zone') or src.get('zone_id') or src.get('zoneId') or
+                   r.get('sourceZone') or r.get('source_zone') or r.get('sourceZoneId') or
+                   r.get('from_zone') or r.get('fromZone') or '')
+        dst_zid = (dst.get('zone') or dst.get('zone_id') or dst.get('zoneId') or
+                   r.get('destinationZone') or r.get('destination_zone') or r.get('destinationZoneId') or
+                   r.get('to_zone') or r.get('toZone') or '')
+        # Try zone_map first, then inline zone name from policy object
+        src_resolved = _resolve_zone(zone_map, src_zid)
+        if src_resolved == str(src_zid) and src_zid:
+            src_resolved = src.get('zoneName') or src.get('name') or src_resolved
+        dst_resolved = _resolve_zone(zone_map, dst_zid)
+        if dst_resolved == str(dst_zid) and dst_zid:
+            dst_resolved = dst.get('zoneName') or dst.get('name') or dst_resolved
+        r['src_zone_name'] = src_resolved
+        r['dst_zone_name'] = dst_resolved
         # Flatten action if needed
         action = r.get('action', '')
         if isinstance(action, dict):
@@ -1331,9 +1341,7 @@ def unifi_delete(request, pk):
 def unifi_site_org(request, pk):
     """Save cloud site → organization assignments (AJAX POST)."""
     from core.models import Organization
-    from django.contrib.auth.models import User
-    org = get_request_organization(request)
-    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+    connection = _get_unifi_connection(request, pk)
 
     if getattr(connection, 'mode', 'self_hosted') != UnifiConnection.MODE_CLOUD:
         return JsonResponse({'ok': False, 'error': 'Only available for cloud connections.'}, status=400)
@@ -1367,6 +1375,14 @@ def unifi_site_org(request, pk):
     return JsonResponse({'ok': True})
 
 
+def _get_unifi_connection(request, pk):
+    """Get UniFi connection by pk. Superusers/staff may access connections cross-org."""
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        return get_object_or_404(UnifiConnection, pk=pk)
+    org = get_request_organization(request)
+    return get_object_or_404(UnifiConnection, pk=pk, organization=org)
+
+
 def _get_unifi_provider(connection):
     """Return the appropriate UniFi provider instance based on connection mode."""
     from integrations.providers.unifi import UnifiProvider, UnifiCloudProvider
@@ -1381,8 +1397,7 @@ def _get_unifi_provider(connection):
 @require_write
 def unifi_test(request, pk):
     """Test UniFi connection."""
-    org = get_request_organization(request)
-    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+    connection = _get_unifi_connection(request, pk)
     provider = _get_unifi_provider(connection)
     result = provider.test_connection()
     if result['success']:
@@ -1401,8 +1416,7 @@ def unifi_sync(request, pk):
     from docs.models import Document
     import html as html_lib
 
-    org = get_request_organization(request)
-    connection = get_object_or_404(UnifiConnection, pk=pk, organization=org)
+    connection = _get_unifi_connection(request, pk)
 
     provider = _get_unifi_provider(connection)
     try:
@@ -1522,17 +1536,37 @@ def unifi_sync(request, pk):
             fp_rows = ''
             for r in fp_rules:
                 rname = html_lib.escape(r.get('name') or r.get('description') or r.get('_id') or '—')
-                action = html_lib.escape(r.get('action') or r.get('ruleAction') or '—')
-                src = r.get('source', {})
-                dst = r.get('destination', {})
+                action_raw = r.get('action') or r.get('ruleAction') or '—'
+                if isinstance(action_raw, dict):
+                    action_raw = action_raw.get('type') or action_raw.get('name') or str(action_raw)
+                elif isinstance(action_raw, (list, tuple)):
+                    action_raw = ', '.join(str(x) for x in action_raw)
+                action = html_lib.escape(str(action_raw))
+                src = r.get('source') or {}
+                dst = r.get('destination') or {}
                 src_zid = (src.get('zone') or src.get('zone_id') or src.get('zoneId') or
                            r.get('sourceZone') or r.get('source_zone') or r.get('sourceZoneId') or
                            r.get('from_zone') or r.get('fromZone') or '')
                 dst_zid = (dst.get('zone') or dst.get('zone_id') or dst.get('zoneId') or
                            r.get('destinationZone') or r.get('destination_zone') or r.get('destinationZoneId') or
                            r.get('to_zone') or r.get('toZone') or '')
-                src_zone = html_lib.escape(zone_map.get(src_zid) or zone_map.get(str(src_zid)) or src_zid or 'any')
-                dst_zone = html_lib.escape(zone_map.get(dst_zid) or zone_map.get(str(dst_zid)) or dst_zid or 'any')
+                # Zone name: zone_map lookup (str/int fallback), then inline zoneName, then raw ID
+                src_zone_name = (zone_map.get(src_zid) or zone_map.get(str(src_zid)) or
+                                 src.get('zoneName') or src.get('name') or '')
+                if not src_zone_name and src_zid:
+                    try:
+                        src_zone_name = zone_map.get(int(src_zid)) or ''
+                    except (TypeError, ValueError):
+                        pass
+                src_zone = html_lib.escape(src_zone_name or str(src_zid) if src_zid else 'any')
+                dst_zone_name = (zone_map.get(dst_zid) or zone_map.get(str(dst_zid)) or
+                                 dst.get('zoneName') or dst.get('name') or '')
+                if not dst_zone_name and dst_zid:
+                    try:
+                        dst_zone_name = zone_map.get(int(dst_zid)) or ''
+                    except (TypeError, ValueError):
+                        pass
+                dst_zone = html_lib.escape(dst_zone_name or str(dst_zid) if dst_zid else 'any')
                 enabled = '\u2705' if r.get('enabled', True) else '\u274c'
                 action_badge = 'bg-danger' if action.upper() in ('DROP', 'REJECT', 'BLOCK') else 'bg-success'
                 fp_rows += f'<tr><td>{enabled} {rname}</td><td><span class="badge {action_badge}">{action}</span></td><td>{src_zone}</td><td>{dst_zone}</td></tr>'

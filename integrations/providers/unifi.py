@@ -224,11 +224,20 @@ class UnifiProvider:
         def _zone_paths(ref):
             return [
                 f'/proxy/network/v2/api/site/{ref}/security/zones',
-                f'/proxy/network/v2/api/site/{ref}/zones',
                 f'/proxy/network/v2/api/site/{ref}/security/zone',
+                f'/proxy/network/v2/api/site/{ref}/zones',
                 f'/proxy/network/v2/api/site/{ref}/zone',
+                # Network 10.x — firewall zone config paths
+                f'/proxy/network/v2/api/site/{ref}/firewall/zones',
+                f'/proxy/network/v2/api/site/{ref}/firewall/zone',
+                f'/proxy/network/v2/api/site/{ref}/security/firewall/zones',
+                # Integration API
                 f'/proxy/network/integration/v1/sites/{ref}/zones',
+                # Direct paths (UOS 5.x)
                 f'/v2/api/site/{ref}/security/zones',
+                f'/v2/api/site/{ref}/zones',
+                # Legacy REST networkconf — contains zone/network definitions
+                f'/proxy/network/api/s/{ref}/rest/networkconf',
             ]
 
         def _parse_zones(raw):
@@ -236,7 +245,17 @@ class UnifiProvider:
                 return raw
             for key in ('data', 'zones', 'items', 'result'):
                 if key in raw and isinstance(raw[key], list):
-                    return raw[key]
+                    items = raw[key]
+                    # networkconf returns network objects; treat those with purpose/type as zones
+                    if items and all(
+                        'ip_subnet' in z or 'purpose' in z or 'networkGroup' in z
+                        for z in items[:3]
+                    ):
+                        # Map networkconf objects to zone-style dicts using _id and name
+                        return [{'_id': z.get('_id') or z.get('id', ''),
+                                 'name': z.get('name', '')}
+                                for z in items if z.get('name')]
+                    return items
             return []
 
         for ref in refs:
@@ -595,6 +614,17 @@ class UnifiProvider:
             zone_map = {z.get('_id') or z.get('id', ''): z.get('name', '') for z in zones}
             firewall_policies = self.get_firewall_policies(site_ref, site_id=site_id,
                                                            extra_refs=extra_refs)
+            # If zones API returned nothing, try to extract zone names from within policies
+            if not zone_map and firewall_policies:
+                for policy in firewall_policies:
+                    for side_key in ('source', 'destination'):
+                        side = policy.get(side_key) or {}
+                        zid = (side.get('zone') or side.get('zone_id') or side.get('zoneId') or
+                               policy.get('sourceZoneId' if side_key == 'source' else 'destinationZoneId') or '')
+                        zname = side.get('zoneName') or side.get('name') or ''
+                        if zid and zname:
+                            zone_map[zid] = zname
+                            zone_map[str(zid)] = zname
             fp_diag = list(self._fp_diag)
             traffic_rules = self.get_traffic_rules(site_ref, site_id=site_id,
                                                    extra_refs=extra_refs)
