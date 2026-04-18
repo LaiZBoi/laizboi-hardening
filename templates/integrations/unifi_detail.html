@@ -107,6 +107,12 @@
                 <option value="">— No org assigned —</option>
                 {% for o in available_orgs %}<option value="{{ o.id }}"{% if site.assigned_org_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
             </select>
+            {% if site.assigned_org_id %}
+            <a href="{% url 'integrations:unifi_import_assets' connection.pk %}?site={{ site.name|urlencode }}"
+               class="btn btn-sm btn-light" title="Import this site's devices to assigned org">
+                <i class="fas fa-download me-1"></i>Import
+            </a>
+            {% endif %}
             {% endif %}
         </div>
     </div>

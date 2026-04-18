@@ -11,9 +11,13 @@
 {% if is_cloud %}
 <div class="alert alert-info">
     <i class="fas fa-info-circle me-2"></i>
-    <strong>Cloud connection:</strong> Devices are imported into the organization assigned to each site.
-    Sites without an organization assignment are skipped.
-    Assign organizations using the dropdown on the <a href="{% url 'integrations:unifi_detail' connection.pk %}">connection detail page</a>.
+    {% if site_filter %}
+        <strong>Single-site import:</strong> Importing devices from site <strong>{{ site_filter }}</strong> into its assigned organization.
+    {% else %}
+        <strong>Cloud connection:</strong> Devices are imported into the organization assigned to each site.
+        Sites without an organization assignment are skipped.
+        Assign organizations using the dropdown on the <a href="{% url 'integrations:unifi_detail' connection.pk %}">connection detail page</a>, or use the <strong>Import</strong> button per site.
+    {% endif %}
 </div>
 {% else %}
 <div class="alert alert-info">

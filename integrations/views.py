@@ -1805,7 +1805,8 @@ def unifi_import_assets(request, pk):
     data = connection.cached_data or {}
     is_cloud = data.get('mode') == 'cloud'
     site_org_map = connection.site_org_map or {}
-    sites = data.get('sites', [])
+    site_filter = request.GET.get('site', '').strip()
+    sites = [s for s in data.get('sites', []) if not site_filter or s.get('name') == site_filter]
 
     # Map UniFi productType to asset types — handles both prefix codes (local API)
     # and full strings (cloud Site Manager API)
@@ -1949,6 +1950,7 @@ def unifi_import_assets(request, pk):
         'all_devices': all_devices,
         'is_cloud': is_cloud,
         'site_org_map': site_org_map,
+        'site_filter': site_filter,
     })
 
 
