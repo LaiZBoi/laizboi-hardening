@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.66] - 2026-04-22
+
+### Bug Fixes
+- **Changelog not rendering on updates page** — `|escapejs` was used in an HTML `data-` attribute; it backslash-escapes double quotes (`\"`), which truncated the attribute value at the first `"` in the changelog text. Changed to `|escape` (HTML entity encoding); browsers automatically decode entities when reading `dataset` properties in JavaScript.
+
 ## [3.17.65] - 2026-04-22
 
 ### New Features

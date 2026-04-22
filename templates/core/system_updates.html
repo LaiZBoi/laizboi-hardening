@@ -408,7 +408,7 @@
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="changelog-body" data-changelog="{{ current_changelog|escapejs }}"></div>
+                    <div class="changelog-body" data-changelog="{{ current_changelog|escape }}"></div>
                 </div>
             </div>
         </div>
@@ -447,7 +447,7 @@
                                 {% endif %}
                             </span>
                         </summary>
-                        <div class="px-3 py-2 changelog-body" data-changelog="{{ changelog|escapejs }}"></div>
+                        <div class="px-3 py-2 changelog-body" data-changelog="{{ changelog|escape }}"></div>
                     </details>
                     {% endfor %}
                 </div>
