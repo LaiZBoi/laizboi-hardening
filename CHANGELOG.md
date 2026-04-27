@@ -5,6 +5,12 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.67] - 2026-04-27
+
+### Bug Fixes
+- **"View AI Doc" / "View Profile" 404 from asset detail (#126)** — both document buttons used `asset.ai_document.pk` and `asset.profile_document.pk` in the `{% url 'docs:document_detail' %}` tag, but that URL pattern takes a `slug`, not a PK. Django matched the numeric PK as a slug string and the view's `get_object_or_404(Document, slug=slug)` found no match. Fixed to use `.slug`.
+- **ITFlow sync datetime comparison error (#125)** — `updated_since` is passed as a timezone-naive datetime but ITFlow API timestamps are parsed as timezone-aware (UTC). Comparing the two raises `TypeError: can't compare offset-naive and offset-aware datetimes`. Fixed in `list_companies`, `list_contacts`, and `list_tickets` by making the naive `updated_since` timezone-aware (UTC) before comparing. Thanks to HabeasPorpoise for the root cause analysis and fix.
+
 ## [3.17.66] - 2026-04-22
 
 ### Bug Fixes

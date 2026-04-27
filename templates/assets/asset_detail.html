@@ -9,7 +9,7 @@
     <div>
         {% include "includes/favorite_button.html" with object=asset %}
         {% if asset.profile_document %}
-        <a href="{% url 'docs:document_detail' asset.profile_document.pk %}" class="btn btn-outline-info">
+        <a href="{% url 'docs:document_detail' asset.profile_document.slug %}" class="btn btn-outline-info">
             <i class="fas fa-file-alt"></i> View Profile Doc
         </a>
         {% endif %}
@@ -18,7 +18,7 @@
         </a>
         {% if has_ai %}
         {% if asset.ai_document %}
-        <a href="{% url 'docs:document_detail' asset.ai_document.pk %}" class="btn btn-outline-success">
+        <a href="{% url 'docs:document_detail' asset.ai_document.slug %}" class="btn btn-outline-success">
             <i class="fas fa-robot"></i> View AI Doc
         </a>
         {% endif %}

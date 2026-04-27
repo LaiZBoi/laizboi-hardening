@@ -5,7 +5,7 @@ API Documentation: https://docs.itflow.org/api
 """
 import logging
 from typing import Dict, List
-from datetime import datetime
+from datetime import datetime, timezone
 from .base import BaseProvider, AuthenticationError, ProviderError
 import json
 
@@ -161,7 +161,8 @@ class ITFlowProvider(BaseProvider):
                     if updated_at:
                         try:
                             client_updated = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
-                            if client_updated < updated_since:
+                            since = updated_since.replace(tzinfo=timezone.utc) if updated_since.tzinfo is None else updated_since
+                            if client_updated < since:
                                 continue
                         except (ValueError, AttributeError):
                             pass
@@ -205,7 +206,8 @@ class ITFlowProvider(BaseProvider):
                     if updated_at:
                         try:
                             contact_updated = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
-                            if contact_updated < updated_since:
+                            since = updated_since.replace(tzinfo=timezone.utc) if updated_since.tzinfo is None else updated_since
+                            if contact_updated < since:
                                 continue
                         except (ValueError, AttributeError):
                             pass
@@ -249,7 +251,8 @@ class ITFlowProvider(BaseProvider):
                     if updated_at:
                         try:
                             ticket_updated = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
-                            if ticket_updated < updated_since:
+                            since = updated_since.replace(tzinfo=timezone.utc) if updated_since.tzinfo is None else updated_since
+                            if ticket_updated < since:
                                 continue
                         except (ValueError, AttributeError):
                             pass
