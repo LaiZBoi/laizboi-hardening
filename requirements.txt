@@ -23,16 +23,16 @@ gunicorn==23.0.*  # Updated from 22.0.* to fix CVE-2024-6827 (HTTP Request Smugg
 whitenoise==6.6.*
 
 # PSA Integration HTTP clients
-requests==2.32.*
+requests>=2.33.0,<2.34  # Updated to 2.33.0+ to fix Insecure Temp File Reuse in extract_zipped_paths()
 urllib3==2.6.*  # Updated from 2.1.* to fix SNYK-PYTHON-URLLIB3-14192442 (Data Amplification)
 
 # AI Integration
 anthropic==0.75.*
 
 # Utilities
-python-dotenv==1.0.*
-Pillow==12.1.*  # Updated to 12.1.1+ to fix out-of-bounds write vulnerability (PSD images)
-markdown==3.5.*
+python-dotenv>=1.2.2,<1.3  # Updated to 1.2.2+ to fix symlink-following arbitrary file overwrite in set_key
+Pillow>=12.2.0,<13.0  # Updated to 12.2.0+ to fix FITS GZIP decompression bomb (was 12.1.* for PSD oob-write)
+markdown>=3.8.1,<4.0  # Updated to 3.8.1+ to fix uncaught-exception DoS
 bleach==6.1.*
 pytz==2024.1
 psutil==5.9.*
