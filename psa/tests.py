@@ -970,3 +970,166 @@ class ServiceCatalogTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
         self.assertIn('Password reset', body)  # default subject
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class CatalogStructuredFieldsTests(TestCase):
+    """Phase 2c upgrade: catalog items have structured fields. The
+    requester's input renders into subject+body via {{key}} templates."""
+
+    def setUp(self):
+        _setup_seed()
+        from psa.models import ServiceCatalogItem, Ticket
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.user = User.objects.create_user('su', password='pw', email='su@x.com', is_superuser=True)
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.client = Client()
+        self.client.force_login(self.user)
+        sess = self.client.session; sess['current_organization_id'] = self.org.id; sess.save()
+
+    def test_render_template_substitutes_keys(self):
+        from psa.models import ServiceCatalogItem
+        out = ServiceCatalogItem.render_template(
+            'Hello {{name}} from {{company}}',
+            {'name': 'Alex', 'company': 'ACME'},
+        )
+        self.assertEqual(out, 'Hello Alex from ACME')
+
+    def test_render_template_strips_unfilled_placeholders(self):
+        from psa.models import ServiceCatalogItem
+        out = ServiceCatalogItem.render_template(
+            'Hello {{name}} — {{leftover}}', {'name': 'Alex'},
+        )
+        self.assertNotIn('{{leftover}}', out)
+        self.assertIn('Alex', out)
+
+    def test_seed_attaches_field_schemas(self):
+        from psa.models import ServiceCatalogItem
+        new_user = ServiceCatalogItem.objects.get(slug='new-user')
+        self.assertGreater(len(new_user.fields_json), 0)
+        # Required fields exist with the expected shape
+        keys = {f['key'] for f in new_user.fields_json}
+        self.assertIn('full_name', keys)
+        self.assertIn('email', keys)
+
+    def test_create_ticket_from_catalog_substitutes_fields(self):
+        from psa.models import Ticket
+        resp = self.client.post('/psa/new/', {
+            'catalog_slug': 'new-user',
+            'client': self.org.id,
+            'queue': self.org.native_psa_tickets.model._meta.get_field('queue').related_model.objects.first().pk,
+            'status': self.org.native_psa_tickets.model._meta.get_field('status').related_model.objects.filter(slug='new').first().pk,
+            'priority': self.org.native_psa_tickets.model._meta.get_field('priority').related_model.objects.first().pk,
+            'ticket_type': self.org.native_psa_tickets.model._meta.get_field('ticket_type').related_model.objects.first().pk,
+            'field_full_name': 'Alex Newhire',
+            'field_email': 'alex@acme.com',
+            'field_manager': 'Sam Boss',
+            'field_start_date': '2026-05-01',
+            'field_groups': 'Sales, Office E3',
+            'field_equipment': 'Laptop, monitor',
+        })
+        self.assertEqual(resp.status_code, 302, resp.content[:300])
+        t = Ticket.objects.filter(organization=self.org).order_by('-id').first()
+        self.assertIsNotNone(t)
+        self.assertIn('Alex Newhire', t.subject)
+        self.assertIn('alex@acme.com', t.description)
+        self.assertIn('2026-05-01', t.description)
+        # No raw {{key}} placeholders should leak into the saved body.
+        self.assertNotIn('{{', t.description)
+
+    def test_required_field_missing_blocks_create(self):
+        from psa.models import Ticket
+        before = Ticket.objects.count()
+        resp = self.client.post('/psa/new/', {
+            'catalog_slug': 'new-user',
+            'client': self.org.id,
+            # Missing required field_full_name
+            'field_email': 'alex@acme.com',
+            'field_start_date': '2026-05-01',
+        })
+        self.assertEqual(resp.status_code, 302)
+        # No new ticket
+        self.assertEqual(Ticket.objects.count(), before)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class CatalogCRUDTests(TestCase):
+    """Admin CRUD on catalog items. Non-admin users cannot reach the form."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+
+    def test_non_admin_cannot_open_create_form(self):
+        org = Organization.objects.create(name='ACME', slug='acme')
+        u = User.objects.create_user('orguser', password='pw', email='o@x.com')
+        Membership.objects.update_or_create(
+            user=u, organization=org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        c = Client(); c.force_login(u)
+        sess = c.session; sess['current_organization_id'] = org.id; sess.save()
+        resp = c.get('/psa/catalog/new/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_admin_creates_catalog_item(self):
+        from psa.models import ServiceCatalogItem
+        admin = User.objects.create_user('boss', password='pw', email='b@x.com', is_superuser=True)
+        c = Client(); c.force_login(admin)
+        resp = c.post('/psa/catalog/new/', {
+            'name': 'Test catalog item',
+            'description': 'A test',
+            'icon': 'fas fa-test',
+            'default_subject': 'Test — {{thing}}',
+            'default_body': 'Body for {{thing}}',
+            'fields_json': '[{"key":"thing","label":"Thing","type":"text","required":true}]',
+            'sort_order': '99',
+            'is_active': 'on',
+        })
+        self.assertEqual(resp.status_code, 302)
+        item = ServiceCatalogItem.objects.filter(name='Test catalog item').first()
+        self.assertIsNotNone(item)
+        self.assertEqual(len(item.fields_json), 1)
+        self.assertEqual(item.fields_json[0]['key'], 'thing')
+
+    def test_admin_invalid_json_rejected(self):
+        from psa.models import ServiceCatalogItem
+        admin = User.objects.create_user('boss', password='pw', email='b@x.com', is_superuser=True)
+        c = Client(); c.force_login(admin)
+        before = ServiceCatalogItem.objects.count()
+        resp = c.post('/psa/catalog/new/', {
+            'name': 'Bad item',
+            'fields_json': '{this-is-not-json',
+            'default_subject': 's',
+            'default_body': 'b',
+            'sort_order': '0',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(ServiceCatalogItem.objects.count(), before)
+
+    def test_admin_invalid_field_type_rejected(self):
+        from psa.models import ServiceCatalogItem
+        admin = User.objects.create_user('boss', password='pw', email='b@x.com', is_superuser=True)
+        c = Client(); c.force_login(admin)
+        before = ServiceCatalogItem.objects.count()
+        c.post('/psa/catalog/new/', {
+            'name': 'Bad type item',
+            'fields_json': '[{"key":"x","label":"X","type":"shell_command"}]',
+            'default_subject': 's',
+            'default_body': 'b',
+            'sort_order': '0',
+        })
+        self.assertEqual(ServiceCatalogItem.objects.count(), before)
+
+    def test_admin_deletes(self):
+        from psa.models import ServiceCatalogItem
+        admin = User.objects.create_user('boss', password='pw', email='b@x.com', is_superuser=True)
+        c = Client(); c.force_login(admin)
+        item = ServiceCatalogItem.objects.first()
+        resp = c.post(f'/psa/catalog/{item.pk}/edit/', {'delete': '1'})
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(ServiceCatalogItem.objects.filter(pk=item.pk).exists())

@@ -26,7 +26,21 @@
 {% else %}
 <form method="post" class="card">
     {% csrf_token %}
+    {% if catalog_item %}<input type="hidden" name="catalog_slug" value="{{ catalog_item.slug }}">{% endif %}
     <div class="card-body">
+        {% if catalog_item %}
+        <div class="alert alert-info d-flex align-items-center gap-2 mb-3">
+            {% if catalog_item.icon %}<i class="{{ catalog_item.icon }} fa-lg"></i>{% endif %}
+            <div>
+                <strong>{{ catalog_item.name }}</strong>
+                <small class="d-block text-muted">{{ catalog_item.description }}</small>
+            </div>
+            <a href="{% url 'psa:ticket_create' %}" class="btn btn-sm btn-outline-secondary ms-auto">
+                <i class="fas fa-times me-1"></i>Use blank ticket form
+            </a>
+        </div>
+        {% endif %}
+
         <div class="row g-3 mb-3">
             <div class="col-md-6">
                 <label class="form-label">Client <span class="text-danger">*</span></label>
@@ -40,6 +54,42 @@
             </div>
         </div>
 
+        {% if catalog_item and catalog_item.fields_json %}
+        {# Structured form rendered from the catalog item's fields_json. #}
+        {# Subject + body are built server-side from these field values. #}
+        <h6 class="text-muted mb-2">Request details</h6>
+        <div class="row g-3 mb-3">
+            {% for f in catalog_item.fields_json %}
+            <div class="col-md-{% if f.type == 'textarea' %}12{% else %}6{% endif %}">
+                <label class="form-label">
+                    {{ f.label }}
+                    {% if f.required %}<span class="text-danger">*</span>{% endif %}
+                </label>
+                {% if f.type == 'textarea' %}
+                <textarea name="field_{{ f.key }}" class="form-control" rows="3"
+                          {% if f.required %}required{% endif %}
+                          placeholder="{{ f.placeholder|default:'' }}"></textarea>
+                {% elif f.type == 'select' %}
+                <select name="field_{{ f.key }}" class="form-select" {% if f.required %}required{% endif %}>
+                    <option value="">—</option>
+                    {% for opt in f.options %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
+                </select>
+                {% elif f.type == 'checkbox' %}
+                <div class="form-check form-switch">
+                    <input type="checkbox" name="field_{{ f.key }}" id="field_{{ f.key }}" class="form-check-input" value="1">
+                    <label class="form-check-label" for="field_{{ f.key }}">Yes</label>
+                </div>
+                {% else %}
+                <input type="{{ f.type|default:'text' }}" name="field_{{ f.key }}" class="form-control"
+                       {% if f.required %}required{% endif %}
+                       placeholder="{{ f.placeholder|default:'' }}">
+                {% endif %}
+                {% if f.help %}<div class="form-text">{{ f.help }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        {# Free-form ticket — used when no catalog template was selected. #}
         <div class="mb-3">
             <label class="form-label">Subject <span class="text-danger">*</span></label>
             <input type="text" name="subject" class="form-control" required maxlength="300"
@@ -49,6 +99,7 @@
             <label class="form-label">Description</label>
             <textarea name="description" class="form-control" rows="6">{% if catalog_item %}{{ catalog_item.default_body }}{% endif %}</textarea>
         </div>
+        {% endif %}
         <div class="row g-3">
             <div class="col-md-6 col-lg-3">
                 <label class="form-label">Queue</label>

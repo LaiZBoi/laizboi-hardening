@@ -16,6 +16,8 @@ urlpatterns = [
     path('canned/<int:pk>/edit/', views.canned_reply_edit, name='canned_reply_edit'),
     # Service catalog (Phase 2c)
     path('catalog/', views.service_catalog, name='service_catalog'),
+    path('catalog/new/', views.service_catalog_form, name='service_catalog_create'),
+    path('catalog/<int:pk>/edit/', views.service_catalog_form, name='service_catalog_edit'),
     # Time entries
     path('t/<str:ticket_number>/timer/start/', views.timer_start, name='timer_start'),
     path('t/<str:ticket_number>/timer/stop/', views.timer_stop, name='timer_stop'),

@@ -602,9 +602,30 @@ class ServiceCatalogItem(models.Model):
     )
     icon = models.CharField(max_length=80, blank=True,
         help_text='Font Awesome class, e.g. "fas fa-user-plus"')
+    fields_json = models.JSONField(
+        default=list, blank=True,
+        help_text='List of {key, label, type, required, placeholder, options, help} '
+                  'objects describing the structured fields the requester fills in. '
+                  'Field values substitute into default_subject + default_body via '
+                  '{{key}} placeholders. Supported types: text, email, date, '
+                  'number, textarea, select, checkbox.',
+    )
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @staticmethod
+    def render_template(template, values):
+        """{{key}} → values[key] substitution. Unfilled placeholders are stripped."""
+        if not template:
+            return ''
+        import re as _re
+        out = template
+        for k, v in (values or {}).items():
+            out = out.replace('{{' + str(k) + '}}', str(v) if v is not None else '')
+        out = _re.sub(r'\{\{\s*[a-zA-Z0-9_]+\s*\}\}', '', out)
+        return out
 
     class Meta:
         db_table = 'psa_service_catalog_items'

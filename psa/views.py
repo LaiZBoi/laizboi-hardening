@@ -267,8 +267,36 @@ def ticket_create(request):
         })
 
     if request.method == 'POST':
-        subject = (request.POST.get('subject') or '').strip()
-        description = (request.POST.get('description') or '').strip()
+        # If a catalog template was used, harvest the dynamic field values
+        # and render the subject/body templates.
+        catalog_slug = request.POST.get('catalog_slug') or ''
+        catalog_post = ServiceCatalogItem.objects.filter(slug=catalog_slug, is_active=True).first() if catalog_slug else None
+
+        if catalog_post is not None:
+            values = {}
+            missing = []
+            for f in (catalog_post.fields_json or []):
+                key = f.get('key') or ''
+                if not key:
+                    continue
+                # Checkbox = "on"/None → "yes"/"no"; everything else is text-like.
+                if f.get('type') == 'checkbox':
+                    raw = (request.POST.get(f'field_{key}') or '').lower()
+                    values[key] = 'yes' if raw in ('1', 'true', 'on', 'yes') else 'no'
+                else:
+                    raw = (request.POST.get(f'field_{key}') or '').strip()
+                    values[key] = raw
+                    if f.get('required') and not raw:
+                        missing.append(f.get('label') or key)
+            if missing:
+                messages.error(request, 'Required field(s) missing: ' + ', '.join(missing))
+                return redirect(reverse('psa:ticket_create') + f'?from_catalog={catalog_slug}')
+            subject = ServiceCatalogItem.render_template(catalog_post.default_subject, values).strip()
+            description = ServiceCatalogItem.render_template(catalog_post.default_body, values).strip()
+        else:
+            subject = (request.POST.get('subject') or '').strip()
+            description = (request.POST.get('description') or '').strip()
+
         client_id = request.POST.get('client') or ''
         if not subject:
             messages.error(request, 'Subject is required.')
@@ -1056,7 +1084,126 @@ def time_entry_manual(request, ticket_number):
 @require_psa_enabled
 def service_catalog(request):
     """Browse-the-catalog grid. Click a tile → /psa/new/?from_catalog=<slug>."""
-    items = ServiceCatalogItem.objects.filter(is_active=True).select_related(
+    is_admin = request.user.is_superuser or getattr(request, 'is_staff_user', False)
+    qs = ServiceCatalogItem.objects.select_related(
         'default_priority', 'default_queue', 'default_type',
     ).order_by('sort_order', 'name')
-    return render(request, 'psa/service_catalog.html', {'items': items})
+    if not is_admin:
+        qs = qs.filter(is_active=True)
+    return render(request, 'psa/service_catalog.html', {
+        'items': qs,
+        'is_catalog_admin': is_admin,
+    })
+
+
+def _catalog_admin_or_404(request):
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        raise Http404()
+
+
+@login_required
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def service_catalog_form(request, pk=None):
+    """Create or edit a ServiceCatalogItem. Staff/superuser only."""
+    _catalog_admin_or_404(request)
+    item = get_object_or_404(ServiceCatalogItem, pk=pk) if pk else None
+
+    queues = Queue.objects.filter(is_active=True).order_by('name')
+    priorities = TicketPriority.objects.all().order_by('sort_order', 'code')
+    types = TicketType.objects.filter(is_active=True).order_by('name')
+
+    if request.method == 'POST':
+        if request.POST.get('delete') == '1' and item is not None:
+            name = item.name
+            pk_ = item.pk
+            item.delete()
+            AuditLog.log(
+                user=request.user, action='delete',
+                object_type='psa.ServiceCatalogItem', object_id=pk_,
+                object_repr=name,
+                description=f'Deleted service catalog item "{name}"',
+                ip_address=_client_ip(request), path=request.path,
+            )
+            messages.success(request, f'Deleted "{name}".')
+            return redirect('psa:service_catalog')
+
+        from django.utils.text import slugify
+        import json as _json
+
+        name = (request.POST.get('name') or '').strip()
+        description = (request.POST.get('description') or '').strip()
+        subject_tpl = (request.POST.get('default_subject') or '').strip()
+        body_tpl = (request.POST.get('default_body') or '').strip()
+        icon = (request.POST.get('icon') or '').strip()[:80]
+        is_active = request.POST.get('is_active') == 'on'
+        sort_order = int(request.POST.get('sort_order') or 0)
+        fields_raw = (request.POST.get('fields_json') or '[]').strip()
+
+        if not name:
+            messages.error(request, 'Name is required.')
+            return redirect(request.path)
+        try:
+            fields = _json.loads(fields_raw) if fields_raw else []
+        except Exception as e:
+            messages.error(request, f'Fields JSON is not valid: {e}')
+            return redirect(request.path)
+        if not isinstance(fields, list) or any(
+            not isinstance(f, dict) or 'key' not in f or 'label' not in f for f in fields
+        ):
+            messages.error(request, 'Fields JSON must be a list of objects with at least "key" and "label".')
+            return redirect(request.path)
+        for f in fields:
+            allowed_types = {'text', 'email', 'date', 'number', 'textarea', 'select', 'checkbox'}
+            if f.get('type', 'text') not in allowed_types:
+                messages.error(request, f'Invalid field type: {f.get("type")!r}. Allowed: {sorted(allowed_types)}')
+                return redirect(request.path)
+
+        try:
+            queue = queues.filter(pk=request.POST.get('default_queue') or 0).first()
+            priority = priorities.filter(pk=request.POST.get('default_priority') or 0).first()
+            ttype = types.filter(pk=request.POST.get('default_type') or 0).first()
+        except Exception:
+            queue = priority = ttype = None
+
+        if item is None:
+            slug = slugify(name)
+            # ensure unique
+            base = slug
+            n = 1
+            while ServiceCatalogItem.objects.filter(slug=slug).exists():
+                n += 1
+                slug = f'{base}-{n}'
+            item = ServiceCatalogItem(slug=slug)
+        item.name = name
+        item.description = description
+        item.default_subject = subject_tpl
+        item.default_body = body_tpl
+        item.icon = icon
+        item.is_active = is_active
+        item.sort_order = sort_order
+        item.fields_json = fields
+        item.default_queue = queue
+        item.default_priority = priority
+        item.default_type = ttype
+        item.save()
+
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            object_type='psa.ServiceCatalogItem', object_id=item.pk,
+            object_repr=item.name,
+            description=f'{"Updated" if pk else "Created"} service catalog item "{item.name}"',
+            ip_address=_client_ip(request), path=request.path,
+            extra_data={'field_count': len(fields)},
+        )
+        messages.success(request, f'Saved "{item.name}".')
+        return redirect('psa:service_catalog')
+
+    import json as _json
+    return render(request, 'psa/service_catalog_form.html', {
+        'item': item,
+        'queues': queues,
+        'priorities': priorities,
+        'types': types,
+        'fields_json_pretty': _json.dumps(item.fields_json if item else [], indent=2),
+    })
