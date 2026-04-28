@@ -226,3 +226,115 @@ class SeedDefaultsTests(TestCase):
         _setup_seed()
         c2 = Queue.objects.count() + TicketStatus.objects.count() + TicketPriority.objects.count() + TicketType.objects.count()
         self.assertEqual(c1, c2)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class VaultContextTests(TestCase):
+    """The vault-context endpoint must scope passwords to the ticket's
+    organization, refuse cross-tenant access, and never leak ciphertext."""
+
+    def setUp(self):
+        from vault.models import Password
+
+        _enable_psa_global()
+        _setup_seed()
+
+        self.org_a = Organization.objects.create(name='OrgA', slug='org-a')
+        self.org_b = Organization.objects.create(name='OrgB', slug='org-b')
+
+        # Build a minimal valid Password for each org. encrypted_password is
+        # a non-null TextField with no default, so we must populate it via
+        # set_password() before save().
+        self.pw_a = Password(title='secret-A', organization=self.org_a, is_personal=False)
+        self.pw_a.set_password('plaintext-A-do-not-leak')
+        self.pw_a.save()
+
+        self.pw_b = Password(title='secret-B', organization=self.org_b, is_personal=False)
+        self.pw_b.set_password('plaintext-B-do-not-leak')
+        self.pw_b.save()
+
+        self.user_a = User.objects.create_user(username='ua', password='pw', email='ua@x.com')
+        Membership.objects.update_or_create(
+            user=self.user_a, organization=self.org_a,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        self.user_b = User.objects.create_user(username='ub', password='pw', email='ub@x.com')
+        Membership.objects.update_or_create(
+            user=self.user_b, organization=self.org_b,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+
+        _enable_psa_for(self.org_a)
+        _enable_psa_for(self.org_b)
+
+        self.ticket = Ticket.objects.create(
+            organization=self.org_a,
+            subject='vault-context ticket',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+
+    def _login(self, user, org):
+        c = Client()
+        c.force_login(user)
+        s = c.session
+        s['current_organization_id'] = org.id
+        s.save()
+        return c
+
+    def _url(self):
+        return f'/psa/t/{self.ticket.ticket_number}/context/'
+
+    def test_vault_context_lists_only_client_passwords(self):
+        c = self._login(self.user_a, self.org_a)
+        resp = c.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode('utf-8', errors='replace')
+        self.assertIn('secret-A', body)
+        self.assertNotIn('secret-B', body)
+
+    def test_vault_context_blocks_cross_tenant(self):
+        c = self._login(self.user_b, self.org_b)
+        resp = c.get(self._url())
+        self.assertEqual(resp.status_code, 404)
+
+    def test_vault_context_404_when_psa_disabled(self):
+        s = SystemSetting.get_settings()
+        s.psa_enabled = False
+        s.save()
+        c = self._login(self.user_a, self.org_a)
+        resp = c.get(self._url())
+        self.assertEqual(resp.status_code, 404)
+
+    def test_vault_context_logs_audit_read(self):
+        c = self._login(self.user_a, self.org_a)
+        before = AuditLog.objects.filter(
+            action='read',
+            object_type='psa.TicketContext',
+            object_id=str(self.ticket.pk),
+            organization=self.org_a,
+        ).count()
+        resp = c.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        after = AuditLog.objects.filter(
+            action='read',
+            object_type='psa.TicketContext',
+            object_id=str(self.ticket.pk),
+            organization=self.org_a,
+        ).count()
+        self.assertEqual(after - before, 1, list(AuditLog.objects.values('action', 'object_type', 'object_id', 'description')))
+
+    def test_vault_context_does_not_render_secret_values(self):
+        c = self._login(self.user_a, self.org_a)
+        resp = c.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode('utf-8', errors='replace')
+        # Neither the encrypted column name nor any decryption-related token
+        # should leak into the rendered HTML.
+        self.assertNotIn('encrypted_password', body)
+        self.assertNotIn('decrypt', body)
+        self.assertNotIn('key=', body)
+        # Plaintext sentinel must never appear either.
+        self.assertNotIn('plaintext-A-do-not-leak', body)

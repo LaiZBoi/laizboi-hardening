@@ -16,6 +16,7 @@ from django.views.decorators.http import require_http_methods
 from audit.models import AuditLog
 from core.decorators import require_write
 from core.middleware import get_request_organization
+from vault.models import Password
 
 from .feature_flags import (
     is_psa_enabled,
@@ -78,9 +79,18 @@ def ticket_detail(request, ticket_number):
         if ticket.organization_id != getattr(org, 'id', None):
             raise Http404("Ticket not found")
 
+    vault_qs = Password.objects.filter(
+        organization=ticket.organization,
+        is_personal=False,
+    )
+    vault_entries = vault_qs.only('id', 'title', 'username', 'updated_at')[:5]
+    vault_count = vault_qs.count()
+
     return render(request, 'psa/ticket_detail.html', {
         'ticket': ticket,
         'comments': ticket.comments.select_related('author').order_by('created_at'),
+        'vault_entries': vault_entries,
+        'vault_count': vault_count,
     })
 
 
@@ -207,6 +217,50 @@ def client_settings_view(request):
     return render(request, 'psa/client_settings.html', {
         'cps': cps,
         'current_organization': org,
+    })
+
+
+@login_required
+@require_psa_enabled
+def ticket_vault_context(request, ticket_number):
+    """
+    Read-only metadata view of the ticket organization's vault entries.
+
+    Renders titles + links to the existing vault detail page only — never
+    inlines secret values or loads encrypted columns. The vault detail
+    view enforces its own permission and audit checks when the tech opens
+    an entry in a new tab.
+    """
+    org = get_request_organization(request)
+    qs = _scoped_ticket_qs(request)
+    ticket = get_object_or_404(qs, ticket_number=ticket_number)
+    # Defence-in-depth: non-staff users must be acting in the ticket's org.
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        if ticket.organization_id != getattr(org, 'id', None):
+            raise Http404("Ticket not found")
+
+    vault_entries = (
+        Password.objects
+        .filter(organization=ticket.organization, is_personal=False)
+        .only('id', 'title', 'username', 'updated_at', 'organization_id')
+        .order_by('title')
+    )
+
+    AuditLog.log(
+        user=request.user,
+        action='read',
+        organization=ticket.organization,
+        object_type='psa.TicketContext',
+        object_id=ticket.pk,
+        object_repr=ticket.ticket_number,
+        description=f'Opened vault context for ticket {ticket.ticket_number}',
+        ip_address=_client_ip(request),
+        path=request.path,
+    )
+
+    return render(request, 'psa/ticket_vault_context.html', {
+        'ticket': ticket,
+        'vault_entries': vault_entries,
     })
 
 

@@ -82,6 +82,38 @@
                 </dl>
             </div>
         </div>
+
+        <div class="card mt-3">
+            <div class="card-header"><strong>Vault Context</strong></div>
+            <div class="card-body">
+                <div class="alert alert-info py-2 px-3 small mb-3">
+                    Secrets are never shown here. Use Open to access the vault entry, which enforces its own permissions.
+                </div>
+                {% if vault_entries %}
+                <ul class="list-unstyled mb-0 small">
+                    {% for v in vault_entries %}
+                    <li class="mb-2">
+                        <a href="{% url 'vault:password_detail' v.id %}" target="_blank" rel="noopener">
+                            {{ v.title }} <i class="fas fa-external-link-alt"></i>
+                        </a>
+                        {% if v.username %}
+                        <div class="text-muted small">{{ v.username }}</div>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="small text-muted">No vault entries for this client.</div>
+                {% endif %}
+            </div>
+            {% if vault_entries %}
+            <div class="card-footer">
+                <a href="{% url 'psa:ticket_vault_context' ticket.ticket_number %}" class="small">
+                    View all ({{ vault_count }})
+                </a>
+            </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}
