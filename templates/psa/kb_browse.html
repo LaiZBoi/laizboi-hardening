@@ -25,7 +25,7 @@
             <tbody>
                 {% for a in articles %}
                 <tr>
-                    <td><a href="{% url 'docs:document_view' a.pk %}"><strong>{{ a.title }}</strong></a></td>
+                    <td><a href="{% url 'docs:document_detail' a.slug %}"><strong>{{ a.title }}</strong></a></td>
                     <td><span data-utc="{{ a.updated_at|date:'c' }}">{{ a.updated_at|date:'Y-m-d' }}</span></td>
                     <td>{% if a.author %}{{ a.author.username }}{% else %}—{% endif %}</td>
                 </tr>

@@ -121,7 +121,21 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 ![PWA Phone Shortcut](docs/screenshots/pwa-shortcut.png)
 
 ### 🎫 Native PSA / Service Desk *(v3.17 — 11 phases)*
-*Screenshots pending — see [SCREENSHOT_CHECKLIST.md](docs/SCREENSHOT_CHECKLIST.md) for what to capture.*
+![PSA — Tickets](docs/screenshots/psa-tickets.png)
+![PSA — Ticket detail](docs/screenshots/psa-ticket-detail.png)
+![PSA — Client account](docs/screenshots/psa-client-account.png)
+![PSA — Aging report](docs/screenshots/psa-aging.png)
+![PSA — Quote detail](docs/screenshots/psa-quote-detail.png)
+![PSA — Quote PDF](docs/screenshots/psa-pdf-quote.png)
+![PSA — Customer signature](docs/screenshots/psa-quote-sign.png)
+![PSA — Invoice detail](docs/screenshots/psa-invoice-detail.png)
+![PSA — Invoice PDF](docs/screenshots/psa-pdf-invoice.png)
+![PSA — Dispatch board](docs/screenshots/psa-dispatch.png)
+![PSA — Workflow rules](docs/screenshots/psa-workflow-rules.png)
+![PSA — Project + tasks](docs/screenshots/psa-project-detail.png)
+![PSA — Contract SLA matrix](docs/screenshots/psa-contract-form.png)
+![Distributors — Ingram / Pax8 / Synnex](docs/screenshots/integrations-distributors.png)
+![Accounting — QuickBooks / Xero](docs/screenshots/integrations-accounting.png)
 
 A complete in-house ticketing system. Tickets, queues, statuses, priorities, SLA targets with per-contract overrides, time tracking, service catalog with structured fields, watchers, canned replies, @mentions, similar-tickets detection, ticket merge, projects with tasks/milestones, recurring tickets, KB linking, approvals, contracts (block-hours / retainer / managed-services with auto-tracked usage), quotes & estimates with line items and **e-signature for customers**, per-ticket expenses, invoices (auto-numbered with branded PDF + email + accounting push), payments, **client account view with aging report**, charges (one-time + recurring), workflow rules engine, dispatch board, customer portal, IMAP email-to-ticket, distributor catalog/pricing/orders (Ingram Micro, Pax8, TD Synnex), QuickBooks Online + Xero accounting integrations, AI-assisted reply/action suggestions with strict guardrails.
 
@@ -160,28 +174,26 @@ A complete in-house ticketing system. Tickets, queues, statuses, priorities, SLA
 - [Workflows](docs/screenshots/workflows.png) - Process automation and tracking
 
 ### Native PSA / Service Desk
-*Screenshot files not yet captured — see [SCREENSHOT_CHECKLIST.md](docs/SCREENSHOT_CHECKLIST.md). Pages live and ready for capture:*
-- `psa-tickets.png` — Ticket list with priority pills and SLA chips (`/psa/`)
-- `psa-ticket-detail.png` — Ticket detail with vault context, time tracker, expenses, AI Assist, similar tickets
-- `psa-new-ticket.png` — New-ticket form with client picker and structured catalog fields (`/psa/new/`)
-- `psa-service-catalog.png` — Service catalog grid (`/psa/catalog/`)
-- `psa-projects.png` / `psa-project-detail.png` — Projects + tasks/milestones (`/psa/projects/`)
-- `psa-recurring.png` — Recurring tickets / preventive maintenance (`/psa/recurring/`)
-- `psa-kb.png` — Knowledge Base browser (`/psa/kb/`)
-- `psa-approvals.png` — Generic manager-approval queue (`/psa/approvals/`)
-- `psa-contracts.png` / `psa-contract-form.png` — Contracts list and per-priority SLA matrix editor (`/psa/contracts/`)
-- `psa-quotes.png` / `psa-quote-detail.png` — Quotes list + e-sign URL button + quote detail with PDF/Email
-- `psa-quote-sign.png` — Customer-facing quote signature canvas (`/portal/quote/<token>/sign/`)
-- `psa-invoices.png` / `psa-invoice-detail.png` — Invoices list and detail with payments + accounting push
-- `psa-pdf-quote.png` / `psa-pdf-invoice.png` — Branded ReportLab PDFs with logo header
-- `psa-client-account.png` — Per-client balance, aging buckets, charges, payments, unbilled time/expenses
-- `psa-aging.png` — Cross-client aging report (`/psa/aging/`)
-- `psa-dispatch.png` — Weekly dispatch board (`/psa/dispatch/`)
-- `psa-workflow-rules.png` / `psa-workflow-rule-form.png` — Workflow rules with JSON DSL
-- `psa-email-config.png` — IMAP email-to-ticket configuration (`/psa/email-configs/`)
-- `psa-portal.png` / `psa-portal-detail.png` — Customer portal ticket list + detail (`/portal/`)
-- `psa-ai-inbox.png` — AI Suggested Replies + Actions inbox (`/psa/ai/`)
-- `integrations-distributors.png` / `integrations-accounting.png` — Distributor + accounting (QBO/Xero) connection management
+- [Tickets list](docs/screenshots/psa-tickets.png) - PSA dashboard with priority pills and SLA chips
+- [Ticket detail](docs/screenshots/psa-ticket-detail.png) - vault context, time tracker, expenses, AI Assist, similar tickets
+- [New ticket](docs/screenshots/psa-new-ticket.png) - Client-scoped ticket creation
+- [Service catalog](docs/screenshots/psa-service-catalog.png) - Templated service requests
+- [Projects](docs/screenshots/psa-projects.png) / [Project detail](docs/screenshots/psa-project-detail.png) - Tasks and milestones
+- [Recurring tickets](docs/screenshots/psa-recurring.png) / [Recurring form](docs/screenshots/psa-recurring-form.png) - Preventive maintenance schedules
+- [Approvals](docs/screenshots/psa-approvals.png) - Manager approval queue
+- [Contracts](docs/screenshots/psa-contracts.png) / [SLA matrix editor](docs/screenshots/psa-contract-form.png) - Per-priority SLA overrides
+- [Quotes](docs/screenshots/psa-quotes.png) / [Quote detail](docs/screenshots/psa-quote-detail.png) / [Quote form](docs/screenshots/psa-quote-form.png) - Estimate workflow
+- [Customer e-signature](docs/screenshots/psa-quote-sign.png) - Drawing canvas + accept flow
+- [Quote PDF](docs/screenshots/psa-pdf-quote.png) - Branded ReportLab output
+- [Invoices](docs/screenshots/psa-invoices.png) / [Invoice detail](docs/screenshots/psa-invoice-detail.png) / [Invoice form](docs/screenshots/psa-invoice-form.png) - Billing pipeline
+- [Invoice PDF](docs/screenshots/psa-pdf-invoice.png) - Branded ReportLab output
+- [Client account view](docs/screenshots/psa-client-account.png) - Net balance, aging, charges, payments, unbilled
+- [Aging report](docs/screenshots/psa-aging.png) - Cross-client outstanding by age bucket
+- [Dispatch board](docs/screenshots/psa-dispatch.png) - 7-day grid + Other column
+- [Workflow rules](docs/screenshots/psa-workflow-rules.png) / [Rule form](docs/screenshots/psa-workflow-rule-form.png) - JSON DSL automation
+- [Email-to-ticket](docs/screenshots/psa-email-config.png) - IMAP mailbox configuration
+- [Distributors](docs/screenshots/integrations-distributors.png) - Ingram Micro, Pax8, TD Synnex
+- [Accounting](docs/screenshots/integrations-accounting.png) - QuickBooks Online + Xero OAuth
 
 ### Monitoring & Expirations
 - [Website Monitors](docs/screenshots/website-monitors.png) - Uptime monitoring dashboard

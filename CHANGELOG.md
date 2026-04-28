@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.103] - 2026-04-28
+
+### Docs — 28 PSA screenshots captured
+Added 28 new screenshots to `docs/screenshots/` covering the entire PSA module. Captures include tickets / ticket detail / new ticket / service catalog / projects / project detail / recurring / recurring form / approvals / contracts / contract SLA matrix editor / quotes / quote detail / quote form / **customer e-sign canvas** / **branded quote PDF** / invoices / invoice detail / invoice form / **branded invoice PDF** / **client account view (balance + aging + charges)** / aging report / dispatch board / workflow rules / workflow rule form / email-to-ticket / distributors / accounting (QBO + Xero) / organizations.
+
+README's PSA section shows 15 inline images and the screenshot index lists every new capture with deep-link descriptions. Captures were taken via headless Chromium + Selenium with an injected Django session against the live dev server, using the seeded demo data (ACME Industries / Globex / Initech / Demo MSP).
+
+### Fixed
+- `templates/psa/kb_browse.html` was reversing a non-existent `docs:document_view` URL → 500 on `/psa/kb/`. Fixed to `docs:document_detail` (the actual URL name; uses slug not pk).
+
 ## [3.17.102] - 2026-04-28
 
 ### Docs
