@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load tz %}
+
+{% block title %}Distributor Connections{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Distributor Connections</h1>
+    <a href="{% url 'integrations:distributor_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Add Distributor
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Provider</th>
+                    <th>Organization</th>
+                    <th>Active</th>
+                    <th>Order Sync</th>
+                    <th>Last Sync</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for conn in connections %}
+                <tr>
+                    <td><strong>{{ conn.name }}</strong></td>
+                    <td>{{ conn.get_provider_type_display }}</td>
+                    <td>{{ conn.organization.name }}</td>
+                    <td>
+                        {% if conn.is_active %}
+                        <span class="badge text-bg-success">Yes</span>
+                        {% else %}
+                        <span class="badge text-bg-secondary">No</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if conn.sync_enabled %}
+                        <span class="badge text-bg-warning">Enabled (live orders)</span>
+                        {% else %}
+                        <span class="badge text-bg-secondary">Disabled</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if conn.last_sync_at %}
+                            <span data-utc="{{ conn.last_sync_at|date:"c" }}">{{ conn.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>
+                            {% if conn.last_sync_status == 'error' %}
+                            <span class="badge text-bg-danger" title="{{ conn.last_error|truncatechars:120 }}">err</span>
+                            {% endif %}
+                        {% else %}
+                        Never
+                        {% endif %}
+                    </td>
+                    <td class="text-nowrap">
+                        <a href="{% url 'integrations:distributor_edit' conn.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <a href="{% url 'integrations:distributor_pricing' conn.pk %}" class="btn btn-sm btn-outline-primary">Pricing</a>
+                        <button class="btn btn-sm btn-outline-info test-distributor" data-id="{{ conn.pk }}">Test</button>
+                        <a href="{% url 'integrations:distributor_delete' conn.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted">No distributor connections configured. <a href="{% url 'integrations:distributor_create' %}">Add one</a>.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="alert alert-secondary mt-4">
+    <strong>Webhook URL pattern:</strong>
+    <code>/integrations/distributors/webhooks/&lt;webhook_token&gt;/</code>
+    — token is per-connection and visible on the edit page.
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('.test-distributor').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const id = this.dataset.id;
+        this.disabled = true;
+        const original = this.textContent;
+        this.textContent = 'Testing...';
+        fetch(`/integrations/distributors/${id}/test/`, {method: 'GET'})
+            .then(r => r.json())
+            .then(data => {
+                alert(data.ok ? 'Connection OK' : ('Failed: ' + (data.error || 'unknown')));
+            })
+            .catch(() => alert('Network error'))
+            .finally(() => { this.disabled = false; this.textContent = original; });
+    });
+});
+</script>
+{% endblock %}

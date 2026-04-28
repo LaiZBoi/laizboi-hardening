@@ -2,18 +2,20 @@
 Integrations views
 """
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
 from django.db import IntegrityError
 from core.middleware import get_request_organization
 from core.decorators import require_admin, require_write
-from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection, OmadaConnection, GrandstreamConnection
+from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection, OmadaConnection, GrandstreamConnection, DistributorConnection, DistributorWebhookEvent
 from .forms import PSAConnectionForm, RMMConnectionForm, UnifiConnectionForm, M365ConnectionForm, OmadaConnectionForm, GrandstreamConnectionForm
 from .sync import PSASync
 from .providers import get_provider
 from .providers.rmm import get_rmm_provider
+from .providers.distributors import get_distributor_provider
 from vault.encryption import EncryptionError
 from django.conf import settings
 import logging
@@ -2863,3 +2865,197 @@ def m365_sync(request, pk):
         messages.error(request, f"Sync failed: {e}")
 
     return redirect('integrations:m365_detail', pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Distributors (Workstream 8)
+# ---------------------------------------------------------------------------
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def distributor_list(request):
+    from .models import DistributorConnection
+    rows = DistributorConnection.objects.select_related('organization').order_by('name')
+    return render(request, 'integrations/distributor_list.html', {'connections': rows})
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def distributor_create(request):
+    return _distributor_form(request, pk=None)
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def distributor_edit(request, pk):
+    return _distributor_form(request, pk=pk)
+
+
+def _distributor_form(request, pk):
+    from .models import DistributorConnection
+    from core.models import Organization
+    from .providers.distributors import PROVIDER_REGISTRY
+
+    item = get_object_or_404(DistributorConnection, pk=pk) if pk else None
+
+    if request.method == 'POST':
+        org_id = request.POST.get('organization') or ''
+        provider_type = request.POST.get('provider_type') or ''
+        name = (request.POST.get('name') or '').strip()
+        base_url = (request.POST.get('base_url') or '').strip()
+        client_id = (request.POST.get('client_id') or '').strip()
+        client_secret = (request.POST.get('client_secret') or '').strip()
+        customer_number = (request.POST.get('customer_number') or '').strip()
+        webhook_secret = (request.POST.get('webhook_secret') or '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+        sync_enabled = request.POST.get('sync_enabled') == 'on'
+
+        if provider_type not in PROVIDER_REGISTRY:
+            messages.error(request, 'Unsupported distributor provider.')
+            return redirect(request.path)
+
+        try:
+            org = Organization.objects.get(pk=org_id)
+        except Organization.DoesNotExist:
+            messages.error(request, 'Pick a valid organization.')
+            return redirect(request.path)
+
+        if item is None:
+            item = DistributorConnection(organization=org, provider_type=provider_type, name=name)
+        else:
+            item.organization = org
+            item.provider_type = provider_type
+            item.name = name
+        item.base_url = base_url
+        item.is_active = is_active
+        item.sync_enabled = sync_enabled
+
+        # Only update credentials if provided. Empty strings keep existing.
+        creds = item.get_credentials() or {}
+        if client_id:
+            creds['client_id'] = client_id
+        if client_secret:
+            creds['client_secret'] = client_secret
+        if customer_number:
+            creds['customer_number'] = customer_number
+        if creds:
+            item.set_credentials(creds)
+
+        if webhook_secret:
+            item.set_webhook_secret(webhook_secret)
+
+        item.save()
+        from audit.models import AuditLog
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            organization=org,
+            object_type='integrations.DistributorConnection', object_id=item.pk,
+            object_repr=item.name,
+            description=f'{"Updated" if pk else "Created"} distributor connection {item.name} ({provider_type})',
+            path=request.path,
+        )
+        messages.success(request, f'Saved "{item.name}".')
+        return redirect('integrations:distributor_list')
+
+    from core.models import Organization
+    return render(request, 'integrations/distributor_form.html', {
+        'item': item,
+        'organizations': Organization.objects.filter(is_active=True).order_by('name'),
+        'provider_types': DistributorConnection.PROVIDER_TYPES,
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def distributor_delete(request, pk):
+    from .models import DistributorConnection
+    item = get_object_or_404(DistributorConnection, pk=pk)
+    if request.method == 'POST':
+        name = item.name
+        item.delete()
+        messages.success(request, f'Deleted "{name}".')
+        return redirect('integrations:distributor_list')
+    return render(request, 'integrations/distributor_confirm_delete.html', {'item': item})
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def distributor_test(request, pk):
+    from .models import DistributorConnection
+    from .providers.distributors import get_distributor_provider
+    item = get_object_or_404(DistributorConnection, pk=pk)
+    provider = get_distributor_provider(item)
+    if provider is None:
+        return JsonResponse({'ok': False, 'error': 'No provider for this type'})
+    try:
+        ok = provider.test_connection()
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)[:300]})
+    return JsonResponse({'ok': bool(ok)})
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def distributor_pricing(request, pk):
+    """Ad-hoc price lookup form. POST: sku, qty → JSON."""
+    from .models import DistributorConnection
+    from .providers.distributors import get_distributor_provider
+    item = get_object_or_404(DistributorConnection, pk=pk)
+    provider = get_distributor_provider(item)
+    if request.method == 'POST':
+        sku = (request.POST.get('sku') or '').strip()
+        try:
+            qty = int(request.POST.get('qty') or '1')
+        except ValueError:
+            qty = 1
+        if not provider or not sku:
+            return JsonResponse({'error': 'Missing sku or unsupported provider'})
+        try:
+            return JsonResponse(provider.get_pricing(sku, qty=qty))
+        except Exception as e:
+            return JsonResponse({'error': str(e)[:300]})
+    return render(request, 'integrations/distributor_pricing.html', {'item': item})
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def distributor_webhook(request, token):
+    """
+    Public webhook receiver. Path token + per-connection HMAC signature
+    are verified inside the provider's `handle_webhook`. Always returns
+    200 to avoid the upstream retrying — failures land in
+    DistributorWebhookEvent for review.
+    """
+    from .models import DistributorConnection, DistributorWebhookEvent
+    from .providers.distributors import get_distributor_provider
+    conn = DistributorConnection.objects.filter(webhook_token=token, is_active=True).first()
+    if conn is None:
+        return JsonResponse({'ok': False, 'error': 'unknown token'}, status=404)
+    raw_body = request.body or b''
+    raw_body = raw_body[:64 * 1024]  # cap
+    headers = {k: v for k, v in request.headers.items()}
+    headers_summary = {k: v[:200] for k, v in headers.items()
+                       if k.lower() in ('content-type', 'x-ingram-signature',
+                                         'x-event-type', 'user-agent')}
+
+    provider = get_distributor_provider(conn)
+    parsed = {'event_type': '', 'signature_valid': False, 'parsed': {}}
+    error = ''
+    if provider is None:
+        error = 'no provider for connection'
+    else:
+        try:
+            parsed = provider.handle_webhook(headers=headers, raw_body=raw_body)
+        except Exception as e:
+            error = str(e)[:500]
+
+    DistributorWebhookEvent.objects.create(
+        connection=conn,
+        event_type=parsed.get('event_type') or '',
+        signature_valid=bool(parsed.get('signature_valid')),
+        body_truncated=raw_body.decode('utf-8', errors='replace')[:64 * 1024],
+        headers_summary=headers_summary,
+        processed=not error,
+        process_error=error,
+    )
+    return JsonResponse({'ok': True})

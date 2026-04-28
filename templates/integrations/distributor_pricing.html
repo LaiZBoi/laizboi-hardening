@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ item.name }} — Pricing & Stock{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">{{ item.name }} — Pricing & Stock</h1>
+<p class="text-muted">Live lookup against {{ item.get_provider_type_display }}. Submitting calls the distributor API and is rate-limited by them.</p>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form id="pricing-form" class="row g-3">
+            {% csrf_token %}
+            <div class="col-md-6">
+                <label class="form-label">SKU / Part Number</label>
+                <input type="text" name="sku" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Quantity</label>
+                <input type="number" name="qty" class="form-control" value="1" min="1">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Look up</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="pricing-result" class="card d-none">
+    <div class="card-body">
+        <pre class="mb-0"><code id="pricing-json"></code></pre>
+    </div>
+</div>
+
+<a href="{% url 'integrations:distributor_list' %}" class="btn btn-outline-secondary mt-3">Back</a>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('pricing-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fd = new FormData(this);
+    const btn = this.querySelector('button[type=submit]');
+    btn.disabled = true; btn.textContent = 'Looking up...';
+    fetch(window.location.pathname, {
+        method: 'POST',
+        body: fd,
+        headers: {'X-CSRFToken': fd.get('csrfmiddlewaretoken')},
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('pricing-result').classList.remove('d-none');
+        document.getElementById('pricing-json').textContent = JSON.stringify(data, null, 2);
+    })
+    .catch(() => alert('Request failed'))
+    .finally(() => { btn.disabled = false; btn.textContent = 'Look up'; });
+});
+</script>
+{% endblock %}

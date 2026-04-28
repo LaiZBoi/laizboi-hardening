@@ -822,3 +822,122 @@ class M365Connection(BaseModel):
             return {}
         encrypted = json.loads(self.encrypted_credentials)
         return decrypt_dict(encrypted)
+
+
+# ---------------------------------------------------------------------------
+# Distributor connections (Workstream 8)
+# ---------------------------------------------------------------------------
+
+class DistributorConnection(BaseModel):
+    """
+    Distributor catalog/pricing connection per organization. Distinct
+    from PSAConnection (different methods — distributors return product
+    catalog, pricing, stock, orders; not tickets).
+    """
+    PROVIDER_TYPES = [
+        ('ingram_xvantage', 'Ingram Micro Xvantage'),
+        ('synnex', 'TD Synnex'),
+        ('d_and_h', 'D&H Distributing'),
+        ('scansource', 'ScanSource'),
+        ('pax8', 'Pax8'),
+        ('qbs', 'QBS Software'),
+        ('westcoast', 'Westcoast'),
+    ]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE,
+                                     related_name='distributor_connections')
+    provider_type = models.CharField(max_length=50, choices=PROVIDER_TYPES)
+    name = models.CharField(max_length=255)
+
+    base_url = models.URLField(max_length=500, blank=True,
+        help_text='Optional — defaults to the provider\'s production endpoint')
+    encrypted_credentials = models.TextField(blank=True,
+        help_text='Encrypted JSON with API keys, customer IDs, etc.')
+
+    # Webhook signing secret (separate from credentials so admins can rotate
+    # without re-issuing API keys). Encrypted.
+    encrypted_webhook_secret = models.TextField(blank=True)
+    webhook_token = models.CharField(max_length=64, blank=True, db_index=True,
+        help_text='Random token in the webhook URL — first defence-in-depth check before signature validation')
+
+    sync_enabled = models.BooleanField(default=True)
+    sync_catalog = models.BooleanField(default=False,
+        help_text='Sync the full product catalog (large; opt-in)')
+    sync_pricing = models.BooleanField(default=True,
+        help_text='Pull pricing on-demand for SKUs in tickets')
+    sync_interval_minutes = models.PositiveIntegerField(default=1440,
+        help_text='How often the catalog sync runs (default daily)')
+
+    is_active = models.BooleanField(default=True)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=50, blank=True)
+    last_error = models.TextField(blank=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'distributor_connections'
+        unique_together = [['organization', 'name']]
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.organization.slug}:{self.name} ({self.get_provider_type_display()})'
+
+    def set_credentials(self, credentials_dict):
+        encrypted = encrypt_dict(credentials_dict)
+        self.encrypted_credentials = json.dumps(encrypted)
+
+    def get_credentials(self):
+        if not self.encrypted_credentials:
+            return {}
+        encrypted = json.loads(self.encrypted_credentials)
+        return decrypt_dict(encrypted)
+
+    def set_webhook_secret(self, secret: str):
+        if not secret:
+            self.encrypted_webhook_secret = ''
+            return
+        encrypted = encrypt_dict({'s': secret})
+        self.encrypted_webhook_secret = json.dumps(encrypted)
+
+    def get_webhook_secret(self) -> str:
+        if not self.encrypted_webhook_secret:
+            return ''
+        try:
+            d = decrypt_dict(json.loads(self.encrypted_webhook_secret))
+            return d.get('s', '') or ''
+        except Exception:
+            return ''
+
+    def save(self, *args, **kwargs):
+        if not self.webhook_token:
+            import secrets as _secrets
+            self.webhook_token = _secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
+
+
+class DistributorWebhookEvent(BaseModel):
+    """
+    Append-only log of every distributor webhook hit. Stores the raw
+    payload (limited to 64KB) for forensics. Used by sync workers to
+    update orders / ASNs.
+    """
+    connection = models.ForeignKey(DistributorConnection, on_delete=models.CASCADE,
+                                   related_name='webhook_events')
+    event_type = models.CharField(max_length=80, blank=True)
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    signature_valid = models.BooleanField(default=False)
+    body_truncated = models.TextField(blank=True)  # capped to 64KB upstream
+    headers_summary = models.JSONField(default=dict, blank=True)
+    processed = models.BooleanField(default=False)
+    process_error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'distributor_webhook_events'
+        ordering = ['-received_at']
+        indexes = [
+            models.Index(fields=['connection', '-received_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.connection_id}/{self.event_type or "?"}@{self.received_at:%Y-%m-%d %H:%M}'

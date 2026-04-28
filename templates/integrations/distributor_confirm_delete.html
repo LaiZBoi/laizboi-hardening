@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Delete Distributor Connection{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Delete Distributor Connection</h1>
+
+<div class="card">
+    <div class="card-body">
+        <p>Are you sure you want to delete <strong>{{ item.name }}</strong> ({{ item.get_provider_type_display }})?</p>
+        <p class="text-muted">This removes the connection record and any pending webhook events. Catalog/pricing data fetched from the API is not stored locally.</p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Delete</button>
+            <a href="{% url 'integrations:distributor_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

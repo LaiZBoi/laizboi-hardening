@@ -79,4 +79,15 @@ urlpatterns = [
     path('grandstream/<int:pk>/test/', views.grandstream_test, name='grandstream_test'),
     path('grandstream/<int:pk>/sync/', views.grandstream_sync, name='grandstream_sync'),
     path('grandstream/<int:pk>/import-assets/', views.grandstream_import_assets, name='grandstream_import_assets'),
+
+    # Distributors (Workstream 8) — catalog/pricing/stock/order/webhook
+    path('distributors/', views.distributor_list, name='distributor_list'),
+    path('distributors/create/', views.distributor_create, name='distributor_create'),
+    path('distributors/<int:pk>/edit/', views.distributor_edit, name='distributor_edit'),
+    path('distributors/<int:pk>/delete/', views.distributor_delete, name='distributor_delete'),
+    path('distributors/<int:pk>/test/', views.distributor_test, name='distributor_test'),
+    path('distributors/<int:pk>/pricing/', views.distributor_pricing, name='distributor_pricing'),
+    # Webhook receiver — opaque token in path, signature verified inside.
+    path('distributors/webhooks/<str:token>/', views.distributor_webhook,
+         name='distributor_webhook'),
 ]
