@@ -5,6 +5,88 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.77] - 2026-04-28
+
+### UX
+- **Friendly "Pick a client" page on `/psa/new/` in global view** — used to return 404 (hostile, no recovery path). Now renders the scope-banner picker plus a centered "Pick a client first" card. If the active client is auto-opted-out (external PSA detected), redirects to the ticket list with a flash message naming the client.
+
+## [3.17.76] - 2026-04-28
+
+### UX — PSA scope clarity (Option A)
+- **Scope banner on every PSA page** (`templates/psa/_scope_banner.html`):
+  - When a client is selected: subtle green-bordered chip with the client name and an inline Switch dropdown (jump between clients without leaving PSA).
+  - In global view (no current_organization, superuser/staff only): sticky yellow banner stating "you're seeing data across all clients" with a "Pick a client" picker.
+- **Color-coded client pills** in the ticket list — same client always renders the same hue (HSL derived from organization id) so scanning rows for a given client is easy.
+- **"New Ticket" + "Client Settings" disabled in global view** with tooltip pointing at the picker.
+- **Client badge moved out of subtitle text** on the detail page — now a colored pill next to the ticket number.
+
+### Hard rule
+- **External PSA = absolute opt-out for native PSA** — there's no admin override path that re-enables native when an active `integrations.PSAConnection` exists. To use native PSA for a client, deactivate the external connection first. The override checkbox on the per-client settings page is now visually locked OFF when an external PSA is detected.
+
+## [3.17.75] - 2026-04-28
+
+### Changed
+- **Native PSA auto-opts-out clients that already have an external PSA** — `integrations.PSAConnection` (ConnectWise / Halo / Autotask / Freshservice / Kaseya / Syncro / Zendesk / etc.) on an org auto-disables the native PSA for that client. No manual toggle.
+- `ClientPSASettings` is now an OVERRIDE rather than an opt-in step. Visiting the per-client page no longer auto-creates a row — absence of a row means "use auto-detection". Page surfaces the auto-decision with a banner, plus a "Reset to auto-detect" button to delete an override row.
+
+## [3.17.74] - 2026-04-28
+
+### Security
+- **HSTS `includeSubDomains` is now opt-in** via the `SECURE_HSTS_INCLUDE_SUBDOMAINS` env var (default False). It used to auto-cascade at any HSTS value, which would have force-applied HTTPS-only to every sibling subdomain — hard to undo because the browser caches it for the HSTS lifetime.
+- `.env.bak.*` is now gitignored so secret-rotation backup files never get committed by accident.
+
+## [3.17.73] - 2026-04-28
+
+### UX — PSA
+- **Global PSA toggle now cascades to every client by default.** Per-client `ClientPSASettings.enabled` defaults to True; the page becomes opt-OUT instead of opt-in.
+- The genuinely sensitive per-surface flags (portal, anonymous form, SMS, desktop alerts, email-to-ticket, external alert ingest) remain OFF by default — those still require deliberate per-client enable.
+
+## [3.17.72] - 2026-04-28
+
+### Bug Fixes
+- **Fix DRF schema crash that returned 500 across the entire site whenever `DEBUG=False`** — `DEFAULT_SCHEMA_CLASS` was set to `None` outside DEBUG mode, which caused `rest_framework.schemas.coreapi.is_enabled()` to call `issubclass(None, AutoSchema)` → `TypeError`. This was the root cause of the `/account/login/` 500 in production. Pinned `DEFAULT_SCHEMA_CLASS` to the modern OpenAPI AutoSchema unconditionally.
+
+### New Features
+- **PSA toggle in Settings → Features** — the `psa_enabled` flag was wired into `core.SystemSetting` and the context processor in 3.17.70/71 but no UI control existed. Adds a labeled switch with an "off by default" badge.
+
+## [3.17.71] - 2026-04-28
+
+### Security
+- **Bump remaining direct Python deps to clear `pip-audit` warnings**:
+  - Django `>=6.0.4` (7 advisories incl. SQL injection, timing attack, DoS chains)
+  - cryptography `>=46.0.7` (2 advisories beyond the previous SECT-curve floor)
+- **Pin transitive security floors**: `Authlib>=1.6.11` (alg:none JWT bypass), `nltk>=3.9.4` (5 advisories), `pyasn1>=0.6.3` (GHSA-jr27-m4p2-rc6r). `pip-audit` now clean against the venv.
+- Untrack `.pip-audit-cache/` from git — 105 stale cache files were tracked and churning on every scan.
+
+## [3.17.70] - 2026-04-27
+
+### New Features
+- **Native PSA / Service Desk — Phase 1 foundation** (off by default, fully gated). New `psa` Django app distinct from the existing `integrations.PSATicket` (which mirrors third-party PSA syncs).
+  - Models: `Ticket` (full field set, auto-numbered `PSA-YYYY-NNNNNN`), `Queue`, `TicketStatus`, `TicketPriority`, `TicketType`, `TicketComment` (with `is_internal` flag preserved for Phase 3 portal), `TicketAttachment` (tenant-scoped upload path), `ClientPSASettings` (per-tenant enable + per-surface flags).
+  - Feature flags: `core.SystemSetting.psa_enabled` (global), `psa.ClientPSASettings.enabled` (per-client). Helpers: `is_psa_enabled`, `is_psa_enabled_for_client`, `@require_psa_enabled`, `@require_client_psa_enabled`. Routes return 404 (not redirect) when disabled — avoids leaking existence.
+  - `psa_seed_defaults` mgmt command seeds 7 queues, 10 statuses, 5 priorities (P1..P5 with spec-default SLA targets), 14 types.
+  - Tenant scoping via existing `core.middleware.get_request_organization`. Audit log via `audit.AuditLog.log()` on every mutation. RBAC via `core.decorators.@require_write`. Sidebar entry hidden via context-processor flag. Migrations `core.0043` (`psa_enabled`) and `psa.0001` (initial app).
+  - 11 PSA tests covering disabled-by-default, per-client opt-in, auto-numbered tickets, audit log writes, cross-tenant isolation, seed idempotency.
+- **Secure vault context page for tickets** (`/psa/t/<ticket_number>/context/`):
+  - Read-only metadata view of the ticket organization's vault entries. Each row has an "Open in Vault" button with `target="_blank" rel="noopener"` linking to the existing `vault:password_detail` view (which enforces its own permission and audit checks).
+  - **Never inlines secret values** or loads encrypted columns — restricted via `.only(...)`. Asserted by `test_vault_context_does_not_render_secret_values` (response body cannot contain `encrypted_password`, `decrypt`, or sample plaintext).
+  - Right-rail "Vault Context" panel on the ticket detail page shows the top 5 entries with a "View all" footer.
+  - Every page open writes `AuditLog(action='read', object_type='psa.TicketContext')` — every vault context open is auditable.
+- **Admin warning system on Security Dashboard** — unified panel surfacing OS package security updates, Python dependency vulnerabilities (new `pip-audit`-driven scanner at `/core/security/python-scanner/`), app-version-behind, and expiring SSL/domain certs. Severity-sorted with deep-link actions. Right-rail Python deps tile mirrors the OS tile.
+- **Scheduled `python_dep_scan` task** (enabled, daily) and `system_warnings_digest` task (opt-in, requires SMTP). Digest reuses the vault password expiry notification pattern; `SystemWarningNotification` tracks already-notified warning IDs to prevent re-spam.
+
+### Security
+- **Patch 4 Python dependency CVEs** (Dependabot):
+  - Pillow `12.1.* → 12.2.0+` (high: FITS GZIP decompression bomb)
+  - python-dotenv `1.0.* → 1.2.2+` (symlink-follow arbitrary file overwrite)
+  - requests `2.32.* → 2.33.0+` (insecure temp file reuse)
+  - markdown `3.5.* → 3.8.1+` (uncaught exception DoS)
+
+## [3.17.69] - 2026-04-27
+
+### Internal
+- Ignore local `projects/` side-project directory so unrelated side-projects don't show up as untracked in `git status`.
+
 ## [3.17.68] - 2026-04-27
 
 ### New Features
