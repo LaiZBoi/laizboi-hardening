@@ -374,3 +374,236 @@ class NoSecretsLeakTests(TestCase):
         ctx = build_ticket_context(self.ticket)
         self.assertNotIn('SECRET-INTERNAL-NOTE-CONTENT-DO-NOT-LEAK', ctx['prompt_text'])
         self.assertIn('External reply', ctx['prompt_text'])
+
+
+# ---------------------------------------------------------------------------
+# Phase 10b — action handlers + permission gating + apply flow
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ActionApplierTests(TestCase):
+    """Direct tests of action_applier.apply_suggestion handlers — no model
+    calls, just the dispatcher + payload validation."""
+
+    def setUp(self):
+        _seed()
+        _enable_ai()
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.user = User.objects.create_user('tech', password='pw', email='tech@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='AA',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+
+    def _suggest(self, action_type, payload, risk='low'):
+        from psa_ai.models import AISuggestion
+        return AISuggestion.objects.create(
+            organization=self.org, native_ticket=self.ticket,
+            kind='action', risk_level=risk, review_state='draft',
+            model_name='m', confidence=Decimal('0.9'),
+            action_type=action_type, action_payload=payload,
+            suggested_body=f'rationale for {action_type}',
+            requested_by=self.user,
+        )
+
+    def test_set_status_applies(self):
+        from psa_ai.services.action_applier import apply_suggestion
+        target = TicketStatus.objects.filter(slug='in-progress').first()
+        s = self._suggest('set_status', {'target_slug': 'in-progress'})
+        log = apply_suggestion(s, actor=self.user)
+        self.assertTrue(log.success)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status_id, target.id)
+
+    def test_set_status_rejects_unknown_slug(self):
+        from psa_ai.services.action_applier import apply_suggestion
+        s = self._suggest('set_status', {'target_slug': 'no-such-status'})
+        log = apply_suggestion(s, actor=self.user)
+        self.assertFalse(log.success)
+        self.assertIn('Unknown status', log.error)
+
+    def test_set_priority_applies(self):
+        from psa_ai.services.action_applier import apply_suggestion
+        s = self._suggest('set_priority', {'target_code': 'P1'})
+        log = apply_suggestion(s, actor=self.user)
+        self.assertTrue(log.success)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.priority.code, 'P1')
+
+    def test_assign_to_rejects_non_member(self):
+        from psa_ai.services.action_applier import apply_suggestion
+        outsider = User.objects.create_user('outsider', email='out@x.com', password='pw')
+        # outsider auto-gets a Membership in the first active org via signal —
+        # delete it so they're truly not a member.
+        Membership.objects.filter(user=outsider).delete()
+        s = self._suggest('assign_to', {'username': 'outsider'})
+        log = apply_suggestion(s, actor=self.user)
+        self.assertFalse(log.success)
+        self.assertIn('no membership', log.error.lower())
+
+    def test_assign_to_member_ok(self):
+        from psa_ai.services.action_applier import apply_suggestion
+        peer = User.objects.create_user('peer', email='peer@x.com', password='pw')
+        Membership.objects.update_or_create(
+            user=peer, organization=self.org,
+            defaults={'role': Role.EDITOR, 'is_active': True},
+        )
+        s = self._suggest('assign_to', {'username': 'peer'})
+        log = apply_suggestion(s, actor=self.user)
+        self.assertTrue(log.success)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.assigned_to_id, peer.id)
+
+    def test_add_internal_note_applies(self):
+        from psa.models import TicketComment
+        from psa_ai.services.action_applier import apply_suggestion
+        s = self._suggest('add_internal_note', {'body': 'Check the printer logs.'})
+        log = apply_suggestion(s, actor=self.user)
+        self.assertTrue(log.success)
+        c = TicketComment.objects.filter(ticket=self.ticket, is_internal=True).order_by('-id').first()
+        self.assertIsNotNone(c)
+        self.assertIn('Check the printer logs', c.body)
+
+    def test_unknown_action_type_recorded_as_failure(self):
+        from psa_ai.services.action_applier import apply_suggestion
+        s = self._suggest('format_drives', {'host': 'all'})
+        log = apply_suggestion(s, actor=self.user)
+        self.assertFalse(log.success)
+        self.assertIn('Unknown action_type', log.error)
+
+    def test_assign_payload_missing_username_fails(self):
+        from psa_ai.services.action_applier import apply_suggestion
+        s = self._suggest('assign_to', {})
+        log = apply_suggestion(s, actor=self.user)
+        self.assertFalse(log.success)
+        self.assertIn('username required', log.error.lower())
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ApprovalFlowTests(TestCase):
+    """End-to-end: request_approval → approve_and_apply → suggestion in
+    'approved' state, action applied, AIActionLog row written."""
+
+    def setUp(self):
+        _seed()
+        _enable_ai()
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.tech = User.objects.create_user('l1', password='pw', email='l1@x.com')
+        Membership.objects.update_or_create(
+            user=self.tech, organization=self.org,
+            defaults={'role': Role.READONLY, 'is_active': True},
+        )
+        self.lead = User.objects.create_user('lead', password='pw', email='lead@x.com')
+        Membership.objects.update_or_create(
+            user=self.lead, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Need approval flow',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+        from psa_ai.models import AISuggestion
+        self.suggestion = AISuggestion.objects.create(
+            organization=self.org, native_ticket=self.ticket,
+            kind='action', risk_level='low', review_state='draft',
+            model_name='m', confidence=Decimal('0.9'),
+            action_type='set_status',
+            action_payload={'target_slug': 'in-progress'},
+            suggested_body='Move to In Progress',
+            requested_by=self.tech,
+        )
+
+    def _login(self, user):
+        c = Client()
+        c.force_login(user)
+        s = c.session; s['current_organization_id'] = self.org.id; s.save()
+        return c
+
+    def test_request_approval_flips_state(self):
+        c = self._login(self.tech)
+        resp = c.post(f'/psa/ai/suggestion/{self.suggestion.pk}/request-approval/')
+        self.assertEqual(resp.status_code, 302)
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.review_state, 'pending_review')
+        self.assertEqual(self.suggestion.requested_review_by_id, self.tech.id)
+
+    def test_lead_approves_pending_request_and_action_applies(self):
+        # tech requests
+        c = self._login(self.tech)
+        c.post(f'/psa/ai/suggestion/{self.suggestion.pk}/request-approval/')
+        # lead approves+applies
+        c2 = self._login(self.lead)
+        resp = c2.post(f'/psa/ai/suggestion/{self.suggestion.pk}/apply/')
+        self.assertEqual(resp.status_code, 302)
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.review_state, 'approved')
+        # The action ran
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status.slug, 'in-progress')
+        # AIActionLog row written
+        from psa_ai.models import AIActionLog
+        self.assertEqual(AIActionLog.objects.filter(suggestion=self.suggestion).count(), 1)
+
+    def test_inbox_shows_pending(self):
+        c = self._login(self.tech)
+        c.post(f'/psa/ai/suggestion/{self.suggestion.pk}/request-approval/')
+        c2 = self._login(self.lead)
+        resp = c2.get('/psa/ai/inbox/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'AI Inbox', resp.content)
+        self.assertIn(self.ticket.ticket_number.encode(), resp.content)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PermissionGateTests(TestCase):
+    """Defence-in-depth: low-tier user shouldn't be able to apply a
+    high-risk action, even if they POST directly."""
+
+    def setUp(self):
+        _seed()
+        _enable_ai()
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.readonly = User.objects.create_user('ro', password='pw', email='ro@x.com')
+        Membership.objects.update_or_create(
+            user=self.readonly, organization=self.org,
+            defaults={'role': Role.READONLY, 'is_active': True},
+        )
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Perms',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+        from psa_ai.models import AISuggestion
+        self.high_risk = AISuggestion.objects.create(
+            organization=self.org, native_ticket=self.ticket,
+            kind='action', risk_level='high', review_state='draft',
+            model_name='m', confidence=Decimal('0.9'),
+            action_type='escalate',
+            action_payload={'reason': 'critical'},
+            suggested_body='escalate',
+            requested_by=self.readonly,
+        )
+
+    def test_readonly_cannot_apply_high_risk_action(self):
+        c = Client()
+        c.force_login(self.readonly)
+        s = c.session; s['current_organization_id'] = self.org.id; s.save()
+        resp = c.post(f'/psa/ai/suggestion/{self.high_risk.pk}/apply/')
+        # Decorator chain: @require_write blocks readonly users with a redirect.
+        # Either way, the action MUST NOT have run.
+        self.high_risk.refresh_from_db()
+        self.assertNotEqual(self.high_risk.review_state, 'approved')
+        from psa_ai.models import AIActionLog
+        self.assertEqual(AIActionLog.objects.filter(suggestion=self.high_risk).count(), 0)

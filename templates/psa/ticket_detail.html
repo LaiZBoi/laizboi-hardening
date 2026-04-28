@@ -274,28 +274,38 @@
             {% endif %}
         </div>
 
-        {# AI Assist (Phase 10a — read-only generate + view) #}
+        {# AI Assist (Phase 10a + 10b — generate + apply with guardrails) #}
         {% if ai_enabled %}
         <div class="card mt-3 border-primary">
             <div class="card-header d-flex justify-content-between align-items-center"
                  style="background: rgba(13,110,253,.08);">
                 <strong><i class="fas fa-wand-magic-sparkles me-1"></i>AI Assist</strong>
-                <form method="post" action="{% url 'psa_ai:generate_reply' ticket.ticket_number %}" class="d-inline">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-primary"
-                            {% if is_closed %}disabled title="Closed tickets do not generate suggestions"{% endif %}>
-                        <i class="fas fa-bolt me-1"></i>Suggest reply
-                    </button>
-                </form>
+                <div class="d-flex gap-1">
+                    <form method="post" action="{% url 'psa_ai:generate_reply' ticket.ticket_number %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-primary"
+                                {% if is_closed %}disabled title="Closed tickets do not generate suggestions"{% endif %}>
+                            <i class="fas fa-comment me-1"></i>Suggest reply
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'psa_ai:generate_actions' ticket.ticket_number %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-primary"
+                                {% if is_closed %}disabled{% endif %}>
+                            <i class="fas fa-bolt me-1"></i>Suggest actions
+                        </button>
+                    </form>
+                </div>
             </div>
             {% if ai_suggestions %}
             <div class="list-group list-group-flush small">
                 {% for s in ai_suggestions %}
-                <div class="list-group-item">
+                <div class="list-group-item" id="ai-suggestion-{{ s.id }}">
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div class="flex-grow-1">
                             <span class="badge bg-warning text-dark me-1">AI-Generated</span>
-                            <span class="badge {% if s.review_state == 'draft' %}bg-info{% elif s.review_state == 'rejected' %}bg-secondary{% elif s.review_state == 'blocked' %}bg-danger{% elif s.review_state == 'failed' %}bg-danger{% elif s.review_state == 'approved' %}bg-success{% else %}bg-light text-dark{% endif %}">
+                            <span class="badge bg-{% if s.kind == 'reply' %}info text-dark{% else %}primary{% endif %}">{{ s.kind }}</span>
+                            <span class="badge {% if s.review_state == 'draft' %}bg-info{% elif s.review_state == 'rejected' %}bg-secondary{% elif s.review_state == 'blocked' %}bg-danger{% elif s.review_state == 'failed' %}bg-danger{% elif s.review_state == 'approved' %}bg-success{% elif s.review_state == 'pending_review' %}bg-warning text-dark{% else %}bg-light text-dark{% endif %}">
                                 {{ s.get_review_state_display }}
                             </span>
                             <span class="badge {% if s.risk_level == 'high' %}bg-danger{% elif s.risk_level == 'medium' %}bg-warning text-dark{% else %}bg-success{% endif %}">
@@ -304,25 +314,55 @@
                             <small class="text-muted ms-1">conf {{ s.confidence|floatformat:2 }} · {{ s.created_at|timesince }} ago</small>
                         </div>
                     </div>
-                    {% if s.suggested_body %}
-                    <pre class="mt-2 mb-2 p-2 bg-light rounded" style="white-space: pre-wrap; font-family: inherit;">{{ s.suggested_body }}</pre>
+
+                    {% if s.kind == 'action' %}
+                    <div class="mt-2 mb-2 p-2 bg-light rounded">
+                        <strong>{{ s.action_type }}</strong>
+                        {% if s.suggested_body %}<div class="text-muted small mt-1">{{ s.suggested_body }}</div>{% endif %}
+                        {% if s.action_payload %}<pre class="small mt-1 mb-0">{{ s.action_payload }}</pre>{% endif %}
+                    </div>
                     {% else %}
-                    <em class="text-muted d-block mt-2">No body — see audit log for the reason.</em>
-                    {% endif %}
-                    <div class="d-flex gap-2 align-items-center">
                         {% if s.suggested_body %}
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="psaAiInsert({{ s.id }})">
-                            <i class="fas fa-clipboard me-1"></i>Insert into reply
-                        </button>
+                        <pre class="mt-2 mb-2 p-2 bg-light rounded" style="white-space: pre-wrap; font-family: inherit;">{{ s.suggested_body }}</pre>
+                        {% else %}
+                        <em class="text-muted d-block mt-2">No body — see audit log for the reason.</em>
                         {% endif %}
-                        {% if s.review_state == 'draft' or s.review_state == 'pending_review' %}
-                        <form method="post" action="{% url 'psa_ai:suggestion_reject' s.id %}" class="d-inline d-flex gap-1">
+                    {% endif %}
+
+                    {% if s.review_state == 'draft' or s.review_state == 'pending_review' %}
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        {% if s.kind == 'reply' and s.suggested_body %}
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="psaAiInsert({{ s.id }})">
+                                <i class="fas fa-clipboard me-1"></i>Insert into reply box
+                            </button>
+                            <form method="post" action="{% url 'psa_ai:suggestion_apply' s.id %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-success" title="Send the AI-drafted reply as a public comment on this ticket. Your name will be on it.">
+                                    <i class="fas fa-paper-plane me-1"></i>Approve &amp; Send
+                                </button>
+                            </form>
+                        {% elif s.kind == 'action' %}
+                            <form method="post" action="{% url 'psa_ai:suggestion_apply' s.id %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-success">
+                                    <i class="fas fa-bolt me-1"></i>Apply
+                                </button>
+                            </form>
+                        {% endif %}
+                        <form method="post" action="{% url 'psa_ai:suggestion_request_approval' s.id %}" class="d-inline">
                             {% csrf_token %}
-                            <input type="text" name="reviewer_note" class="form-control form-control-sm" placeholder="Why? (logged as feedback)" maxlength="200" style="width: 240px;">
+                            <button type="submit" class="btn btn-sm btn-outline-warning"
+                                    {% if s.review_state == 'pending_review' %}disabled{% endif %}>
+                                <i class="fas fa-user-shield me-1"></i>{% if s.review_state == 'pending_review' %}Awaiting approval{% else %}Request approval{% endif %}
+                            </button>
+                        </form>
+                        <form method="post" action="{% url 'psa_ai:suggestion_reject' s.id %}" class="d-inline d-flex gap-1 ms-auto">
+                            {% csrf_token %}
+                            <input type="text" name="reviewer_note" class="form-control form-control-sm" placeholder="Why reject? (logged as feedback)" maxlength="200" style="width: 240px;">
                             <button type="submit" class="btn btn-sm btn-outline-secondary">Reject</button>
                         </form>
-                        {% endif %}
                     </div>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
