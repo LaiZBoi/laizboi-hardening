@@ -46,4 +46,12 @@ urlpatterns = [
     # Approvals
     path('approvals/', views.approval_list, name='approval_list'),
     path('approvals/<int:pk>/decide/', views.approval_decide, name='approval_decide'),
+    # Contracts (Workstream 5)
+    path('contracts/', views.contract_list, name='contract_list'),
+    path('contracts/new/', views.contract_form, name='contract_create'),
+    path('contracts/<int:pk>/edit/', views.contract_form, name='contract_edit'),
+    # Email ingestion
+    path('email-configs/', views.email_config_list, name='email_config_list'),
+    path('email-configs/new/', views.email_config_form, name='email_config_create'),
+    path('email-configs/<int:pk>/edit/', views.email_config_form, name='email_config_edit'),
 ]

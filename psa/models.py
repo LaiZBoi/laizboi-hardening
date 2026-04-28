@@ -385,6 +385,13 @@ class TicketComment(models.Model):
     is_internal = models.BooleanField(default=False, help_text='Internal-only — never shown to the client')
     is_system = models.BooleanField(default=False, help_text='Auto-generated event (status change, etc.)')
 
+    # Used when the comment came from an external source (email, portal,
+    # anonymous form) and there's no User to attribute. Free-text by design.
+    author_name = models.CharField(max_length=200, blank=True)
+    author_email = models.EmailField(blank=True)
+    source = models.CharField(max_length=20, default='manual',
+        help_text='manual | email | portal | api')
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -576,10 +583,34 @@ class TicketTimeEntry(models.Model):
         return f'{self.user_id} on ticket {self.ticket_id}: {self.duration_minutes}m'
 
     def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        was_running = False
+        prior_duration = 0
+        if not is_new:
+            prior = TicketTimeEntry.objects.filter(pk=self.pk).only('duration_minutes', 'ended_at').first()
+            if prior:
+                was_running = prior.ended_at is None
+                prior_duration = prior.duration_minutes or 0
+
         if self.ended_at and self.started_at and not self.duration_minutes:
             delta = self.ended_at - self.started_at
             self.duration_minutes = max(0, int(delta.total_seconds() // 60))
         super().save(*args, **kwargs)
+
+        # Contract hour accounting: only on transitions from running→stopped
+        # or on initial create with a duration. Skip while still running.
+        if self.duration_minutes and self.ended_at:
+            from django.db.models import F
+            try:
+                contract = Contract.for_ticket(self.ticket)
+            except (NameError, AttributeError):
+                contract = None
+            if contract:
+                delta_min = self.duration_minutes - (prior_duration if not was_running else 0)
+                if delta_min > 0:
+                    Contract.objects.filter(pk=contract.pk).update(
+                        hours_used_minutes=F('hours_used_minutes') + delta_min,
+                    )
 
     @property
     def is_running(self):
@@ -912,3 +943,199 @@ class PSAApproval(models.Model):
         self.decided_at = timezone.now()
         self.decision_comment = comment[:5000]
         self.save(update_fields=['status', 'decided_by', 'decided_at', 'decision_comment'])
+
+
+# ---------------------------------------------------------------------------
+# Workstream 5 — Contracts (block hours, retainer, managed services)
+# ---------------------------------------------------------------------------
+
+class Contract(models.Model):
+    """
+    MSP contract with a client. Tracks an hours allowance + per-priority
+    SLA overrides. The PSA SLA engine consults the active contract for
+    a ticket's organization before falling back to the global queue
+    SLA defaults.
+
+    The `hours_used_minutes` field is incremented by `TicketTimeEntry.save()`
+    when an entry's ticket belongs to a client_org with an active contract.
+    """
+    CONTRACT_TYPES = [
+        ('block_hours', 'Block of Hours'),
+        ('retainer', 'Monthly Retainer'),
+        ('managed_services', 'Managed Services'),
+        ('per_incident', 'Per-Incident'),
+    ]
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('active', 'Active'),
+        ('expired', 'Expired'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_msp_contracts',
+        help_text='MSP tenant that owns the contract',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_client_contracts',
+        help_text='Client the contract is with',
+    )
+    name = models.CharField(max_length=200)
+    contract_type = models.CharField(max_length=30, choices=CONTRACT_TYPES, default='block_hours')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True,
+        help_text='Open-ended if blank')
+
+    total_hours = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+        help_text='Allowance for block_hours / retainer; 0 for unlimited')
+    hours_used_minutes = models.PositiveIntegerField(default=0,
+        help_text='Auto-incremented by TicketTimeEntry; minutes for precision')
+    hourly_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+        help_text='Effective rate when consuming or overaging')
+    overage_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+        help_text='Rate for hours beyond total_hours (defaults to hourly_rate when 0)')
+
+    # Per-priority SLA matrix overrides queue defaults.
+    # Schema: {"priority_slug": {"response_minutes": int, "resolution_minutes": int}, ...}
+    sla_matrix = models.JSONField(default=dict, blank=True)
+
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_psa_contracts',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_contracts'
+        ordering = ['-start_date']
+        indexes = [
+            models.Index(fields=['organization', 'client_org', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.client_org.name} — {self.name} ({self.get_contract_type_display()})'
+
+    @property
+    def hours_used(self):
+        return round(self.hours_used_minutes / 60.0, 2)
+
+    @property
+    def hours_remaining(self):
+        if not self.total_hours:
+            return None  # unlimited
+        return max(0, float(self.total_hours) - self.hours_used)
+
+    @property
+    def is_currently_active(self):
+        if self.status != 'active':
+            return False
+        today = timezone.now().date()
+        if self.start_date and self.start_date > today:
+            return False
+        if self.end_date and self.end_date < today:
+            return False
+        return True
+
+    @classmethod
+    def for_ticket(cls, ticket):
+        """Return the active contract for a ticket's client (None if none)."""
+        if not ticket or not ticket.organization_id:
+            return None
+        today = timezone.now().date()
+        return cls.objects.filter(
+            client_org=ticket.organization,
+            status='active',
+            start_date__lte=today,
+        ).filter(
+            models.Q(end_date__isnull=True) | models.Q(end_date__gte=today)
+        ).first()
+
+
+# ---------------------------------------------------------------------------
+# Email ingestion — Workstream 1 queued: email-to-ticket
+# ---------------------------------------------------------------------------
+
+class EmailIngestionConfig(models.Model):
+    """
+    Per-organization IMAP mailbox. The `psa_poll_email` management command
+    connects, parses unread messages, creates tickets (or appends comments
+    to existing tickets when the subject contains a ticket number), and
+    marks messages as read.
+
+    Password is encrypted at rest using the same vault.encryption helpers
+    as integrations/RMM credentials.
+    """
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='email_ingestion_configs',
+    )
+    name = models.CharField(max_length=200)
+    imap_host = models.CharField(max_length=255)
+    imap_port = models.PositiveIntegerField(default=993)
+    use_ssl = models.BooleanField(default=True)
+    username = models.CharField(max_length=255)
+    encrypted_password = models.TextField(blank=True)
+    folder = models.CharField(max_length=100, default='INBOX')
+
+    # Defaults applied when creating a new ticket.
+    default_queue = models.ForeignKey(Queue, on_delete=models.PROTECT,
+                                      related_name='email_configs')
+    default_priority = models.ForeignKey(TicketPriority, on_delete=models.PROTECT,
+                                         related_name='email_configs')
+    default_type = models.ForeignKey(TicketType, on_delete=models.PROTECT,
+                                     related_name='email_configs')
+
+    # Subject regex that captures a ticket number for reply-threading.
+    # Default matches "PSA-YYYY-NNNNNN" anywhere in the subject.
+    subject_ticket_pattern = models.CharField(
+        max_length=200, default=r'PSA-\d{4}-\d{6}',
+        help_text='Regex; first match in the subject is treated as a reply to that ticket',
+    )
+
+    is_active = models.BooleanField(default=True)
+    poll_interval_minutes = models.PositiveIntegerField(default=5)
+    last_poll_at = models.DateTimeField(null=True, blank=True)
+    last_poll_status = models.CharField(max_length=50, blank=True)
+    last_error = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_email_ingestion_configs'
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} ({self.username}@{self.imap_host})'
+
+    def set_password(self, password: str):
+        from vault.encryption import encrypt_dict
+        import json as _json
+        if not password:
+            self.encrypted_password = ''
+            return
+        self.encrypted_password = _json.dumps(encrypt_dict({'p': password}))
+
+    def get_password(self) -> str:
+        from vault.encryption import decrypt_dict
+        import json as _json
+        if not self.encrypted_password:
+            return ''
+        try:
+            return decrypt_dict(_json.loads(self.encrypted_password)).get('p', '')
+        except Exception:
+            return ''
+
+
+# ---------------------------------------------------------------------------
+# Time-entry hook — increment Contract.hours_used_minutes on save
+# ---------------------------------------------------------------------------
+
+# This is attached as a Django signal in psa/apps.py to keep models.py
+# free of side effects on import.

@@ -28,6 +28,8 @@ from .feature_flags import (
 from .models import (
     CannedReply,
     ClientPSASettings,
+    Contract,
+    EmailIngestionConfig,
     Project,
     PSAApproval,
     Queue,
@@ -1725,3 +1727,171 @@ def approval_decide(request, pk):
     )
     messages.success(request, f'{decision.title()}d.')
     return redirect('psa:approval_list')
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Contracts + Email Ingestion
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+def contract_list(request):
+    """Tenant-scoped contract list."""
+    org = get_request_organization(request)
+    qs = Contract.objects.select_related('client_org')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    return render(request, 'psa/contract_list.html', {
+        'contracts': qs.order_by('-start_date')[:200],
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def contract_form(request, pk=None):
+    org = get_request_organization(request)
+    if org is None:
+        messages.error(request, 'Pick a client first.')
+        return redirect('psa:contract_list')
+    item = get_object_or_404(Contract, pk=pk, organization=org) if pk else None
+
+    from core.models import Organization
+
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        client_org_id = request.POST.get('client_org')
+        if not name or not client_org_id:
+            messages.error(request, 'Name and client are required.')
+            return redirect(request.path)
+        try:
+            client_org = Organization.objects.get(pk=client_org_id)
+        except Organization.DoesNotExist:
+            messages.error(request, 'Client not found.')
+            return redirect(request.path)
+
+        if item is None:
+            item = Contract(organization=org, client_org=client_org, name=name,
+                            created_by=request.user, start_date=timezone.now().date())
+        else:
+            item.client_org = client_org
+            item.name = name
+        item.contract_type = request.POST.get('contract_type') or 'block_hours'
+        item.status = request.POST.get('status') or 'draft'
+        item.start_date = request.POST.get('start_date') or item.start_date
+        item.end_date = request.POST.get('end_date') or None
+        try:
+            item.total_hours = request.POST.get('total_hours') or 0
+        except (TypeError, ValueError):
+            item.total_hours = 0
+        try:
+            item.hourly_rate = request.POST.get('hourly_rate') or 0
+            item.overage_rate = request.POST.get('overage_rate') or 0
+        except (TypeError, ValueError):
+            pass
+        item.notes = (request.POST.get('notes') or '').strip()
+        item.save()
+
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            organization=org,
+            object_type='psa.Contract', object_id=item.pk,
+            object_repr=str(item),
+            description=f'{"Updated" if pk else "Created"} contract "{item.name}"',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Saved "{item.name}".')
+        return redirect('psa:contract_list')
+
+    return render(request, 'psa/contract_form.html', {
+        'item': item,
+        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
+        'contract_types': Contract.CONTRACT_TYPES,
+        'status_choices': Contract.STATUS_CHOICES,
+    })
+
+
+@login_required
+@require_psa_enabled
+def email_config_list(request):
+    org = get_request_organization(request)
+    qs = EmailIngestionConfig.objects.select_related('default_queue', 'default_priority', 'default_type')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    return render(request, 'psa/email_config_list.html', {
+        'configs': qs.order_by('name')[:100],
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def email_config_form(request, pk=None):
+    org = get_request_organization(request)
+    if org is None:
+        messages.error(request, 'Pick a client first.')
+        return redirect('psa:email_config_list')
+    item = get_object_or_404(EmailIngestionConfig, pk=pk, organization=org) if pk else None
+
+    queues = Queue.objects.filter(is_active=True)
+    priorities = TicketPriority.objects.all()
+    types = TicketType.objects.all()
+
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        host = (request.POST.get('imap_host') or '').strip()
+        username = (request.POST.get('username') or '').strip()
+        password = request.POST.get('password') or ''
+        if not name or not host or not username:
+            messages.error(request, 'Name, host, username are required.')
+            return redirect(request.path)
+        try:
+            port = int(request.POST.get('imap_port') or 993)
+        except ValueError:
+            port = 993
+
+        try:
+            queue = queues.get(pk=request.POST.get('default_queue'))
+            priority = priorities.get(pk=request.POST.get('default_priority'))
+            ticket_type = types.get(pk=request.POST.get('default_type'))
+        except (Queue.DoesNotExist, TicketPriority.DoesNotExist, TicketType.DoesNotExist, ValueError):
+            messages.error(request, 'Pick valid defaults.')
+            return redirect(request.path)
+
+        if item is None:
+            item = EmailIngestionConfig(organization=org, default_queue=queue,
+                                        default_priority=priority, default_type=ticket_type)
+        else:
+            item.default_queue = queue
+            item.default_priority = priority
+            item.default_type = ticket_type
+        item.name = name
+        item.imap_host = host
+        item.imap_port = port
+        item.use_ssl = request.POST.get('use_ssl') == 'on'
+        item.username = username
+        item.folder = (request.POST.get('folder') or 'INBOX').strip()
+        item.subject_ticket_pattern = (request.POST.get('subject_ticket_pattern') or 'PSA-\\d{4}-\\d{6}')[:200]
+        item.is_active = request.POST.get('is_active') == 'on'
+        try:
+            item.poll_interval_minutes = max(1, int(request.POST.get('poll_interval_minutes') or 5))
+        except ValueError:
+            item.poll_interval_minutes = 5
+        if password:
+            item.set_password(password)
+        item.save()
+
+        messages.success(request, f'Saved "{item.name}".')
+        return redirect('psa:email_config_list')
+
+    return render(request, 'psa/email_config_form.html', {
+        'item': item,
+        'queues': queues, 'priorities': priorities, 'types': types,
+    })

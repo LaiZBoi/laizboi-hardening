@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{% if item %}Edit{% else %}New{% endif %} Contract — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:contract_list' %}">Contracts</a></li>
+        <li class="breadcrumb-item active">{% if item %}{{ item.name }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3">{% if item %}Edit Contract{% else %}New Contract{% endif %}</h2>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" required value="{{ item.name|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Client</label>
+                <select name="client_org" class="form-select" required>
+                    {% for o in client_orgs %}
+                    <option value="{{ o.pk }}" {% if item.client_org_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Type</label>
+                <select name="contract_type" class="form-select">
+                    {% for code, label in contract_types %}
+                    <option value="{{ code }}" {% if item.contract_type == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    {% for code, label in status_choices %}
+                    <option value="{{ code }}" {% if item.status == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Total hours (0 = unlimited)</label>
+                <input type="number" step="0.25" name="total_hours" class="form-control" value="{{ item.total_hours|default:0 }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Start date</label>
+                <input type="date" name="start_date" class="form-control" required value="{{ item.start_date|date:'Y-m-d'|default:'' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">End date (optional)</label>
+                <input type="date" name="end_date" class="form-control" value="{{ item.end_date|date:'Y-m-d'|default:'' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Hourly rate</label>
+                <input type="number" step="0.01" name="hourly_rate" class="form-control" value="{{ item.hourly_rate|default:0 }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Overage rate</label>
+                <input type="number" step="0.01" name="overage_rate" class="form-control" value="{{ item.overage_rate|default:0 }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Notes</label>
+                <textarea name="notes" rows="3" class="form-control">{{ item.notes|default:'' }}</textarea>
+            </div>
+            {% if item %}
+            <div class="col-12">
+                <p class="text-muted mb-0">Hours used so far: <strong>{{ item.hours_used }}</strong>{% if item.hours_remaining is not None %} ({{ item.hours_remaining }} remaining){% endif %}.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'psa:contract_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

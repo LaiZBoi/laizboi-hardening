@@ -1,0 +1,33 @@
+{% extends "portal/base.html" %}
+{% block title %}New Support Ticket{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:ticket_list' %}">My Tickets</a></li>
+        <li class="breadcrumb-item active">New Ticket</li>
+    </ol>
+</nav>
+
+<h1 class="mb-3">Submit a Support Request</h1>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">What do you need help with?</label>
+            <input type="text" name="subject" class="form-control" required maxlength="300"
+                   placeholder="e.g. Email is not working on my laptop">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Details</label>
+            <textarea name="description" rows="6" class="form-control" maxlength="50000"
+                      placeholder="When did it start? What have you tried? Any error messages?"></textarea>
+        </div>
+        <p class="text-muted small mb-0">A support engineer will follow up. You'll get an email when the ticket is updated.</p>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Submit ticket</button>
+        <a href="{% url 'portal:ticket_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

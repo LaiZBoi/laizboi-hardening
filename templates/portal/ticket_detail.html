@@ -1,0 +1,68 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ ticket.ticket_number }} — {{ ticket.subject|truncatechars:50 }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:ticket_list' %}">My Tickets</a></li>
+        <li class="breadcrumb-item active">{{ ticket.ticket_number }}</li>
+    </ol>
+</nav>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h2 class="card-title">{{ ticket.subject }}</h2>
+        <p class="text-muted mb-2">
+            <span class="badge bg-secondary">{{ ticket.ticket_number }}</span>
+            <span class="badge bg-info">{{ ticket.priority.name }}</span>
+            <span class="badge bg-primary">{{ ticket.status.name }}</span>
+            <span class="text-muted">— created <span data-utc="{{ ticket.created_at|date:'c' }}">{{ ticket.created_at|date:'Y-m-d H:i' }}</span></span>
+        </p>
+        {% if ticket.description %}
+        <hr>
+        <p>{{ ticket.description|linebreaksbr }}</p>
+        {% endif %}
+        {% if attachments %}
+        <hr>
+        <h6>Attachments</h6>
+        <ul>
+            {% for a in attachments %}
+            <li><a href="{{ a.file.url }}">{{ a.filename }}</a> <small class="text-muted">({{ a.size_bytes|filesizeformat }})</small></li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+
+<h4 class="mb-3">Conversation</h4>
+
+{% for c in comments %}
+<div class="card mb-2">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+            <strong>
+                {% if c.author %}{{ c.author.get_full_name|default:c.author.username }}
+                {% elif c.author_name %}{{ c.author_name }}
+                {% else %}Support{% endif %}
+            </strong>
+            <small class="text-muted"><span data-utc="{{ c.created_at|date:'c' }}">{{ c.created_at|date:'Y-m-d H:i' }}</span></small>
+        </div>
+        <div>{{ c.body|linebreaksbr }}</div>
+    </div>
+</div>
+{% empty %}
+<p class="text-muted">No replies yet.</p>
+{% endfor %}
+
+{% if not ticket.status.is_terminal %}
+<form method="post" action="{% url 'portal:post_reply' ticket.ticket_number %}" class="card mt-3">
+    {% csrf_token %}
+    <div class="card-body">
+        <h6>Add a reply</h6>
+        <textarea name="body" rows="4" class="form-control" maxlength="50000" required placeholder="Your reply..."></textarea>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Send reply</button>
+    </div>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}{% if item %}Edit{% else %}New{% endif %} Email Mailbox — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:email_config_list' %}">Email Ingestion</a></li>
+        <li class="breadcrumb-item active">{% if item %}{{ item.name }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3">{% if item %}Edit Mailbox{% else %}New Mailbox{% endif %}</h2>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Name (internal)</label>
+                <input type="text" name="name" class="form-control" required value="{{ item.name|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Folder</label>
+                <input type="text" name="folder" class="form-control" value="{{ item.folder|default:'INBOX' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">IMAP host</label>
+                <input type="text" name="imap_host" class="form-control" required value="{{ item.imap_host|default:'' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Port</label>
+                <input type="number" name="imap_port" class="form-control" value="{{ item.imap_port|default:993 }}">
+            </div>
+            <div class="col-md-2 form-check ms-3 mt-4">
+                <input type="checkbox" name="use_ssl" class="form-check-input" id="use_ssl"
+                       {% if not item or item.use_ssl %}checked{% endif %}>
+                <label class="form-check-label" for="use_ssl">SSL</label>
+            </div>
+            <div class="col-md-2 form-check ms-3 mt-4">
+                <input type="checkbox" name="is_active" class="form-check-input" id="is_active"
+                       {% if not item or item.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="is_active">Active</label>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Username</label>
+                <input type="text" name="username" class="form-control" required autocomplete="off"
+                       value="{{ item.username|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Password</label>
+                <input type="password" name="password" class="form-control" autocomplete="new-password"
+                       placeholder="{% if item %}(unchanged){% endif %}">
+            </div>
+
+            <div class="col-12"><hr><h5>Ticket defaults</h5></div>
+
+            <div class="col-md-4">
+                <label class="form-label">Queue</label>
+                <select name="default_queue" class="form-select" required>
+                    {% for q in queues %}
+                    <option value="{{ q.pk }}" {% if item.default_queue_id == q.pk %}selected{% endif %}>{{ q.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Priority</label>
+                <select name="default_priority" class="form-select" required>
+                    {% for p in priorities %}
+                    <option value="{{ p.pk }}" {% if item.default_priority_id == p.pk %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Type</label>
+                <select name="default_type" class="form-select" required>
+                    {% for t in types %}
+                    <option value="{{ t.pk }}" {% if item.default_type_id == t.pk %}selected{% endif %}>{{ t.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-8">
+                <label class="form-label">Reply-detection regex</label>
+                <input type="text" name="subject_ticket_pattern" class="form-control"
+                       value="{{ item.subject_ticket_pattern|default:'PSA-\\d{4}-\\d{6}' }}">
+                <small class="text-muted">If a subject matches this pattern AND we own the matched ticket, append the email body as a comment instead of creating a new ticket.</small>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Poll interval (minutes)</label>
+                <input type="number" name="poll_interval_minutes" min="1" class="form-control" value="{{ item.poll_interval_minutes|default:5 }}">
+            </div>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'psa:email_config_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

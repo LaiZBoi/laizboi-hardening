@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     'scheduling.apps.SchedulingConfig',
     'psa.apps.PsaConfig',
     'psa_ai.apps.PsaAiConfig',
+    'portal.apps.PortalConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)

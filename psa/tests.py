@@ -1344,3 +1344,220 @@ class Phase3FeaturesTests(TestCase):
         # Second create with same pair should fail unique_together
         with self.assertRaises(Exception):
             TicketKBLink.objects.create(ticket=ticket, article=article, linked_by=self.user)
+
+
+class Phase4FeaturesTests(TestCase):
+    """
+    Phase 4: Customer Portal, Email Ingestion, Contracts.
+
+    Smoke + correctness tests:
+      * Contract.for_ticket returns the active contract for the client org.
+      * Time entry save() increments hours_used_minutes via the contract hook.
+      * Email config password round-trips encrypted (no plaintext on disk).
+      * Portal queryset filters out staff-only tickets and internal comments.
+    """
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ACME P4', slug='acme-p4')
+        self.user = User.objects.create_user('p4-tech', password='pw', email='p4t@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def test_contract_for_ticket_returns_active(self):
+        from psa.models import Contract, Ticket
+        from datetime import date, timedelta
+        c = Contract.objects.create(
+            organization=self.org, client_org=self.org,
+            name='Block', start_date=date.today() - timedelta(days=1),
+            status='active', total_hours=10,
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='X',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        self.assertEqual(Contract.for_ticket(t), c)
+
+    def test_contract_for_ticket_skips_draft_and_expired(self):
+        from psa.models import Contract, Ticket
+        from datetime import date, timedelta
+        Contract.objects.create(
+            organization=self.org, client_org=self.org,
+            name='Draft', start_date=date.today(),
+            status='draft', total_hours=10,
+        )
+        Contract.objects.create(
+            organization=self.org, client_org=self.org,
+            name='Expired', start_date=date.today() - timedelta(days=400),
+            end_date=date.today() - timedelta(days=10),
+            status='active', total_hours=10,
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='X',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        self.assertIsNone(Contract.for_ticket(t))
+
+    def test_time_entry_save_increments_contract_hours(self):
+        from psa.models import Contract, Ticket, TicketTimeEntry
+        from datetime import date, timedelta
+        c = Contract.objects.create(
+            organization=self.org, client_org=self.org,
+            name='Block', start_date=date.today() - timedelta(days=1),
+            status='active', total_hours=10,
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='Time',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        TicketTimeEntry.objects.create(
+            ticket=t, user=self.user,
+            started_at=timezone.now() - timedelta(minutes=45),
+            ended_at=timezone.now(),
+            duration_minutes=45,
+        )
+        c.refresh_from_db()
+        self.assertEqual(c.hours_used_minutes, 45)
+        self.assertEqual(c.hours_used, 0.75)
+
+    def test_email_config_password_encryption(self):
+        from psa.models import EmailIngestionConfig
+        cfg = EmailIngestionConfig.objects.create(
+            organization=self.org, name='Helpdesk',
+            imap_host='imap.example.com', username='help@example.com',
+            default_queue=self.queue, default_priority=self.priority,
+            default_type=self.ttype,
+        )
+        cfg.set_password('s3cr3t-imap-pw')
+        cfg.save()
+        reloaded = EmailIngestionConfig.objects.get(pk=cfg.pk)
+        self.assertEqual(reloaded.get_password(), 's3cr3t-imap-pw')
+        self.assertNotIn('s3cr3t-imap-pw', reloaded.encrypted_password)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class CustomerPortalTests(TestCase):
+    """
+    Portal hard rules:
+      1. 404 if PSA disabled globally.
+      2. 404 if user has no active membership in a portal-enabled org.
+      3. Tickets queryset filters to client_can_view=True only.
+      4. Internal comments don't render in detail view.
+    """
+
+    def setUp(self):
+        _setup_seed()
+        from psa.models import (
+            ClientPSASettings, Queue, Ticket, TicketComment,
+            TicketPriority, TicketType, TicketStatus,
+        )
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='Portal Co', slug='portal-co')
+        self.user = User.objects.create_user('portal-user', password='pw', email='pu@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.READONLY, 'is_active': True},
+        )
+        ClientPSASettings.objects.update_or_create(
+            organization=self.org, defaults={'enabled': True, 'portal_enabled': True},
+        )
+        q = Queue.objects.first()
+        p = TicketPriority.objects.first()
+        tt = TicketType.objects.first()
+        st = TicketStatus.objects.filter(slug='new').first()
+        # Public ticket — should be visible
+        self.public = Ticket.objects.create(
+            organization=self.org, subject='Public ticket',
+            queue=q, priority=p, ticket_type=tt, status=st,
+            client_can_view=True, visibility='client',
+        )
+        TicketComment.objects.create(ticket=self.public, body='public reply', is_internal=False)
+        TicketComment.objects.create(ticket=self.public, body='STAFF SECRET', is_internal=True)
+        # Staff-only ticket — should be hidden
+        self.private = Ticket.objects.create(
+            organization=self.org, subject='Internal ticket',
+            queue=q, priority=p, ticket_type=tt, status=st,
+            client_can_view=False, visibility='staff',
+        )
+
+    def test_portal_404_without_membership(self):
+        # Use a NEW org with portal_enabled=False, then create a rando whose
+        # auto-membership lands in that non-portal org.
+        from psa.models import ClientPSASettings
+        no_portal_org = Organization.objects.create(name='No Portal LLC', slug='no-portal')
+        ClientPSASettings.objects.create(organization=no_portal_org, portal_enabled=False)
+        # Disable portal_enabled on Portal Co so the default-membership
+        # signal doesn't accidentally grant the rando user access.
+        ClientPSASettings.objects.filter(organization=self.org).update(portal_enabled=False)
+
+        c = Client()
+        rando = User.objects.create_user('not-a-member', password='pw', email='nm@x.com')
+        c.force_login(rando)
+        resp = c.get('/portal/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_portal_lists_only_client_visible_tickets(self):
+        c = Client()
+        c.force_login(self.user)
+        resp = c.get('/portal/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn(self.public.ticket_number, body)
+        self.assertNotIn(self.private.ticket_number, body)
+
+    def test_portal_detail_hides_internal_comments(self):
+        c = Client()
+        c.force_login(self.user)
+        resp = c.get(f'/portal/t/{self.public.ticket_number}/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('public reply', body)
+        self.assertNotIn('STAFF SECRET', body)
+
+    def test_portal_detail_404_for_staff_only_ticket(self):
+        c = Client()
+        c.force_login(self.user)
+        resp = c.get(f'/portal/t/{self.private.ticket_number}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_portal_post_reply_creates_public_comment(self):
+        from psa.models import TicketComment
+        c = Client()
+        c.force_login(self.user)
+        before = TicketComment.objects.filter(ticket=self.public).count()
+        resp = c.post(f'/portal/t/{self.public.ticket_number}/reply/',
+                      {'body': 'I tried rebooting'})
+        self.assertEqual(resp.status_code, 302)
+        after = TicketComment.objects.filter(ticket=self.public).count()
+        self.assertEqual(after, before + 1)
+        comment = TicketComment.objects.filter(ticket=self.public).order_by('-created_at').first()
+        self.assertFalse(comment.is_internal)
+        self.assertEqual(comment.source, 'portal')
+        self.assertEqual(comment.author, self.user)
+
+    def test_portal_create_ticket(self):
+        from psa.models import Ticket
+        c = Client()
+        c.force_login(self.user)
+        before = Ticket.objects.filter(organization=self.org).count()
+        resp = c.post('/portal/new/', {
+            'subject': 'My laptop is on fire',
+            'description': 'Smoke is coming out',
+        })
+        self.assertEqual(resp.status_code, 302)
+        after = Ticket.objects.filter(organization=self.org).count()
+        self.assertEqual(after, before + 1)
+        new_ticket = Ticket.objects.filter(organization=self.org).order_by('-created_at').first()
+        self.assertEqual(new_ticket.source, 'portal')
+        self.assertTrue(new_ticket.client_can_view)

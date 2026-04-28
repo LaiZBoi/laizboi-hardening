@@ -1,0 +1,34 @@
+{% extends "portal/base.html" %}
+{% block title %}My Tickets{% endblock %}
+{% block content %}
+<h1 class="mb-4">My Support Tickets</h1>
+
+<div class="btn-group mb-3" role="group">
+    <a href="?status=" class="btn btn-{% if not status_filter %}primary{% else %}outline-primary{% endif %} btn-sm">All</a>
+    <a href="?status=open" class="btn btn-{% if status_filter == 'open' %}primary{% else %}outline-primary{% endif %} btn-sm">Open</a>
+    <a href="?status=closed" class="btn btn-{% if status_filter == 'closed' %}primary{% else %}outline-primary{% endif %} btn-sm">Closed</a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr><th>Number</th><th>Subject</th><th>Priority</th><th>Status</th><th>Created</th></tr>
+            </thead>
+            <tbody>
+                {% for t in tickets %}
+                <tr>
+                    <td><a href="{% url 'portal:ticket_detail' t.ticket_number %}"><strong>{{ t.ticket_number }}</strong></a></td>
+                    <td>{{ t.subject|truncatechars:80 }}</td>
+                    <td>{{ t.priority.name }}</td>
+                    <td>{{ t.status.name }}</td>
+                    <td><span data-utc="{{ t.created_at|date:'c' }}">{{ t.created_at|date:'Y-m-d H:i' }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">No tickets yet. <a href="{% url 'portal:ticket_create' %}">Submit one</a>.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

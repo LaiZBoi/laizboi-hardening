@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.91] - 2026-04-28
+
+### Added — PSA Phase 4: Customer Portal + Email-to-Ticket + Contracts
+Three more substantial pieces. PSA dropdown gains Contracts and Email Ingestion. New top-level `/portal/` is a stripped layout for clients only.
+
+- **Customer Portal** (`portal/` app at `/portal/`) — clients log in, see only their org's tickets where `client_can_view=True`, post replies as public comments, submit new tickets. Internal-only comments and attachments are filtered at queryset time. Per-org opt-in via `ClientPSASettings.portal_enabled`. Stripped layout with no MSP nav.
+- **Email-to-Ticket** (`psa.EmailIngestionConfig`) — IMAP poller. Per-org mailbox config with encrypted password (vault-style). `psa_poll_email` management command (cron every 5 min) fetches UNSEEN messages, threads replies onto existing tickets when subject matches the configured ticket-number regex, otherwise creates new tickets with `source='email'`. Marks each message as Seen.
+- **Contracts** (`psa.Contract`) — per-client agreement (block_hours / retainer / managed_services / per_incident) with hours allowance, hourly rate, overage rate, and a per-priority SLA matrix override. `Contract.for_ticket(ticket)` returns the active contract (status='active', within date range). `TicketTimeEntry.save()` increments `Contract.hours_used_minutes` automatically — only on stop transitions, not while a timer is still running. Hooks into AuditLog for every CRUD.
+
+### Models
+`psa.Contract`, `psa.EmailIngestionConfig`. `TicketComment` gets `author_name` / `author_email` / `source` columns so external (email/portal) replies get attributed even without a User row.
+
+### Tests
++10 in `psa.tests.Phase4FeaturesTests` and `psa.tests.CustomerPortalTests` covering contract activation rules, time-entry → contract hour accounting, email password encryption, portal queryset filtering of staff-only tickets, internal-comment hiding on detail view, portal reply-creation, and portal ticket creation.
+
 ## [3.17.90] - 2026-04-28
 
 ### Added — PSA Phase 3: full-featured push
