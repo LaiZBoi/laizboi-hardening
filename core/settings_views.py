@@ -227,26 +227,16 @@ def settings_features(request):
         settings.inventory_enabled = request.POST.get('inventory_enabled') == 'on'
         settings.scheduling_enabled = request.POST.get('scheduling_enabled') == 'on'
 
-        # PSA toggle: when flipping False → True, cascade-enable all existing
-        # clients so admins don't have to walk every org manually. The
-        # per-surface flags (portal, SMS, etc.) stay OFF — they're the
-        # actually sensitive ones.
-        psa_was = settings.psa_enabled
+        # PSA toggle: when on, every client is auto-enabled UNLESS they have
+        # an active external PSA connection (ConnectWise / Halo / Autotask /
+        # etc.) — that auto-opt-out is handled lazily in
+        # psa.feature_flags.is_psa_enabled_for_client(). No cascade needed.
         settings.psa_enabled = request.POST.get('psa_enabled') == 'on'
-        psa_just_turned_on = settings.psa_enabled and not psa_was
 
         settings.updated_by = request.user
         settings.save()
 
-        if psa_just_turned_on:
-            from psa.feature_flags import enable_psa_for_all_clients
-            touched = enable_psa_for_all_clients()
-            messages.success(
-                request,
-                f'Feature toggles updated. PSA enabled for {touched} client(s).'
-            )
-        else:
-            messages.success(request, 'Feature toggles updated successfully.')
+        messages.success(request, 'Feature toggles updated successfully.')
         return redirect('core:settings_features')
 
     return render(request, 'core/settings_features.html', {

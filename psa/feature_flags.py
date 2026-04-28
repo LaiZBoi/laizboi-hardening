@@ -22,16 +22,70 @@ def is_psa_enabled():
         return False
 
 
+def client_has_external_psa(organization):
+    """
+    True if this organization is already managed by a third-party PSA
+    integration (ConnectWise, Halo, Autotask, etc.) via integrations.PSAConnection.
+
+    The native PSA is intended for clients WITHOUT another PSA — having an
+    active external connection is the natural opt-out signal.
+    """
+    if organization is None:
+        return False
+    try:
+        from integrations.models import PSAConnection
+    except Exception:
+        return False
+    try:
+        return PSAConnection.objects.filter(
+            organization=organization,
+            is_active=True,
+        ).exists()
+    except Exception:
+        return False
+
+
+def get_external_psa_summary(organization):
+    """
+    Return a human-readable summary of the external PSA(s) connected to this
+    org, e.g. "ConnectWise Manage". Used for the client-settings page banner.
+    Empty string if none.
+    """
+    if organization is None:
+        return ''
+    try:
+        from integrations.models import PSAConnection
+    except Exception:
+        return ''
+    try:
+        names = list(
+            PSAConnection.objects
+            .filter(organization=organization, is_active=True)
+            .values_list('provider_type', 'name')
+        )
+    except Exception:
+        return ''
+    if not names:
+        return ''
+    return ', '.join(f'{name or provider} ({provider})' for provider, name in names)
+
+
 def is_psa_enabled_for_client(organization):
     """
-    True if PSA is globally enabled AND not explicitly opted out for this
-    organization.
+    Decide whether the native PSA is active for `organization`.
 
-    UX rule: when the system-wide flag is on, every client is enabled by
-    default. Admins can still opt a specific client OUT via the per-client
-    settings page (`ClientPSASettings.enabled = False`). The per-surface
-    flags (portal_enabled, sms_notifications_enabled, etc.) remain OFF
-    by default — those are the truly sensitive ones.
+    Resolution order (first match wins):
+      1. Global flag off                         → False
+      2. No organization                         → False
+      3. Explicit ClientPSASettings row exists   → return its `enabled` field
+         (admin override — beats everything else)
+      4. Active external PSAConnection exists    → False (auto opt-out;
+         this client is managed by another PSA)
+      5. Otherwise                               → True (cascade default)
+
+    Per-surface flags (portal, SMS, desktop alerts, anonymous form,
+    email-to-ticket, external alert ingest) are independent from this
+    helper and remain OFF by default at the model level.
     """
     if not is_psa_enabled():
         return False
@@ -40,44 +94,17 @@ def is_psa_enabled_for_client(organization):
     try:
         from psa.models import ClientPSASettings
         cps = ClientPSASettings.objects.filter(organization=organization).first()
-        if cps is None:
-            # No explicit row → inherit "enabled" from the global flag.
-            return True
-        return bool(cps.enabled)
     except Exception:
         return False
-
-
-def enable_psa_for_all_clients():
-    """
-    Bulk-enable PSA on every existing ClientPSASettings row, and create a
-    row for any organization that doesn't have one yet.
-
-    Called from the Settings → Features page when the global flag flips
-    False → True so admins don't have to walk every client manually.
-    Per-surface flags (portal, SMS, etc.) are NOT touched — they stay OFF.
-
-    Returns the number of ClientPSASettings rows touched (created + updated).
-    """
-    try:
-        from core.models import Organization
-        from psa.models import ClientPSASettings
-    except Exception:
-        return 0
-
-    touched = 0
-    # Update any existing rows that are explicitly disabled.
-    touched += ClientPSASettings.objects.filter(enabled=False).update(enabled=True)
-
-    # Create rows for orgs that don't have one yet (defence-in-depth — the
-    # lazy default in is_psa_enabled_for_client also covers this).
-    existing_org_ids = set(ClientPSASettings.objects.values_list('organization_id', flat=True))
-    missing = Organization.objects.exclude(id__in=existing_org_ids)
-    for org in missing:
-        ClientPSASettings.objects.create(organization=org, enabled=True)
-        touched += 1
-
-    return touched
+    if cps is not None:
+        # Admin made an explicit choice — respect it absolutely. This is how
+        # an admin force-enables native PSA even for a client that also has
+        # an external PSA connection (rare, but supported).
+        return bool(cps.enabled)
+    # No row → auto. Skip if the client is already on an external PSA.
+    if client_has_external_psa(organization):
+        return False
+    return True
 
 
 def require_psa_enabled(view_func):

@@ -163,9 +163,12 @@ def ticket_create(request):
 @require_psa_enabled
 def client_settings_view(request):
     """
-    Per-client PSA settings page. Superuser/staff can flip per-org toggles
-    here. Always works (so admins can ENABLE PSA per client even when the
-    client doesn't have it enabled yet).
+    Per-client PSA settings page. The native PSA auto-decides per client:
+      * has external PSA connection → auto opt-out (no manual action)
+      * no external PSA            → auto opt-in via the global flag
+
+    This page is the explicit OVERRIDE — admins only need to visit it
+    when the auto-decision is wrong for a particular client.
     """
     if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
         raise Http404()
@@ -175,9 +178,22 @@ def client_settings_view(request):
         messages.error(request, 'Select a client first.')
         return redirect('core:dashboard')
 
-    cps, _ = ClientPSASettings.objects.get_or_create(organization=org)
+    # Don't materialise a row on GET — the absence of a row IS the
+    # "use auto-detection" signal. Materialise only on POST.
+    cps = ClientPSASettings.objects.filter(organization=org).first()
+
+    from psa.feature_flags import (
+        client_has_external_psa,
+        get_external_psa_summary,
+        is_psa_enabled_for_client,
+    )
+    has_external = client_has_external_psa(org)
+    external_summary = get_external_psa_summary(org)
+    effective_enabled = is_psa_enabled_for_client(org)
 
     if request.method == 'POST':
+        if cps is None:
+            cps = ClientPSASettings(organization=org)
         previous = {
             'enabled': cps.enabled,
             'portal_enabled': cps.portal_enabled,
@@ -187,6 +203,28 @@ def client_settings_view(request):
             'desktop_alerts_enabled': cps.desktop_alerts_enabled,
             'external_alert_ingest_enabled': cps.external_alert_ingest_enabled,
         }
+        # Special handling: a "Reset to auto-detect" submission deletes the
+        # explicit row instead of saving any value.
+        if request.POST.get('reset_to_auto') == '1':
+            if cps.pk:
+                cps_pk = cps.pk
+                cps.delete()
+                AuditLog.log(
+                    user=request.user,
+                    action='delete',
+                    organization=org,
+                    object_type='psa.ClientPSASettings',
+                    object_id=cps_pk,
+                    object_repr=f'PSA settings reset to auto-detect for {org}',
+                    description='Reset PSA client settings to auto-detect (row removed)',
+                    ip_address=_client_ip(request),
+                    path=request.path,
+                )
+                messages.success(request, 'PSA settings reset — this client now follows the global auto-detect rule.')
+            else:
+                messages.info(request, 'No explicit settings to reset — auto-detect was already in use.')
+            return redirect('psa:client_settings')
+
         cps.enabled = request.POST.get('enabled') == 'on'
         cps.portal_enabled = request.POST.get('portal_enabled') == 'on'
         cps.anonymous_ticket_form_enabled = request.POST.get('anonymous_ticket_form_enabled') == 'on'
@@ -216,6 +254,10 @@ def client_settings_view(request):
 
     return render(request, 'psa/client_settings.html', {
         'cps': cps,
+        'has_external_psa': has_external,
+        'external_psa_summary': external_summary,
+        'effective_enabled': effective_enabled,
+        'using_auto_detect': cps is None,
         'current_organization': org,
     })
 

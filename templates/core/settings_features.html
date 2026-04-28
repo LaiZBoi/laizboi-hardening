@@ -179,7 +179,7 @@
                                 </label>
                             </div>
                             <div class="form-text ms-5">
-                                Enable the native PSA (tickets, queues, SLA, vault context, etc.). All clients are auto-enabled when this is turned on — you can opt a specific client OUT later via <code>/psa/settings/client/</code>. The sensitive per-surface flags (portal, anonymous form, SMS, desktop alerts, external alert ingest) remain OFF and must be enabled per client deliberately.
+                                Enable the native PSA (tickets, queues, SLA, vault context, etc.). When on, the native PSA is automatically active for every client <strong>except</strong> those that already have an external PSA connection (ConnectWise / Halo / Autotask / etc.) — those clients are auto-opted-out so the native PSA only serves the ones that need it. The sensitive per-surface flags (portal, anonymous form, SMS, desktop alerts, external alert ingest) remain OFF and must be enabled per client deliberately.
                             </div>
                         </div>
                     </div>

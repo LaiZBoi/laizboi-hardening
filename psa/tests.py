@@ -98,8 +98,70 @@ class FeatureFlagDefaultsTests(TestCase):
         ClientPSASettings.objects.create(organization=org, enabled=False)
         self.assertFalse(is_psa_enabled_for_client(org))
 
+    def test_external_psa_auto_opts_out(self):
+        """Clients with an active PSAConnection (ConnectWise / Halo / etc.)
+        should auto-opt-out of native PSA — the whole point of the native
+        PSA is to serve clients WITHOUT another PSA."""
+        from integrations.models import PSAConnection
+        from psa.feature_flags import client_has_external_psa
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+        org = Organization.objects.create(name='ACME', slug='acme')
+        _enable_psa_global()
+        # Sanity: no external PSA → enabled by auto-detect
+        self.assertFalse(client_has_external_psa(org))
+        self.assertTrue(is_psa_enabled_for_client(org))
+
+        # Add an active external PSA connection
+        PSAConnection.objects.create(
+            organization=org,
+            provider_type='connectwise',
+            name='ACME ConnectWise',
+            base_url='https://example.connectwise.com',
+            encrypted_credentials='dummy',
+            is_active=True,
+        )
+        self.assertTrue(client_has_external_psa(org))
+        # Auto-opt-out — no row needed
+        self.assertFalse(is_psa_enabled_for_client(org))
+
+    def test_external_psa_inactive_does_not_opt_out(self):
+        """An is_active=False external PSA connection is NOT a real opt-out
+        signal — it's a disconnected/disabled integration."""
+        from integrations.models import PSAConnection
+        org = Organization.objects.create(name='ACME', slug='acme')
+        _enable_psa_global()
+        PSAConnection.objects.create(
+            organization=org,
+            provider_type='halopsa',
+            name='ACME Halo (disabled)',
+            base_url='https://example.halopsa.com',
+            encrypted_credentials='dummy',
+            is_active=False,
+        )
+        self.assertTrue(is_psa_enabled_for_client(org), 'inactive external PSA must not block native')
+
+    def test_explicit_override_beats_external_psa_detection(self):
+        """If admin explicitly enabled native PSA for an org that ALSO has
+        an external PSA, the explicit choice wins."""
+        from integrations.models import PSAConnection
+        org = Organization.objects.create(name='ACME', slug='acme')
+        _enable_psa_global()
+        PSAConnection.objects.create(
+            organization=org,
+            provider_type='autotask',
+            name='ACME Autotask',
+            base_url='https://example.autotask.net',
+            encrypted_credentials='dummy',
+            is_active=True,
+        )
+        # Without override: auto-opt-out
+        self.assertFalse(is_psa_enabled_for_client(org))
+        # With explicit enable=True override: respected
+        ClientPSASettings.objects.create(organization=org, enabled=True)
+        self.assertTrue(is_psa_enabled_for_client(org))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class RouteGatingTests(TestCase):
     """When PSA is disabled, every PSA route must return 404."""
 
@@ -150,7 +212,7 @@ class RouteGatingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class TicketLifecycleTests(TestCase):
     """Auto-numbering, audit log on create, tenant scoping."""
 
@@ -259,7 +321,7 @@ class SeedDefaultsTests(TestCase):
         self.assertEqual(c1, c2)
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class VaultContextTests(TestCase):
     """The vault-context endpoint must scope passwords to the ticket's
     organization, refuse cross-tenant access, and never leak ciphertext."""
