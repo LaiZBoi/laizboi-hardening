@@ -4,25 +4,27 @@
 {% include "psa/_scope_banner.html" %}
 
 <nav aria-label="breadcrumb">
-    <ol class="breadcrumb">
+    <ol class="breadcrumb mb-2">
         <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
         <li class="breadcrumb-item active">Dispatch Board</li>
     </ol>
 </nav>
 
-<h2 class="mb-3"><i class="fas fa-table-list me-2"></i>Dispatch Board</h2>
-<p class="text-muted">7-day grid of open tickets bucketed by their due date. Overdue tickets appear at the top regardless of date.</p>
+<div class="d-flex justify-content-between align-items-baseline mb-2">
+    <h4 class="mb-0"><i class="fas fa-table-list me-2"></i>Dispatch Board</h4>
+    <small class="text-muted">7-day grid of open tickets, bucketed by due date</small>
+</div>
 
 {% if overdue %}
-<div class="alert alert-danger">
-    <strong><i class="fas fa-exclamation-triangle me-1"></i>Overdue ({{ overdue|length }})</strong>
-    <ul class="mb-0 small">
+<div class="alert alert-danger py-2 px-3 mb-2">
+    <strong class="small"><i class="fas fa-exclamation-triangle me-1"></i>Overdue ({{ overdue|length }})</strong>
+    <ul class="mb-0 mt-1 small" style="font-size:.8rem;">
         {% for t in overdue %}
         <li>
             <a href="{% url 'psa:ticket_detail' t.ticket_number %}"><code>{{ t.ticket_number }}</code></a>
             <span class="badge text-bg-danger">{{ t.priority.code }}</span>
-            {{ t.subject|truncatechars:80 }}
-            {% if t.assigned_to %}<small class="text-muted">— {{ t.assigned_to.username }}</small>{% else %}<small class="text-warning">— unassigned</small>{% endif %}
+            {{ t.subject|truncatechars:60 }}
+            {% if t.assigned_to %}<span class="text-muted">— {{ t.assigned_to.username }}</span>{% else %}<span class="text-warning">— unassigned</span>{% endif %}
         </li>
         {% endfor %}
     </ul>
@@ -30,61 +32,100 @@
 {% endif %}
 
 <div class="table-responsive">
-    <table class="table table-bordered align-top small">
-        <thead class="table-light">
+    <table class="table table-sm table-bordered align-top mb-0 dispatch-grid">
+        <thead>
             <tr>
-                <th style="width:140px;">Tech</th>
+                <th class="dispatch-tech-col">Tech</th>
                 {% for d in days %}
                 <th class="text-center">
-                    {{ d|date:'D' }}<br><small class="text-muted">{{ d|date:'M j' }}</small>
+                    {{ d|date:'D' }} <small class="text-muted">{{ d|date:'M j' }}</small>
                 </th>
                 {% endfor %}
             </tr>
         </thead>
         <tbody>
-            <tr class="table-warning">
-                <td><strong>Unassigned</strong></td>
+            <tr>
+                <td class="dispatch-row-label">
+                    <span class="badge text-bg-warning">Unassigned</span>
+                </td>
                 {% for day_tickets in unassigned_by_day %}
-                <td>
+                <td class="dispatch-cell">
                     {% for t in day_tickets %}
-                    <div class="mb-1">
-                        <a href="{% url 'psa:ticket_detail' t.ticket_number %}">
-                            <span class="badge text-bg-secondary">{{ t.priority.code }}</span>
-                            {{ t.ticket_number }}
-                        </a>
-                        <div class="text-muted">{{ t.subject|truncatechars:50 }}</div>
+                    <div class="dispatch-card">
+                        <span class="badge text-bg-secondary">{{ t.priority.code }}</span>
+                        <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
+                        <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
                     </div>
                     {% empty %}
-                    <span class="text-muted">—</span>
+                    <span class="text-muted">·</span>
                     {% endfor %}
                 </td>
                 {% endfor %}
             </tr>
             {% for row in rows %}
             <tr>
-                <td><strong>{{ row.tech.username }}</strong></td>
+                <td class="dispatch-row-label"><strong>{{ row.tech.username }}</strong></td>
                 {% for cell in row.cells %}
-                <td>
+                <td class="dispatch-cell">
                     {% for t in cell %}
-                    <div class="mb-1">
-                        <a href="{% url 'psa:ticket_detail' t.ticket_number %}">
-                            <span class="badge text-bg-info">{{ t.priority.code }}</span>
-                            {{ t.ticket_number }}
-                        </a>
-                        <div class="text-muted">{{ t.subject|truncatechars:50 }}</div>
+                    <div class="dispatch-card">
+                        <span class="badge text-bg-info">{{ t.priority.code }}</span>
+                        <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
+                        <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
                     </div>
                     {% empty %}
-                    <span class="text-muted">—</span>
+                    <span class="text-muted">·</span>
                     {% endfor %}
                 </td>
                 {% endfor %}
             </tr>
             {% empty %}
             <tr>
-                <td colspan="{{ days|length|add:1 }}" class="text-center text-muted py-3">No assigned open tickets in the next 7 days.</td>
+                <td colspan="{{ days|length|add:1 }}" class="text-center text-muted py-3 small">No assigned open tickets in the next 7 days.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+<style>
+.dispatch-grid {
+    font-size: .8rem;
+    table-layout: fixed;
+}
+.dispatch-grid thead th {
+    font-size: .8rem;
+    padding: .35rem .4rem;
+    background: var(--bs-tertiary-bg);
+    border-color: var(--bs-border-color);
+}
+.dispatch-grid td {
+    padding: .25rem .35rem;
+    vertical-align: top;
+    border-color: var(--bs-border-color);
+}
+.dispatch-tech-col { width: 110px; }
+.dispatch-row-label {
+    background: var(--bs-tertiary-bg);
+    font-size: .8rem;
+}
+.dispatch-cell { min-height: 36px; }
+.dispatch-card {
+    margin-bottom: .25rem;
+    line-height: 1.2;
+    font-size: .75rem;
+}
+.dispatch-card:last-child { margin-bottom: 0; }
+.dispatch-card .badge {
+    font-size: .65rem;
+    padding: .15em .4em;
+}
+.dispatch-card-link { font-family: var(--bs-font-monospace, monospace); }
+.dispatch-card-subject {
+    color: var(--bs-secondary-color);
+    font-size: .7rem;
+    line-height: 1.15;
+    margin-top: .1rem;
+}
+</style>
 {% endblock %}

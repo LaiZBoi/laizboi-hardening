@@ -147,6 +147,20 @@ fi
     && log "Workflow diagrams generated" ) \
     || log "[WARN] Workflow diagram generation failed (non-critical)"
 
+# PSA reference data — queues, statuses, priorities, types, service catalog.
+# Idempotent: skips rows that already exist.
+( "$VENV_DIR/bin/python" "$BASE_DIR/manage.py" psa_seed_defaults 2>&1 \
+    && log "PSA defaults seeded (queues, statuses, priorities, types, catalog)" ) \
+    || log "[WARN] PSA seed_defaults failed (non-critical)"
+
+# PSA sample workflows — installs starter rules (P1 escalation, sales-inquiry
+# follow-up, new-user onboarding, termination security routing, outage keyword
+# detection, unassigned triage, client-reply tagging) into every active org.
+# Idempotent: matches by (organization, rule name); existing rows skipped.
+( "$VENV_DIR/bin/python" "$BASE_DIR/manage.py" psa_seed_sample_workflows 2>&1 \
+    && log "PSA sample workflows installed" ) \
+    || log "[WARN] PSA sample workflows install failed (non-critical)"
+
 # fail2ban sudoers (install if fail2ban present and sudoers not yet configured)
 if command -v fail2ban-client >/dev/null 2>&1; then
     FB_SRC="$BASE_DIR/deploy/clientst0r-fail2ban-sudoers"

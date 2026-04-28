@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.95] - 2026-04-28
+
+### Fixed — Dispatch board dark-mode contrast + size
+- Replaced fixed `table-light` / `table-warning` with theme-aware `var(--bs-tertiary-bg)` so the grid renders correctly in both light and dark modes.
+- Compressed the layout: smaller fonts (.8rem header / .75rem cards / .7rem subject), tighter padding, narrower tech column (110px), `table-layout: fixed`, subjects truncated to 35 chars. The grid is roughly half the visual weight it was.
+- Unassigned row uses a small "Unassigned" badge cell rather than colouring the whole row bright yellow.
+
+### Changed — Update script auto-installs PSA defaults + sample workflows
+The web-UI **Apply update** button (and `python manage.py auto_update` CLI) now run two extra idempotent commands at the end of every update:
+
+- `psa_seed_defaults` — ensures queues, statuses, priorities, types, and the service catalog exist
+- `psa_seed_sample_workflows` — installs the 7 starter rules (P1 escalation, sales-inquiry follow-up, new-user onboarding, termination security routing, outage keyword detection, unassigned triage, client-reply tagging) into every active organization
+
+Both are matched on existing names so re-runs don't duplicate. Failures are logged but non-blocking (don't abort the update).
+
+This is purely a remote-script change — `deploy/update_instructions.sh` is downloaded from `main` on every update, so any installation gets the new behavior on its next Apply with no code change required on the box.
+
 ## [3.17.94] - 2026-04-28
 
 ### Added — PSA Phase 7: SLA matrix UI + Workflow Rules + Dispatch Board
