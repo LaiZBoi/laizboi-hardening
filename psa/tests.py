@@ -453,3 +453,202 @@ class VaultContextTests(TestCase):
         self.assertNotIn('key=', body)
         # Plaintext sentinel must never appear either.
         self.assertNotIn('plaintext-A-do-not-leak', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class Phase2aTicketActionsTests(TestCase):
+    """Phase 2a: comments, internal notes, attachments, quick actions, close."""
+
+    def setUp(self):
+        _enable_psa_global()
+        _setup_seed()
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.user = User.objects.create_user(username='tech1', password='pw', email='tech1@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+        s = self.client.session
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+        from psa.models import Ticket
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Phase 2a tester',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first() or TicketStatus.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+
+    def _url(self, suffix=''):
+        return f'/psa/t/{self.ticket.ticket_number}/{suffix}'
+
+    # ---------- Comments / internal notes ----------
+    def test_post_reply_creates_comment(self):
+        resp = self.client.post(self._url('comment/'), {'body': 'Hello world'})
+        self.assertEqual(resp.status_code, 302)
+        from psa.models import TicketComment
+        c = TicketComment.objects.filter(ticket=self.ticket).first()
+        self.assertIsNotNone(c)
+        self.assertEqual(c.body, 'Hello world')
+        self.assertFalse(c.is_internal)
+        self.assertFalse(c.is_system)
+
+    def test_post_internal_note_marks_is_internal(self):
+        self.client.post(self._url('comment/'), {'body': 'private', 'is_internal': '1'})
+        from psa.models import TicketComment
+        c = TicketComment.objects.filter(ticket=self.ticket, is_internal=True).first()
+        self.assertIsNotNone(c)
+        self.assertTrue(c.is_internal)
+
+    def test_empty_comment_rejected(self):
+        from psa.models import TicketComment
+        before = TicketComment.objects.filter(ticket=self.ticket).count()
+        resp = self.client.post(self._url('comment/'), {'body': '   '})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(TicketComment.objects.filter(ticket=self.ticket).count(), before)
+
+    def test_first_response_at_set_only_on_external_reply(self):
+        # Internal note must NOT set first_response_at
+        self.client.post(self._url('comment/'), {'body': 'internal', 'is_internal': '1'})
+        self.ticket.refresh_from_db()
+        self.assertIsNone(self.ticket.first_response_at)
+        # External reply does
+        self.client.post(self._url('comment/'), {'body': 'external'})
+        self.ticket.refresh_from_db()
+        self.assertIsNotNone(self.ticket.first_response_at)
+
+    # ---------- Attachments ----------
+    def test_attach_uploads_within_size_and_mime(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        f = SimpleUploadedFile('hello.txt', b'hello', content_type='text/plain')
+        resp = self.client.post(self._url('attach/'), {'file': f})
+        self.assertEqual(resp.status_code, 302)
+        from psa.models import TicketAttachment
+        att = TicketAttachment.objects.filter(ticket=self.ticket).first()
+        self.assertIsNotNone(att)
+        self.assertEqual(att.filename, 'hello.txt')
+        self.assertEqual(att.content_type, 'text/plain')
+
+    def test_attach_rejects_disallowed_mime(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from psa.models import TicketAttachment
+        f = SimpleUploadedFile('virus.exe', b'MZ', content_type='application/x-msdownload')
+        resp = self.client.post(self._url('attach/'), {'file': f})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(TicketAttachment.objects.filter(ticket=self.ticket).count(), 0)
+
+    def test_attach_rejects_oversize(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from psa.models import TicketAttachment
+        from psa.views import ATTACHMENT_MAX_BYTES
+        big = b'x' * (ATTACHMENT_MAX_BYTES + 1024)
+        f = SimpleUploadedFile('big.txt', big, content_type='text/plain')
+        resp = self.client.post(self._url('attach/'), {'file': f})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(TicketAttachment.objects.filter(ticket=self.ticket).count(), 0)
+
+    def test_attach_sanitises_filename(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from psa.models import TicketAttachment
+        f = SimpleUploadedFile('../../etc/passwd', b'data', content_type='text/plain')
+        self.client.post(self._url('attach/'), {'file': f})
+        att = TicketAttachment.objects.filter(ticket=self.ticket).first()
+        self.assertIsNotNone(att)
+        # Path separators must not survive in filename
+        self.assertNotIn('/', att.filename)
+        self.assertNotIn('\\', att.filename)
+
+    # ---------- Quick actions ----------
+    def test_assign_me(self):
+        self.client.post(self._url('action/'), {'action': 'assign_me'})
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.assigned_to, self.user)
+        # System comment must be written
+        from psa.models import TicketComment
+        sys = TicketComment.objects.filter(ticket=self.ticket, is_system=True).first()
+        self.assertIsNotNone(sys)
+        self.assertIn('Assigned', sys.body)
+
+    def test_set_status_to_terminal_sets_resolved_at(self):
+        terminal = TicketStatus.objects.filter(is_terminal=True).first()
+        self.client.post(self._url('action/'), {'action': 'set_status', 'status': terminal.id})
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, terminal)
+        self.assertIsNotNone(self.ticket.resolved_at)
+
+    # ---------- Close + Reopen ----------
+    def test_close_requires_resolution_summary(self):
+        from psa.models import Ticket
+        resp = self.client.post(self._url('action/'), {
+            'action': 'close',
+            'closure_category': 'fixed',
+            # no resolution_summary
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertIsNone(self.ticket.closed_at)
+        self.assertEqual(self.ticket.resolution_summary, '')
+
+    def test_close_requires_valid_category(self):
+        resp = self.client.post(self._url('action/'), {
+            'action': 'close',
+            'closure_category': 'bogus',
+            'resolution_summary': 'fix',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertIsNone(self.ticket.closed_at)
+
+    def test_close_with_valid_input_succeeds(self):
+        self.client.post(self._url('action/'), {
+            'action': 'close',
+            'closure_category': 'fixed',
+            'resolution_summary': 'replaced bad capacitor',
+        })
+        self.ticket.refresh_from_db()
+        self.assertIsNotNone(self.ticket.closed_at)
+        self.assertEqual(self.ticket.closure_category, 'fixed')
+        self.assertIn('capacitor', self.ticket.resolution_summary)
+
+    def test_reopen_clears_closed_state(self):
+        # Close first
+        self.client.post(self._url('action/'), {
+            'action': 'close',
+            'closure_category': 'fixed',
+            'resolution_summary': 'done',
+        })
+        self.ticket.refresh_from_db()
+        self.assertIsNotNone(self.ticket.closed_at)
+        # Reopen
+        self.client.post(self._url('action/'), {'action': 'reopen'})
+        self.ticket.refresh_from_db()
+        self.assertIsNone(self.ticket.closed_at)
+        self.assertIsNone(self.ticket.resolved_at)
+        self.assertEqual(self.ticket.closure_category, '')
+        # Status must be non-terminal
+        self.assertFalse(self.ticket.status.is_terminal)
+
+    # ---------- Cross-tenant safety ----------
+    def test_cross_tenant_comment_blocked(self):
+        other_org = Organization.objects.create(name='OtherCo', slug='other')
+        other_user = User.objects.create_user(username='other', password='pw', email='o@x.com')
+        # The accounts post_save signal auto-creates a READONLY Membership
+        # in the first active org (ACME, in this test). For a true
+        # cross-tenant scenario, kill that membership and add only OtherCo.
+        Membership.objects.filter(user=other_user, organization=self.org).delete()
+        Membership.objects.update_or_create(
+            user=other_user, organization=other_org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        c = Client()
+        c.force_login(other_user)
+        s = c.session; s['current_organization_id'] = other_org.id; s.save()
+        from psa.models import TicketComment
+        before = TicketComment.objects.filter(ticket=self.ticket).count()
+        resp = c.post(self._url('comment/'), {'body': 'malicious'})
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(TicketComment.objects.filter(ticket=self.ticket).count(), before)

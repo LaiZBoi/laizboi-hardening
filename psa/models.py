@@ -275,6 +275,19 @@ class Ticket(models.Model):
     vendor_ticket_number = models.CharField(max_length=100, blank=True)
     vendor_contact = models.CharField(max_length=200, blank=True)
 
+    # Closure
+    CLOSURE_CATEGORIES = [
+        ('fixed', 'Fixed'),
+        ('workaround', 'Workaround Provided'),
+        ('duplicate', 'Duplicate'),
+        ('cant_reproduce', "Can't Reproduce"),
+        ('no_action', 'No Action Required'),
+        ('cancelled', 'Cancelled by Requester'),
+        ('other', 'Other'),
+    ]
+    closure_category = models.CharField(max_length=30, choices=CLOSURE_CATEGORIES, blank=True)
+    resolution_summary = models.TextField(blank=True, help_text='Required when closing — what was the fix?')
+
     # Audit columns
     created_by = models.ForeignKey(
         django_settings.AUTH_USER_MODEL,

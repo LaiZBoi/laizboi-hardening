@@ -9,5 +9,8 @@ urlpatterns = [
     path('new/', views.ticket_create, name='ticket_create'),
     path('settings/client/', views.client_settings_view, name='client_settings'),
     path('t/<str:ticket_number>/context/', views.ticket_vault_context, name='ticket_vault_context'),
+    path('t/<str:ticket_number>/comment/', views.ticket_post_comment, name='ticket_post_comment'),
+    path('t/<str:ticket_number>/attach/', views.ticket_attach, name='ticket_attach'),
+    path('t/<str:ticket_number>/action/', views.ticket_quick_action, name='ticket_quick_action'),
     path('t/<str:ticket_number>/', views.ticket_detail, name='ticket_detail'),
 ]
