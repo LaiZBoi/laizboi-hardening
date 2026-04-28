@@ -1,0 +1,56 @@
+name: CodeQL
+
+# Replaces the repo's "Default setup" CodeQL config so we only scan
+# languages that actually build in CI. The clientst0r-android/ directory
+# contains Kotlin sources that need the Android SDK to compile, and
+# there is no first-party C/C++ in the repo — both languages were
+# failing in the default setup.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 4 * * 1'  # weekly Monday 04:00 UTC
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript, actions]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Exclude paths that don't represent first-party code.
+          # Vendored / generated content + the Android module which
+          # needs Android SDK to compile.
+          paths-ignore: |
+            clientst0r-android/**
+            mobile-app/**
+            staticfiles/**
+            **/__pycache__/**
+            **/*.min.js
+            **/*.min.css
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'

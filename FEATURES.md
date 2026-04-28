@@ -461,8 +461,32 @@ A complete in-house ticketing system, separate from the PSA *integrations* below
 
 ### Quotes / Estimates
 - **Auto-numbered** - `Q-YYYY-NNNNN`, draft → sent → accepted/rejected/expired lifecycle
-- **Line items** - Quantity × unit price, tax rate, auto-computed subtotal/tax/total
+- **Line items** - Compact form: quantity × unit price, tax rate, auto-computed subtotal/tax/total, dynamic add/delete rows, live recompute as you type
 - **Convert-to-ticket on accept** - Optionally creates a ticket on the client's organization scoped to the quote
+- **Branded PDF** generation (ReportLab) with org logo header, From/Bill-to blocks, line items, totals, page footer with brand mark
+- **Email to customer** with the PDF attached and the e-sign URL in the body; auto-flips draft → sent
+- **Customer e-signature** at `/portal/quote/<token>/sign/` — no-login canvas signature pad. POST records signer name/email/title, IP, user-agent, base64 PNG, and auto-accepts the quote (creating the converted ticket)
+
+### Invoices & Payments
+- **Auto-numbered** - `INV-YYYY-NNNNN`, draft → sent → partial → paid → overdue → void
+- **Compact form matching quotes** - Same density, dynamic line-item editor with live recompute, default tax rate + currency from `SystemSetting.psa_default_tax_rate` / `psa_default_currency`
+- **Generate from ticket** — one button rolls a ticket's billable time entries (priced at active contract rate) + expenses into a draft invoice
+- **Generate from charges** — bundle all uninvoiced charges + credits for a client into a single invoice
+- **Payments** - Per-invoice with method (ACH/check/credit_card/wire/cash), reference, notes; auto-recomputes invoice `amount_paid` + status on save
+- **Branded PDF** + email-to-customer modal
+- **Push to accounting** - One-click push to QuickBooks Online or Xero (see Accounting Integrations)
+
+### Client Account & Billing
+- **Per-client account view** at `/psa/clients/<id>/account/` — net balance, outstanding (open invoices), available credits, uninvoiced charges, **0–30 / 31–60 / 61–90 / 90+ aging buckets**, recent invoices, payment history, and unbilled time + expenses ready to invoice
+- **Charges** (`psa.Charge`) — direct line entries against a client account, independent of invoices. Supports one-time vs recurring (monthly/quarterly/yearly), `is_credit` (subtracts from balance), inline add form on the account view
+- **Aging report** at `/psa/aging/` — cross-client outstanding balances bucketed by age past due_date with column totals
+- **`psa.models.get_psa_balance(client_org)`** is the public helper that returns the same dict the views render
+
+### Accounting Integrations (QuickBooks Online + Xero)
+- **OAuth2 connections** (`integrations.AccountingConnection`) with encrypted client_id + client_secret + refresh_token + tenant/realm IDs in a single AES-encrypted JSON blob
+- **QuickBooks Online provider** - Full OAuth2 with refresh-rotation; customer-by-name lookup with auto-create fallback (mapping cached on the connection); invoice push via `/v3/company/<realm>/invoice`; payment push via `/payment` with LinkedTxn
+- **Xero provider** - OAuth2 with `offline_access`; tenant_id discovery via `/connections`; contact upsert; invoice push to `/api.xro/2.0/Invoices`; payment push to `/Payments`
+- **Six other providers reserved** - FreshBooks, Wave, Zoho Books, Sage Business Cloud, etc. — provider types ready for future adapters
 
 ### Customer Portal
 - **Stripped client-facing site** at `/portal/` — clients log in and see only their org's tickets where `client_can_view=True`

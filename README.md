@@ -120,6 +120,11 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 ![Install App Page](docs/screenshots/install-app.png)
 ![PWA Phone Shortcut](docs/screenshots/pwa-shortcut.png)
 
+### 🎫 Native PSA / Service Desk *(v3.17 — 11 phases)*
+*Screenshots pending — see [SCREENSHOT_CHECKLIST.md](docs/SCREENSHOT_CHECKLIST.md) for what to capture.*
+
+A complete in-house ticketing system. Tickets, queues, statuses, priorities, SLA targets with per-contract overrides, time tracking, service catalog with structured fields, watchers, canned replies, @mentions, similar-tickets detection, ticket merge, projects with tasks/milestones, recurring tickets, KB linking, approvals, contracts (block-hours / retainer / managed-services with auto-tracked usage), quotes & estimates with line items and **e-signature for customers**, per-ticket expenses, invoices (auto-numbered with branded PDF + email + accounting push), payments, **client account view with aging report**, charges (one-time + recurring), workflow rules engine, dispatch board, customer portal, IMAP email-to-ticket, distributor catalog/pricing/orders (Ingram Micro, Pax8, TD Synnex), QuickBooks Online + Xero accounting integrations, AI-assisted reply/action suggestions with strict guardrails.
+
 </td>
 </tr>
 </table>
@@ -153,6 +158,30 @@ Client St0r is commonly evaluated as an **open-source IT Glue alternative** and 
 
 ### Workflows & Processes
 - [Workflows](docs/screenshots/workflows.png) - Process automation and tracking
+
+### Native PSA / Service Desk
+*Screenshot files not yet captured — see [SCREENSHOT_CHECKLIST.md](docs/SCREENSHOT_CHECKLIST.md). Pages live and ready for capture:*
+- `psa-tickets.png` — Ticket list with priority pills and SLA chips (`/psa/`)
+- `psa-ticket-detail.png` — Ticket detail with vault context, time tracker, expenses, AI Assist, similar tickets
+- `psa-new-ticket.png` — New-ticket form with client picker and structured catalog fields (`/psa/new/`)
+- `psa-service-catalog.png` — Service catalog grid (`/psa/catalog/`)
+- `psa-projects.png` / `psa-project-detail.png` — Projects + tasks/milestones (`/psa/projects/`)
+- `psa-recurring.png` — Recurring tickets / preventive maintenance (`/psa/recurring/`)
+- `psa-kb.png` — Knowledge Base browser (`/psa/kb/`)
+- `psa-approvals.png` — Generic manager-approval queue (`/psa/approvals/`)
+- `psa-contracts.png` / `psa-contract-form.png` — Contracts list and per-priority SLA matrix editor (`/psa/contracts/`)
+- `psa-quotes.png` / `psa-quote-detail.png` — Quotes list + e-sign URL button + quote detail with PDF/Email
+- `psa-quote-sign.png` — Customer-facing quote signature canvas (`/portal/quote/<token>/sign/`)
+- `psa-invoices.png` / `psa-invoice-detail.png` — Invoices list and detail with payments + accounting push
+- `psa-pdf-quote.png` / `psa-pdf-invoice.png` — Branded ReportLab PDFs with logo header
+- `psa-client-account.png` — Per-client balance, aging buckets, charges, payments, unbilled time/expenses
+- `psa-aging.png` — Cross-client aging report (`/psa/aging/`)
+- `psa-dispatch.png` — Weekly dispatch board (`/psa/dispatch/`)
+- `psa-workflow-rules.png` / `psa-workflow-rule-form.png` — Workflow rules with JSON DSL
+- `psa-email-config.png` — IMAP email-to-ticket configuration (`/psa/email-configs/`)
+- `psa-portal.png` / `psa-portal-detail.png` — Customer portal ticket list + detail (`/portal/`)
+- `psa-ai-inbox.png` — AI Suggested Replies + Actions inbox (`/psa/ai/`)
+- `integrations-distributors.png` / `integrations-accounting.png` — Distributor + accounting (QBO/Xero) connection management
 
 ### Monitoring & Expirations
 - [Website Monitors](docs/screenshots/website-monitors.png) - Uptime monitoring dashboard

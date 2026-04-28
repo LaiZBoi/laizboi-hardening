@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.102] - 2026-04-28
+
+### Docs
+- **README.md** gets a Native PSA / Service Desk blurb in the screenshot grid and a new section listing every PSA page that's ready to screenshot (~39 PNGs).
+- **FEATURES.md** updated through Phase 10: quote PDF + email + e-sign, invoices/payments + branded PDF + accounting push, client account + aging + charges, accounting integrations (QuickBooks Online + Xero with OAuth2).
+- **docs/SCREENSHOT_CHECKLIST.md** rewritten for v3.17.x (was at v3.10.7). Lists 39 pending PSA screenshots organized by phase + 32 existing flagged for re-capture.
+
+### Fixed
+- **CodeQL workflow** — replaced GitHub's "Default setup" (which auto-detected Java/Kotlin and C/C++ but had nothing to build for either) with an explicit `.github/workflows/codeql.yml` scanning only `python`, `javascript-typescript`, and `actions`. The Android (`clientst0r-android/`) and `mobile-app/` paths are excluded since they need an Android SDK to compile in CI.
+- **Heads up:** GitHub usually disables the Default-setup CodeQL automatically once an explicit workflow lands. If both still trigger, switch to "Advanced setup" in repo Settings → Code security.
+
 ## [3.17.101] - 2026-04-28
 
 ### Added — Phase 10: Client account, Charges, Aging report

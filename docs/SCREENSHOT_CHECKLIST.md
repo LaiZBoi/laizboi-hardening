@@ -1,6 +1,62 @@
-# Client St0r Screenshot Checklist - v3.10.7
+# Client St0r Screenshot Checklist - v3.17.x
 
-## 🆕 New Features (PRIORITY - Missing Screenshots)
+## 🎫 Native PSA / Service Desk (PRIORITY — none captured yet)
+
+The PSA module shipped across 11 phases (v3.17.83 → v3.17.101). Every page below is live and ready to capture.
+
+### Tickets & service desk
+- [ ] `psa-tickets.png` — `/psa/` ticket list with priority pills, SLA chips, client column
+- [ ] `psa-ticket-detail.png` — `/psa/t/<num>/` full detail: vault context, time tracker, expenses, AI Assist, similar-tickets
+- [ ] `psa-new-ticket.png` — `/psa/new/` new-ticket form with client picker
+- [ ] `psa-service-catalog.png` — `/psa/catalog/` service catalog grid
+- [ ] `psa-catalog-form.png` — `/psa/catalog/<id>/edit/` catalog item editor with structured `fields_json`
+
+### Phase 3 — Projects, Recurring, KB, Approvals
+- [ ] `psa-projects.png` — `/psa/projects/` project list
+- [ ] `psa-project-detail.png` — `/psa/projects/<id>/` with task/milestone editor
+- [ ] `psa-recurring.png` — `/psa/recurring/` schedules
+- [ ] `psa-kb.png` — `/psa/kb/` knowledge base browser
+- [ ] `psa-approvals.png` — `/psa/approvals/` queue
+
+### Phase 4 — Customer portal, Email-to-ticket, Contracts
+- [ ] `psa-portal.png` — `/portal/` customer ticket list (logged in as a portal-only user)
+- [ ] `psa-portal-detail.png` — `/portal/t/<num>/` customer ticket detail
+- [ ] `psa-portal-new.png` — `/portal/new/` customer ticket submission
+- [ ] `psa-email-config.png` — `/psa/email-configs/` IMAP mailbox list
+- [ ] `psa-contracts.png` — `/psa/contracts/` contract list with hours-used bars
+- [ ] `psa-contract-form.png` — `/psa/contracts/<id>/edit/` per-priority SLA matrix editor
+
+### Phase 5 — Quotes & Invoices
+- [ ] `psa-quotes.png` — `/psa/quotes/` quote list with status pills, sign URL button
+- [ ] `psa-quote-detail.png` — `/psa/quotes/<id>/` detail with PDF/Email/sign-URL buttons
+- [ ] `psa-quote-form.png` — `/psa/quotes/<id>/edit/` compact line-item editor
+- [ ] `psa-quote-sign.png` — `/portal/quote/<token>/sign/` customer signature canvas
+- [ ] `psa-pdf-quote.png` — branded ReportLab quote PDF with logo header
+- [ ] `psa-invoices.png` — `/psa/invoices/` invoice list
+- [ ] `psa-invoice-detail.png` — `/psa/invoices/<id>/` with payments, balance, accounting push
+- [ ] `psa-invoice-form.png` — `/psa/invoices/<id>/edit/` compact form (matches quote form)
+- [ ] `psa-pdf-invoice.png` — branded ReportLab invoice PDF
+
+### Phase 7 — Workflow Rules + Dispatch Board
+- [ ] `psa-workflow-rules.png` — `/psa/rules/` rule list
+- [ ] `psa-workflow-rule-form.png` — `/psa/rules/<id>/edit/` with conditions + actions JSON
+- [ ] `psa-dispatch.png` — `/psa/dispatch/` 7-day grid + Other column
+
+### Phase 10 — Client account, Charges, Aging
+- [ ] `psa-client-account.png` — `/psa/clients/<id>/account/` net balance, aging, invoices, payments, charges
+- [ ] `psa-aging.png` — `/psa/aging/` cross-client aging report
+
+### Workstream 8 — Distributors
+- [ ] `integrations-distributors.png` — `/integrations/distributors/` connection list
+- [ ] `psa-distributor-form.png` — Ingram / Pax8 / Synnex setup form
+
+### Accounting integrations
+- [ ] `integrations-accounting.png` — `/integrations/accounting/` QBO + Xero connections
+
+### AI Assist (Workstream 10)
+- [ ] `psa-ai-inbox.png` — `/psa/ai/` AI suggested replies + actions inbox
+
+## 🆕 Existing screenshots — verify (most last shot at v3.10.7)
 
 ### Service Vehicles (v3.9+)
 - [x] `vehicles-dashboard.png` - Dashboard with fleet statistics (total, active, maintenance, mileage cards)
