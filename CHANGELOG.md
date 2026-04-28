@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.104] - 2026-04-28
+
+### Docs — Re-captured PSA screenshots in clean light theme
+The 28 v3.17.103 screenshots were captured under the admin user's dark theme + random background, which made them ~10× larger than the existing screenshots and visually inconsistent. Regenerated all 28 with admin temporarily set to `theme=default` and `background_mode=none`, then restored. Also dismissed the PWA install banner and set `global_view_mode=True` so the yellow "pick a client" bar isn't visible. File sizes dropped from 1–1.8 MB down to 70–250 KB (matching `dashboard.png`/`assets-list.png` scale). Layout now matches the rest of the README screenshot grid.
+
+The `psa-kb.png` capture is still pending — its 500-page bug fix from v3.17.103 will deploy once you Apply that update; I'll re-shoot then.
+
 ## [3.17.103] - 2026-04-28
 
 ### Docs — 28 PSA screenshots captured
