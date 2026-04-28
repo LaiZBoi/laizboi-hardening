@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.89] - 2026-04-28
+
+### Added — Distributors: Pax8 + TD Synnex adapters
+- **Pax8** provider (`pax8`) — OAuth2 client-credentials, `/v1/products` catalog, product detail pricing (price bands), `/v1/orders` placement, HMAC-SHA256 webhook verification on `X-Pax8-Signature`. SaaS-distributor-shaped: catalogs are unlimited unless deactivated.
+- **TD Synnex** provider (`synnex`) — OAuth2 to `/apis/v2/oauth/token`, price-availability lookup, order placement, HMAC-SHA256 webhook verification on `X-TDS-Signature`.
+- Distributors card surfaced on the main Integrations page so admins discover the feature without typing the URL.
+
 ## [3.17.88] - 2026-04-28
 
 ### Added — PSA Phase 2c remainder

@@ -132,6 +132,67 @@ class IngramAdapterTests(TestCase):
         self.assertEqual(result['parsed'], {})
 
 
+class Pax8AdapterTests(TestCase):
+    def setUp(self):
+        self.org = Organization.objects.create(name='Acme MSP P8')
+        self.conn = DistributorConnection.objects.create(
+            organization=self.org, provider_type='pax8',
+            name='Pax8', base_url='',
+        )
+        self.conn.set_credentials({'client_id': 'cid', 'client_secret': 'csec'})
+        self.conn.set_webhook_secret('px-secret')
+        self.conn.save()
+
+    def test_provider_resolves_and_uses_default_url(self):
+        from .providers.distributors import get_distributor_provider
+        p = get_distributor_provider(self.conn)
+        self.assertIsNotNone(p)
+        self.assertEqual(p.provider_name, 'Pax8')
+        self.assertIn('pax8.com', p.base_url)
+
+    def test_pax8_webhook_valid_signature(self):
+        from .providers.distributors import get_distributor_provider
+        p = get_distributor_provider(self.conn)
+        body = json.dumps({'eventType': 'subscription.created'}).encode()
+        sig = hmac.new(b'px-secret', body, hashlib.sha256).hexdigest()
+        result = p.handle_webhook(
+            headers={'X-Pax8-Signature': sig}, raw_body=body
+        )
+        self.assertTrue(result['signature_valid'])
+        self.assertEqual(result['event_type'], 'subscription.created')
+
+
+class TDSynnexAdapterTests(TestCase):
+    def setUp(self):
+        self.org = Organization.objects.create(name='Acme MSP TDS')
+        self.conn = DistributorConnection.objects.create(
+            organization=self.org, provider_type='synnex',
+            name='TD Synnex', base_url='',
+        )
+        self.conn.set_credentials({'client_id': 'cid', 'client_secret': 'csec',
+                                   'customer_number': 'CN1'})
+        self.conn.set_webhook_secret('tds-secret')
+        self.conn.save()
+
+    def test_provider_resolves_and_uses_default_url(self):
+        from .providers.distributors import get_distributor_provider
+        p = get_distributor_provider(self.conn)
+        self.assertIsNotNone(p)
+        self.assertEqual(p.provider_name, 'TD Synnex')
+        self.assertIn('tdsynnex.com', p.base_url)
+
+    def test_synnex_webhook_valid_signature(self):
+        from .providers.distributors import get_distributor_provider
+        p = get_distributor_provider(self.conn)
+        body = json.dumps({'eventType': 'order.shipped'}).encode()
+        sig = hmac.new(b'tds-secret', body, hashlib.sha256).hexdigest()
+        result = p.handle_webhook(
+            headers={'X-TDS-Signature': sig}, raw_body=body
+        )
+        self.assertTrue(result['signature_valid'])
+        self.assertEqual(result['event_type'], 'order.shipped')
+
+
 @override_settings(SECURE_SSL_REDIRECT=False)
 class DistributorWebhookEndpointTests(TestCase):
     def setUp(self):

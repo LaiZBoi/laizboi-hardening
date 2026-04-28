@@ -270,6 +270,26 @@
 </div>
 {% endif %}
 
+{% url 'integrations:distributor_list' as distributor_list_url %}
+{% if distributor_list_url %}
+<!-- Distributors Section (Workstream 8) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-truck"></i> Distributors</h5>
+        <a href="{% url 'integrations:distributor_list' %}" class="btn btn-sm btn-primary">
+            <i class="fas fa-cog"></i> Manage Distributors
+        </a>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-2">Vendor catalog, pricing, stock, and order placement. Currently supported: <strong>Ingram Micro Xvantage</strong>. Reserved provider types: TD Synnex, D&amp;H, ScanSource, Pax8, QBS, Westcoast.</p>
+        <a href="{% url 'integrations:distributor_create' %}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-plus"></i> Add Distributor
+        </a>
+        <a href="{% url 'integrations:distributor_list' %}" class="btn btn-outline-secondary btn-sm">View All</a>
+    </div>
+</div>
+{% endif %}
+
 <!-- Grandstream Integrations Section -->
 {% if grandstream_create_url %}
 <div class="card mb-4">
