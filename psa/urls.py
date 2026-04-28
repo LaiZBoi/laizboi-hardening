@@ -37,6 +37,9 @@ urlpatterns = [
     path('projects/new/', views.project_form, name='project_create'),
     path('projects/<int:pk>/', views.project_detail, name='project_detail'),
     path('projects/<int:pk>/edit/', views.project_form, name='project_edit'),
+    path('projects/<int:pk>/task/add/', views.project_task_add, name='project_task_add'),
+    path('project-task/<int:task_pk>/update/', views.project_task_update, name='project_task_update'),
+    path('project-task/<int:task_pk>/delete/', views.project_task_delete, name='project_task_delete'),
     # Recurring tickets (preventive maintenance)
     path('recurring/', views.recurring_list, name='recurring_list'),
     path('recurring/new/', views.recurring_form, name='recurring_create'),

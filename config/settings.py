@@ -393,7 +393,9 @@ PERMISSIONS_POLICY = {
 # Django Axes (brute force protection)
 AXES_FAILURE_LIMIT = int(os.getenv('AXES_FAILURE_LIMIT', '5'))
 AXES_COOLOFF_TIME = int(os.getenv('AXES_COOLOFF_TIME', '1'))  # hours
-AXES_LOCK_OUT_BY_COMBINATION_USER_AND_IP = True
+# Replaces deprecated AXES_LOCK_OUT_BY_COMBINATION_USER_AND_IP — same behavior
+# (lock out on the username+IP pair).
+AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]
 AXES_RESET_ON_SUCCESS = True
 AXES_LOCKOUT_URL = '/accounts/locked/'
 

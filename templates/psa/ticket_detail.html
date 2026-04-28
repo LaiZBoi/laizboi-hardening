@@ -105,6 +105,27 @@
 </div>
 {% endif %}
 
+{# Active contract banner — surfaces hours used + remaining for this client #}
+{% if contract %}
+<div class="alert alert-light border-success mb-3">
+    <strong><i class="fas fa-file-contract me-1"></i>Active contract: {{ contract.name }}</strong>
+    <small class="text-muted ms-2">{{ contract.get_contract_type_display }}</small>
+    <div class="small mt-1">
+        Hours used: <strong>{{ contract.hours_used }}</strong>
+        {% if contract.total_hours %}
+            / {{ contract.total_hours }}
+            {% if contract.hours_remaining is not None %}
+                ({{ contract.hours_remaining }} remaining)
+                {% if contract.hours_remaining == 0 %}<span class="badge text-bg-warning ms-1">Depleted — overage rate applies</span>{% endif %}
+            {% endif %}
+        {% else %}
+            <small class="text-muted">(unlimited)</small>
+        {% endif %}
+        · Period: {{ contract.start_date }} → {{ contract.end_date|default:'open' }}
+    </div>
+</div>
+{% endif %}
+
 {# Similar / recurring tickets — flagged when token-overlap or same-asset hits exist #}
 {% if similar_tickets %}
 <div class="alert alert-light border-info mb-3">
@@ -377,6 +398,75 @@
                 {% endfor %}
             </ul>
             {% endif %}
+        </div>
+
+        {# Expenses (Phase 5) #}
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="fas fa-receipt me-1"></i>Expenses</strong>
+                {% if total_expense_billable %}
+                <span class="text-muted small">${{ total_expense_billable|floatformat:2 }} billable</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if not is_closed %}
+                <form method="post" action="{% url 'psa:ticket_expense_add' ticket.ticket_number %}"
+                      enctype="multipart/form-data" class="row g-2 small mb-2">
+                    {% csrf_token %}
+                    <div class="col-12">
+                        <input type="text" name="description" class="form-control form-control-sm" required placeholder="What was bought / consumed">
+                    </div>
+                    <div class="col-4">
+                        <input type="number" step="0.01" name="amount" class="form-control form-control-sm" required placeholder="Amount">
+                    </div>
+                    <div class="col-3">
+                        <input type="text" name="currency" class="form-control form-control-sm" value="USD" maxlength="8">
+                    </div>
+                    <div class="col-5">
+                        <select name="category" class="form-select form-select-sm">
+                            {% for code, label in expense_categories %}
+                            <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <input type="date" name="incurred_on" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-3 form-check ms-2">
+                        <input type="checkbox" id="expense_billable" name="is_billable" class="form-check-input" checked>
+                        <label class="form-check-label small" for="expense_billable">Billable</label>
+                    </div>
+                    <div class="col-3 form-check">
+                        <input type="checkbox" id="expense_reimbursable" name="is_reimbursable" class="form-check-input" checked>
+                        <label class="form-check-label small" for="expense_reimbursable">Reimbursable</label>
+                    </div>
+                    <div class="col-12">
+                        <input type="file" name="receipt_file" class="form-control form-control-sm" accept="image/*,application/pdf">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Add expense</button>
+                    </div>
+                </form>
+                {% endif %}
+                {% if expenses %}
+                <ul class="list-group list-group-flush small">
+                    {% for e in expenses %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>
+                            <strong>{{ e.amount }} {{ e.currency }}</strong>
+                            <span class="badge text-bg-secondary ms-1">{{ e.get_category_display }}</span>
+                            {% if e.is_billable %}<span class="badge text-bg-success ms-1">billable</span>{% endif %}
+                            <small class="text-muted ms-1">{{ e.user.username|default:"—" }} · {{ e.incurred_on }}</small>
+                            <div class="text-muted small">{{ e.description }}</div>
+                            {% if e.receipt_file %}<a href="{{ e.receipt_file.url }}" class="small">receipt</a>{% endif %}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted small mb-0">No expenses logged.</p>
+                {% endif %}
+            </div>
         </div>
 
         {# AI Assist (Phase 10a + 10b — generate + apply with guardrails) #}

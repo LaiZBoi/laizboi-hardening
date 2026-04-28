@@ -240,6 +240,10 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 - **Service Vehicles** - Fleet management with mileage tracking, maintenance schedules, fuel logs, damage reports with interactive diagrams, vehicle inventory, GPS location, insurance tracking, AI-powered receipt scanning with expense category totals
 - **OS Package Scanner** - System package vulnerability scanning (apt/yum/dnf), automated security update detection, scheduled scans
 - **Monitoring** - Website uptime, SSL certificates, domain expiration, custom alerts, WAN monitoring
+- **Native PSA / Service Desk** - Full-featured ticketing system: tickets, queues, SLAs, time tracking, service catalog, watchers, canned replies, projects with tasks/milestones, recurring tickets, KB linking, approvals, contracts (block-hours / retainer / managed services with auto-tracked hours), quotes/estimates with line items and convert-to-ticket on accept, per-ticket expenses, and AI-assisted reply/action suggestions with strict guardrails
+- **Customer Portal** - Stripped client-facing portal at `/portal/` for ticket submission and reply; per-org opt-in via `ClientPSASettings.portal_enabled`
+- **Email-to-Ticket** - IMAP poller (`psa_poll_email`) creates tickets from inbound email and threads replies onto existing tickets when subject contains a ticket number
+- **Distributor Integrations** - Ingram Micro Xvantage, Pax8, TD Synnex (catalog / pricing / stock / order placement / HMAC-signed webhooks); reserved provider types for D&H, ScanSource, QBS, Westcoast
 - **Workflows** - Process automation with audit logging, PSA integration, execution tracking
 - **Scheduling** - Staff scheduling with calendar view, shift management, and coverage tracking
 - **Inventory Module** - Standalone inventory management with barcode scanning, stock levels, and reorder alerts
@@ -270,6 +274,7 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 **🎉 New in v3.17:**
 
+- **🎫 Native PSA / Service Desk** - Full-featured ticketing system across **6 phases** (v3.17.83 → v3.17.93): tickets / queues / SLA engine / time tracking / service catalog with structured fields / watchers / canned replies / @mentions / similar-tickets / merge / projects with tasks & milestones / recurring tickets / KB linking / approvals / contracts (block-hours, retainer, managed-services with auto-tracked hours and per-priority SLA matrix) / quotes & estimates with line items and convert-to-ticket on accept / per-ticket expenses / customer portal at `/portal/` / IMAP email-to-ticket / distributor integrations (Ingram Micro, Pax8, TD Synnex) with HMAC-signed webhooks / AI-assisted reply & action suggestions with strict guardrails and granular role-based permissions
 - **🧾 Vehicle Receipt Scanning with AI OCR** - Photograph receipts directly from your phone; Claude vision API automatically extracts vendor, date, amount, tax, expense category, and odometer reading; receipts tab on vehicle detail shows per-category cost summary cards (Fuel, Maintenance, Repair, Total); duplicate prevention via SHA-256 image hashing
 - **📱 Install App / Add to Home Screen** - Dedicated install page (`/core/install/`) with QR code of your server URL, downloadable QR PNG, one-tap PWA install button (Android/desktop), and step-by-step instructions for Android Chrome, iPhone/iPad Safari, and desktop; per-vehicle receipt shortcuts also available
 - **🔒 Automated Security Scan Alerts** - Opt-in daily scheduled security scan emails all superusers when vulnerabilities are found; toggle on/off from Security Dashboard

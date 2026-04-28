@@ -41,6 +41,52 @@
         {% endif %}
     </div>
     <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Tasks &amp; milestones</strong></div>
+            <div class="card-body">
+                <form method="post" action="{% url 'psa:project_task_add' item.pk %}" class="row g-2 small mb-3">
+                    {% csrf_token %}
+                    <div class="col-md-6"><input type="text" name="title" class="form-control form-control-sm" required placeholder="Task title"></div>
+                    <div class="col-md-3"><input type="date" name="due_date" class="form-control form-control-sm"></div>
+                    <div class="col-md-2 form-check ms-2 mt-2">
+                        <input type="checkbox" id="is_milestone" name="is_milestone" class="form-check-input">
+                        <label class="form-check-label small" for="is_milestone">Milestone</label>
+                    </div>
+                    <div class="col-md-1"><button type="submit" class="btn btn-sm btn-primary w-100">Add</button></div>
+                </form>
+                {% if tasks %}
+                <ul class="list-group list-group-flush">
+                    {% for t in tasks %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            {% if t.is_milestone %}<i class="fas fa-flag text-warning me-1" title="Milestone"></i>{% endif %}
+                            {% if t.status == 'done' %}<s class="text-muted">{{ t.title }}</s>
+                            {% else %}<strong>{{ t.title }}</strong>{% endif %}
+                            {% if t.due_date %}<small class="text-muted ms-1">due {{ t.due_date }}</small>{% endif %}
+                            {% if t.assigned_to %}<small class="text-muted ms-1">— {{ t.assigned_to.username }}</small>{% endif %}
+                        </span>
+                        <span class="d-flex gap-1">
+                            <form method="post" action="{% url 'psa:project_task_update' t.pk %}" class="d-inline">
+                                {% csrf_token %}
+                                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()" style="width:auto;">
+                                    {% for code, label in task_status_choices %}
+                                    <option value="{{ code }}" {% if t.status == code %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </form>
+                            <form method="post" action="{% url 'psa:project_task_delete' t.pk %}" class="d-inline">
+                                {% csrf_token %}
+                                <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete task?')"><i class="fas fa-times"></i></button>
+                            </form>
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted small mb-0">No tasks yet — add one above.</p>
+                {% endif %}
+            </div>
+        </div>
         <div class="card">
             <div class="card-header d-flex justify-content-between">
                 <strong>Tickets in this project</strong>

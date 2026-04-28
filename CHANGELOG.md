@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.93] - 2026-04-28
+
+### Added — PSA Phase 6: project tasks + ticket-detail polish
+- **Project tasks** (`psa.ProjectTask`) — task/milestone breakdown under any Project, with status (todo / in_progress / blocked / done / cancelled), assignee, due date, milestone flag, and parent-task hierarchy. Inline add + status-update + delete on the project detail page.
+- **Ticket detail surfaces:**
+  - **Active contract banner** showing client name, contract type, hours used / total / remaining, and a warning chip when allowance is depleted.
+  - **Expenses card** (per-ticket reimbursable / billable expenses) with inline add form (amount, currency, category, billable + reimbursable flags, optional receipt upload), running list, and a footer total of billable amounts.
+
+### Fixed
+- `psa.tests.ServiceCatalogTests.test_create_from_catalog_prefills` was asserting against the old subject-input behavior. Updated to check that the catalog item's `fields_json` labels render (the new structured-fields path that's been live since v3.17.87).
+- Replaced deprecated `AXES_LOCK_OUT_BY_COMBINATION_USER_AND_IP` with `AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]` (same behavior, no startup warning).
+
 ## [3.17.92] - 2026-04-28
 
 ### Added — PSA Phase 5: Quotes / Estimates + Expenses

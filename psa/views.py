@@ -190,6 +190,13 @@ def ticket_detail(request, ticket_number):
     from psa.sla import find_similar_tickets
     similar = find_similar_tickets(ticket)
 
+    # Phase 4 — surface the active client contract on the ticket
+    contract = Contract.for_ticket(ticket)
+
+    # Phase 5 — list expenses on the ticket (most recent first)
+    expenses = list(ticket.expenses.select_related('user').order_by('-incurred_on')[:30])
+    total_expense = sum(float(e.amount) for e in expenses if e.is_billable)
+
     # Canned replies visible for this ticket: global ones + ones scoped to the
     # ticket's client. Pre-render each so the template can drop the result
     # into the textarea on click without a round-trip.
@@ -249,6 +256,10 @@ def ticket_detail(request, ticket_number):
         'total_minutes': total_minutes,
         'billable_minutes': billable_minutes,
         'similar_tickets': similar,
+        'contract': contract,
+        'expenses': expenses,
+        'total_expense_billable': total_expense,
+        'expense_categories': TicketExpense.CATEGORY_CHOICES,
     })
 
 
@@ -1509,9 +1520,13 @@ def project_detail(request, pk):
         qs = qs.filter(organization=org)
     item = get_object_or_404(qs, pk=pk)
     tickets = item.tickets.select_related('status', 'priority').order_by('-created_at')[:100]
+    tasks = item.tasks.select_related('assigned_to').order_by('sort_order', 'created_at')
+    from .models import ProjectTask
     return render(request, 'psa/project_detail.html', {
         'item': item,
         'tickets': tickets,
+        'tasks': tasks,
+        'task_status_choices': ProjectTask.STATUS_CHOICES,
     })
 
 
@@ -2068,3 +2083,76 @@ def ticket_expense_add(request, ticket_number):
     )
     messages.success(request, f'Expense added: {amount:.2f} {expense.currency}.')
     return redirect('psa:ticket_detail', ticket_number=ticket_number)
+
+
+# ---------------------------------------------------------------------------
+# Project tasks (Workstream 3 expansion)
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def project_task_add(request, pk):
+    org = get_request_organization(request)
+    qs = Project.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    project = get_object_or_404(qs, pk=pk)
+
+    title = (request.POST.get('title') or '').strip()
+    if not title:
+        messages.error(request, 'Task title is required.')
+        return redirect('psa:project_detail', pk=project.pk)
+
+    from .models import ProjectTask
+    ProjectTask.objects.create(
+        project=project,
+        title=title[:300],
+        description=(request.POST.get('description') or '').strip()[:5000],
+        is_milestone=request.POST.get('is_milestone') == 'on',
+        due_date=request.POST.get('due_date') or None,
+        created_by=request.user,
+        sort_order=project.tasks.count(),
+    )
+    messages.success(request, f'Added task "{title}".')
+    return redirect('psa:project_detail', pk=project.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def project_task_update(request, task_pk):
+    from .models import ProjectTask
+    org = get_request_organization(request)
+    qs = ProjectTask.objects.select_related('project')
+    if org is not None:
+        qs = qs.filter(project__organization=org)
+    task = get_object_or_404(qs, pk=task_pk)
+
+    new_status = request.POST.get('status')
+    if new_status in {'todo', 'in_progress', 'blocked', 'done', 'cancelled'}:
+        task.status = new_status
+        task.save()
+        messages.success(request, f'Updated "{task.title}".')
+    return redirect('psa:project_detail', pk=task.project.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def project_task_delete(request, task_pk):
+    from .models import ProjectTask
+    org = get_request_organization(request)
+    qs = ProjectTask.objects.select_related('project')
+    if org is not None:
+        qs = qs.filter(project__organization=org)
+    task = get_object_or_404(qs, pk=task_pk)
+    project_pk = task.project_id
+    title = task.title
+    task.delete()
+    messages.success(request, f'Deleted "{title}".')
+    return redirect('psa:project_detail', pk=project_pk)

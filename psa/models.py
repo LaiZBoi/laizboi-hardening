@@ -1334,3 +1334,74 @@ class TicketExpense(models.Model):
 
     def __str__(self):
         return f'{self.description} — {self.amount} {self.currency}'
+
+
+# ---------------------------------------------------------------------------
+# Project tasks (Workstream 3 expansion)
+# ---------------------------------------------------------------------------
+
+class ProjectTask(models.Model):
+    """
+    A discrete task or milestone under a Project. Distinct from Ticket
+    (which is for client-facing service desk work) — ProjectTask is for
+    internal delivery breakdown. Tasks can optionally link to a Ticket
+    when concrete client work is needed.
+    """
+    STATUS_CHOICES = [
+        ('todo', 'To Do'),
+        ('in_progress', 'In Progress'),
+        ('blocked', 'Blocked'),
+        ('done', 'Done'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='tasks')
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='subtasks',
+        help_text='Optional — for milestone → child task hierarchy',
+    )
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    is_milestone = models.BooleanField(default=False,
+        help_text='Major delivery checkpoint (rendered prominently)')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='todo')
+
+    assigned_to = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_project_tasks',
+    )
+    due_date = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    estimated_hours = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+
+    sort_order = models.PositiveIntegerField(default=0)
+    related_ticket = models.ForeignKey(
+        Ticket, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='project_tasks',
+    )
+
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_psa_project_tasks',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_project_tasks'
+        ordering = ['sort_order', 'created_at']
+        indexes = [
+            models.Index(fields=['project', 'status']),
+            models.Index(fields=['assigned_to', 'status']),
+        ]
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if self.status in ('done', 'cancelled') and not self.completed_at:
+            self.completed_at = timezone.now()
+        elif self.status not in ('done', 'cancelled') and self.completed_at:
+            self.completed_at = None
+        super().save(*args, **kwargs)

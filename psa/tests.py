@@ -969,7 +969,13 @@ class ServiceCatalogTests(TestCase):
         resp = self.client.get('/psa/new/?from_catalog=password-reset')
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
-        self.assertIn('Password reset', body)  # default subject
+        # Structured fields path: catalog_item with fields_json renders the
+        # field labels, NOT a default-subject input. Subject is built server-
+        # side from field values on POST.
+        self.assertIn('catalog_slug', body)
+        self.assertIn('password-reset', body)  # the slug → catalog_item is set
+        self.assertIn('Username / account', body)  # from fields_json
+        self.assertIn('Identity verified by', body)  # from fields_json
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
@@ -1651,3 +1657,47 @@ class Phase5QuotesExpensesTests(TestCase):
         self.assertEqual(t.expenses.count(), 1)
         self.assertTrue(e.is_billable)
         self.assertEqual(float(e.amount), 42.50)
+
+
+class Phase6PolishTests(TestCase):
+    """Phase 6 polish: ProjectTask + ticket-detail contract/expense surfaces."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ACME P6', slug='acme-p6')
+        self.user = User.objects.create_user('p6', password='pw', email='p6@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def test_project_task_done_sets_completed_at(self):
+        from psa.models import Project, ProjectTask
+        p = Project.objects.create(organization=self.org, name='Migration')
+        t = ProjectTask.objects.create(project=p, title='Plan it')
+        self.assertIsNone(t.completed_at)
+        t.status = 'done'
+        t.save()
+        self.assertIsNotNone(t.completed_at)
+
+    def test_project_task_re_open_clears_completed_at(self):
+        from psa.models import Project, ProjectTask
+        p = Project.objects.create(organization=self.org, name='Reopen')
+        t = ProjectTask.objects.create(project=p, title='Setup', status='done')
+        self.assertIsNotNone(t.completed_at)
+        t.status = 'in_progress'
+        t.save()
+        self.assertIsNone(t.completed_at)
+
+    def test_project_task_milestone_flag_persists(self):
+        from psa.models import Project, ProjectTask
+        p = Project.objects.create(organization=self.org, name='Big project')
+        t = ProjectTask.objects.create(project=p, title='Go-live', is_milestone=True)
+        t.refresh_from_db()
+        self.assertTrue(t.is_milestone)
