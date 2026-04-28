@@ -1,0 +1,58 @@
+{# Scope banner for the PSA section.
+   - When a current_organization is set: shows a green client-context chip.
+   - When in global view (superuser/staff, no current_organization): shows
+     a sticky yellow banner with a one-click client picker.
+   Reuses accounts:switch_organization and user_organizations from the
+   org-switcher context_processor — no extra context required. #}
+
+{% if current_organization %}
+<div class="alert alert-light border d-flex align-items-center gap-2 py-2 mb-3"
+     style="border-left: 4px solid var(--bs-success) !important;">
+    <i class="fas fa-building text-success"></i>
+    <div class="flex-grow-1">
+        <small class="text-muted d-block">PSA scope</small>
+        <strong>{{ current_organization.name }}</strong>
+    </div>
+    {% if user.is_superuser or is_staff_user %}
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            <i class="fas fa-exchange-alt me-1"></i>Switch
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="{% url 'accounts:switch_to_global_view' %}">
+                <i class="fas fa-globe me-1"></i>Global view (all clients)
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            {% for org in user_organizations %}
+            <li><a class="dropdown-item {% if org.id == current_organization.id %}fw-semibold{% endif %}"
+                   href="{% url 'accounts:switch_organization' org.id %}">
+                {{ org.name }}
+                {% if org.id == current_organization.id %}<i class="fas fa-check text-success ms-1"></i>{% endif %}
+            </a></li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3 sticky-top"
+     style="top: 64px; z-index: 1020;">
+    <i class="fas fa-globe"></i>
+    <div class="flex-grow-1">
+        <strong>Global view</strong> — you're seeing PSA data across <strong>all clients</strong>.
+        <small class="text-muted d-block">Pick a client to scope this view and enable client-specific actions (e.g. New Ticket).</small>
+    </div>
+    <div class="dropdown">
+        <button class="btn btn-sm btn-warning dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            <i class="fas fa-building me-1"></i>Pick a client
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" style="max-height: 360px; overflow-y: auto;">
+            {% for org in user_organizations %}
+            <li><a class="dropdown-item" href="{% url 'accounts:switch_organization' org.id %}">{{ org.name }}</a></li>
+            {% empty %}
+            <li><span class="dropdown-item text-muted small">No clients available.</span></li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
