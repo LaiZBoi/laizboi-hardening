@@ -84,6 +84,11 @@
                 <a href="{% url 'accounts:organization_edit' org.id %}" class="btn btn-sm btn-outline-secondary">
                     <i class="fas fa-edit"></i> Edit
                 </a>
+                {% if psa_enabled %}
+                <a href="{% url 'psa:client_account' org.id %}" class="btn btn-sm btn-outline-success" title="PSA account view">
+                    <i class="fas fa-money-check-dollar"></i> Account
+                </a>
+                {% endif %}
             </div>
         </div>
     </div>

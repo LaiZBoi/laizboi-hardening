@@ -2745,3 +2745,175 @@ def quote_detail(request, pk):
         'item': item,
         'line_items': item.line_items.all(),
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 — Client account view + Charges + Aging report
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+def client_account(request, org_id):
+    """Per-client account summary: balance, aging, invoices, charges,
+    payments, unbilled time + expenses ready to invoice."""
+    from .models import Charge, Invoice, Payment, get_psa_balance
+    from core.models import Organization
+    client = get_object_or_404(Organization, pk=org_id)
+
+    org = get_request_organization(request)
+    summary = get_psa_balance(client, msp_org=org)
+    invoices = Invoice.objects.filter(client_org=client)
+    charges = Charge.objects.filter(client_org=client)
+    if org is not None:
+        invoices = invoices.filter(organization=org)
+        charges = charges.filter(organization=org)
+
+    payments = Payment.objects.filter(invoice__client_org=client)
+    if org is not None:
+        payments = payments.filter(invoice__organization=org)
+
+    # Unbilled work — time entries on this client's tickets that are
+    # billable AND don't have an invoice line linked to them yet.
+    unbilled_time = TicketTimeEntry.objects.filter(
+        ticket__organization=client, is_billable=True,
+    ).exclude(duration_minutes=0).select_related('ticket', 'user').order_by('-started_at')[:50]
+    unbilled_expenses = TicketExpense.objects.filter(
+        ticket__organization=client, is_billable=True,
+    ).select_related('ticket', 'user').order_by('-incurred_on')[:50]
+
+    return render(request, 'psa/client_account.html', {
+        'client': client,
+        'summary': summary,
+        'invoices': invoices.select_related('client_org').order_by('-invoice_date')[:100],
+        'charges': charges.order_by('-charge_date')[:100],
+        'payments': payments.select_related('invoice').order_by('-paid_on')[:50],
+        'unbilled_time': unbilled_time,
+        'unbilled_expenses': unbilled_expenses,
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def charge_add(request, org_id):
+    """Quick-add a one-off charge against a client's account."""
+    from .models import Charge
+    from core.models import Organization
+    from datetime import date as _date
+    org = get_request_organization(request)
+    client = get_object_or_404(Organization, pk=org_id)
+
+    description = (request.POST.get('description') or '').strip()
+    if not description:
+        messages.error(request, 'Description is required.')
+        return redirect('psa:client_account', org_id=org_id)
+    try:
+        amount = float(request.POST.get('amount') or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    if amount <= 0:
+        messages.error(request, 'Amount must be positive.')
+        return redirect('psa:client_account', org_id=org_id)
+
+    Charge.objects.create(
+        organization=org or client,
+        client_org=client,
+        description=description[:300],
+        amount=amount,
+        currency=(request.POST.get('currency') or 'USD')[:8],
+        charge_date=request.POST.get('charge_date') or _date.today(),
+        is_credit=request.POST.get('is_credit') == 'on',
+        is_recurring=request.POST.get('is_recurring') == 'on',
+        recurrence=request.POST.get('recurrence') or 'once',
+        notes=(request.POST.get('notes') or '').strip(),
+        created_by=request.user,
+    )
+    AuditLog.log(
+        user=request.user, action='create',
+        organization=org or client,
+        object_type='psa.Charge', object_id=0,
+        object_repr=description,
+        description=f'{"Credit" if request.POST.get("is_credit") == "on" else "Charge"} {amount:.2f} on {client.name}: {description}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Recorded {"credit" if request.POST.get("is_credit") == "on" else "charge"} of {amount:.2f}.')
+    return redirect('psa:client_account', org_id=org_id)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def charge_invoice(request, org_id):
+    """Roll all uninvoiced charges + credits for this client into a new
+    draft invoice. Marks each charge invoiced=True with invoice FK set."""
+    from .models import Charge, Invoice, InvoiceLineItem
+    from core.models import Organization
+    from datetime import date as _date
+    org = get_request_organization(request)
+    client = get_object_or_404(Organization, pk=org_id)
+    qs = Charge.objects.filter(client_org=client, invoiced=False)
+    if org is not None:
+        qs = qs.filter(organization=org)
+    if not qs.exists():
+        messages.info(request, 'No uninvoiced charges or credits to bill.')
+        return redirect('psa:client_account', org_id=org_id)
+
+    invoice = Invoice.objects.create(
+        organization=org or client,
+        client_org=client,
+        title=f'Account charges through {_date.today():%Y-%m-%d}',
+        invoice_date=_date.today(),
+        created_by=request.user,
+    )
+    for i, c in enumerate(qs.order_by('charge_date')):
+        # Credits come through as negative-priced line items.
+        sign = -1 if c.is_credit else 1
+        InvoiceLineItem.objects.create(
+            invoice=invoice, sort_order=i,
+            description=c.description[:300],
+            quantity=1,
+            unit_price=sign * float(c.amount),
+            source='manual',
+            source_id=str(c.pk),
+        )
+    qs.update(invoiced=True, invoice=invoice)
+    invoice.recompute_totals()
+    messages.success(request, f'Bundled {qs.count()} item(s) into invoice {invoice.invoice_number}.')
+    return redirect('psa:invoice_detail', pk=invoice.pk)
+
+
+@login_required
+@require_psa_enabled
+def aging_report(request):
+    """Cross-client aging report. Sums each client's outstanding balance
+    bucketed by 0-30 / 31-60 / 61-90 / 90+ days past due_date."""
+    from .models import Invoice, get_psa_balance
+    from core.models import Organization
+    org = get_request_organization(request)
+
+    # Find every client that has at least one non-void invoice
+    client_ids = Invoice.objects.exclude(status='void').values_list('client_org', flat=True)
+    if org is not None:
+        client_ids = Invoice.objects.filter(organization=org).exclude(status='void').values_list('client_org', flat=True)
+    client_ids = list(set(client_ids))
+    rows = []
+    totals = {'outstanding': 0, '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0,
+              'credit_total': 0, 'net_balance': 0}
+    for client in Organization.objects.filter(pk__in=client_ids).order_by('name'):
+        s = get_psa_balance(client, msp_org=org)
+        if s['outstanding'] == 0 and s['credit_total'] == 0:
+            continue
+        rows.append({'client': client, 'summary': s})
+        totals['outstanding'] += float(s['outstanding'])
+        totals['credit_total'] += float(s['credit_total'])
+        totals['net_balance'] += float(s['net_balance'])
+        for k in ('0_30', '31_60', '61_90', '90_plus'):
+            totals[k] += float(s['aging'][k])
+
+    return render(request, 'psa/aging_report.html', {
+        'rows': rows,
+        'totals': totals,
+    })

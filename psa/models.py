@@ -1731,3 +1731,137 @@ class QuoteSignature(models.Model):
 
     def __str__(self):
         return f'Signed by {self.signed_by_name} at {self.signed_at:%Y-%m-%d %H:%M}'
+
+
+# ---------------------------------------------------------------------------
+# Charges — direct line entries against a client account, independent of
+# invoices. Can be one-off (late fee, credit) or recurring (monthly retainer).
+# Charges marked `is_credit=True` reduce the client's outstanding balance.
+# A Charge can later be rolled into an invoice; once it is, `invoiced=True`
+# and `invoice` points at the invoice that consumed it.
+# ---------------------------------------------------------------------------
+
+class Charge(models.Model):
+    RECURRENCE_CHOICES = [
+        ('once', 'One-time'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('yearly', 'Yearly'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_charges',
+        help_text='MSP tenant',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_client_charges',
+    )
+    description = models.CharField(max_length=300)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        help_text='Positive value. Use is_credit to subtract from balance.')
+    currency = models.CharField(max_length=8, default='USD')
+    charge_date = models.DateField()
+
+    is_credit = models.BooleanField(default=False,
+        help_text='Credit/refund — subtracts from the client\'s outstanding balance')
+    is_recurring = models.BooleanField(default=False)
+    recurrence = models.CharField(max_length=20, choices=RECURRENCE_CHOICES, default='once')
+    next_run_at = models.DateField(null=True, blank=True,
+        help_text='When the next recurring instance should be created (for is_recurring=True)')
+
+    invoiced = models.BooleanField(default=False)
+    invoice = models.ForeignKey('Invoice', on_delete=models.SET_NULL,
+                                null=True, blank=True, related_name='charges_consumed')
+
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_psa_charges',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_charges'
+        ordering = ['-charge_date', '-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'client_org', '-charge_date']),
+            models.Index(fields=['client_org', 'invoiced']),
+            models.Index(fields=['is_recurring', 'next_run_at']),
+        ]
+
+    def __str__(self):
+        sign = '-' if self.is_credit else '+'
+        return f'{sign}{self.amount} {self.currency} — {self.description}'
+
+    @property
+    def signed_amount(self):
+        from decimal import Decimal
+        a = Decimal(str(self.amount or '0'))
+        return -a if self.is_credit else a
+
+
+def get_psa_balance(client_org, *, msp_org=None):
+    """Compute the per-client account balance.
+
+    Returns a dict:
+      outstanding       — sum of unpaid invoice balances
+      credit_total      — sum of unbilled credits
+      uninvoiced_charges — sum of unbilled non-credit charges
+      net_balance       — outstanding + uninvoiced_charges - credit_total
+      aging             — {0_30: x, 31_60: x, 61_90: x, 90_plus: x}
+                           computed from invoice.due_date (or invoice_date when due null)
+
+    The MSP filter is optional — when provided, scopes to that MSP's
+    invoices/charges only (matters for multi-tenant SaaS hosting).
+    """
+    from datetime import date
+    from decimal import Decimal
+
+    inv_qs = Invoice.objects.filter(client_org=client_org).exclude(status='void')
+    chg_qs = Charge.objects.filter(client_org=client_org)
+    if msp_org is not None:
+        inv_qs = inv_qs.filter(organization=msp_org)
+        chg_qs = chg_qs.filter(organization=msp_org)
+
+    outstanding = Decimal('0')
+    aging = {'0_30': Decimal('0'), '31_60': Decimal('0'),
+             '61_90': Decimal('0'), '90_plus': Decimal('0')}
+    today = date.today()
+    for inv in inv_qs:
+        bal = Decimal(str(inv.balance or '0'))
+        if bal <= 0:
+            continue
+        outstanding += bal
+        anchor = inv.due_date or inv.invoice_date
+        if anchor is None:
+            aging['0_30'] += bal
+            continue
+        days = (today - anchor).days
+        if days <= 30:
+            aging['0_30'] += bal
+        elif days <= 60:
+            aging['31_60'] += bal
+        elif days <= 90:
+            aging['61_90'] += bal
+        else:
+            aging['90_plus'] += bal
+
+    credit_total = sum(
+        (Decimal(str(c.amount or '0')) for c in chg_qs.filter(is_credit=True, invoiced=False)),
+        Decimal('0'),
+    )
+    uninvoiced_charges = sum(
+        (Decimal(str(c.amount or '0')) for c in chg_qs.filter(is_credit=False, invoiced=False)),
+        Decimal('0'),
+    )
+    net = outstanding + uninvoiced_charges - credit_total
+    return {
+        'outstanding': outstanding,
+        'credit_total': credit_total,
+        'uninvoiced_charges': uninvoiced_charges,
+        'net_balance': net,
+        'aging': aging,
+    }

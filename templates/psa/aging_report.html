@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}PSA — Aging Report{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Aging Report</li>
+    </ol>
+</nav>
+
+<h4 class="mb-3"><i class="fas fa-chart-column me-2"></i>Aging Report</h4>
+<p class="text-muted small">Outstanding balance by client, bucketed by days past due.</p>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Client</th>
+                    <th class="text-end">0–30 d</th>
+                    <th class="text-end">31–60 d</th>
+                    <th class="text-end">61–90 d</th>
+                    <th class="text-end text-warning">90+ d</th>
+                    <th class="text-end">Outstanding</th>
+                    <th class="text-end">Credits</th>
+                    <th class="text-end">Net</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td><a href="{% url 'psa:client_account' r.client.id %}"><strong>{{ r.client.name }}</strong></a></td>
+                    <td class="text-end">{{ r.summary.aging.0_30 }}</td>
+                    <td class="text-end">{{ r.summary.aging.31_60 }}</td>
+                    <td class="text-end">{{ r.summary.aging.61_90 }}</td>
+                    <td class="text-end text-warning">{{ r.summary.aging.90_plus }}</td>
+                    <td class="text-end">{{ r.summary.outstanding }}</td>
+                    <td class="text-end text-muted">{{ r.summary.credit_total }}</td>
+                    <td class="text-end"><strong>{{ r.summary.net_balance }}</strong></td>
+                    <td><a href="{% url 'psa:client_account' r.client.id %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-eye"></i></a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">No outstanding balances.</td></tr>
+                {% endfor %}
+            </tbody>
+            {% if rows %}
+            <tfoot class="table-light">
+                <tr>
+                    <th>Total</th>
+                    <th class="text-end">{{ totals.0_30|floatformat:2 }}</th>
+                    <th class="text-end">{{ totals.31_60|floatformat:2 }}</th>
+                    <th class="text-end">{{ totals.61_90|floatformat:2 }}</th>
+                    <th class="text-end text-warning">{{ totals.90_plus|floatformat:2 }}</th>
+                    <th class="text-end">{{ totals.outstanding|floatformat:2 }}</th>
+                    <th class="text-end text-muted">{{ totals.credit_total|floatformat:2 }}</th>
+                    <th class="text-end"><strong>{{ totals.net_balance|floatformat:2 }}</strong></th>
+                    <th></th>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
+</div>
+{% endblock %}

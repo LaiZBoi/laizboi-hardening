@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.101] - 2026-04-28
+
+### Added — Phase 10: Client account, Charges, Aging report
+- **Per-client account view** at `/psa/clients/<org_id>/account/` — net balance, outstanding invoices, available credits, uninvoiced charges, aging buckets (0-30 / 31-60 / 61-90 / 90+), invoice list, payment history, and unbilled time + expenses ready to invoice.
+- **Charges** (`psa.Charge`) — direct line entries against a client account, independent of invoices. Supports one-time vs recurring (monthly/quarterly/yearly), credit flag (subtracts from balance), and roll-into-invoice for batched billing. Create one inline from the client account page.
+- **"Invoice now" button** on the client account view — bundles all uninvoiced charges and credits for the client into a new draft invoice and marks each charge as invoiced. Credits come through as negative-amount line items.
+- **Aging report** at `/psa/aging/` — cross-client outstanding balances bucketed by age past due date. Per-row deep link into each client's account view.
+- **`Account` button** on the Clients (organization) list — quick jump from the org list to that client's PSA account view.
+- **PSA dropdown gains an Aging Report entry**.
+
+### API
+- `psa.models.get_psa_balance(client_org, msp_org=None)` returns the same dict the views render: `outstanding`, `credit_total`, `uninvoiced_charges`, `net_balance`, plus an `aging` dict keyed by bucket name.
+
 ## [3.17.100] - 2026-04-28
 
 ### Changed — Dev workflow: assistant edits gated by Apply update
