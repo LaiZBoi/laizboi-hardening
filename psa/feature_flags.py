@@ -45,6 +45,49 @@ def client_has_external_psa(organization):
         return False
 
 
+def clients_eligible_for_native_psa(user):
+    """
+    Return a queryset of Organizations the given user can create native
+    PSA tickets for, excluding any that have an active external
+    PSAConnection (the hard product rule).
+
+    Visibility:
+      * superuser / staff_user → every active org
+      * org user               → only orgs they're a member of
+    """
+    try:
+        from core.models import Organization
+        from integrations.models import PSAConnection
+    except Exception:
+        return []
+    qs = Organization.objects.filter(is_active=True)
+    is_staff_like = user.is_superuser or getattr(user, '_is_staff_user_cache', False)
+    if not is_staff_like:
+        # Best-effort detection — UserProfile.is_staff_user() if available;
+        # otherwise fall back to membership-scoped orgs.
+        profile = getattr(user, 'profile', None)
+        if profile is not None and hasattr(profile, 'is_staff_user') and profile.is_staff_user():
+            is_staff_like = True
+    if not is_staff_like:
+        member_org_ids = []
+        if hasattr(user, 'memberships'):
+            member_org_ids = list(
+                user.memberships.filter(is_active=True).values_list('organization_id', flat=True)
+            )
+        qs = qs.filter(id__in=member_org_ids)
+    # Exclude orgs with an active external PSA — that's the hard opt-out.
+    external_org_ids = PSAConnection.objects.filter(is_active=True).values_list('organization_id', flat=True)
+    qs = qs.exclude(id__in=external_org_ids)
+    # Exclude orgs with an explicit ClientPSASettings.enabled=False override.
+    try:
+        from psa.models import ClientPSASettings
+        opted_out_ids = ClientPSASettings.objects.filter(enabled=False).values_list('organization_id', flat=True)
+        qs = qs.exclude(id__in=opted_out_ids)
+    except Exception:
+        pass
+    return qs.order_by('name')
+
+
 def get_external_psa_summary(organization):
     """
     Return a human-readable summary of the external PSA(s) connected to this

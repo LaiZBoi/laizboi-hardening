@@ -199,10 +199,10 @@ class RouteGatingTests(TestCase):
         self.assertEqual(self.client.get('/psa/new/').status_code, 404)
         self.assertEqual(self.client.get('/psa/t/PSA-2026-000001/').status_code, 404)
 
-    def test_create_redirects_when_client_explicitly_disabled(self):
-        """When the active client is opted out, the create view redirects
-        back to the list (with a flash message) instead of 404. The 404
-        was hostile UX — the user has no way to recover."""
+    def test_opt_out_client_excluded_from_create_dropdown(self):
+        """PSA is global — /psa/new/ doesn't 404 anymore. Instead, opted-out
+        clients are filtered out of the client dropdown so admins can't
+        accidentally pick them."""
         _enable_psa_global()
         _setup_seed()
         ClientPSASettings.objects.update_or_create(
@@ -210,8 +210,11 @@ class RouteGatingTests(TestCase):
             defaults={'enabled': False},
         )
         resp = self.client.get('/psa/new/')
-        self.assertEqual(resp.status_code, 302)
-        self.assertIn('/psa/', resp['Location'])
+        # User has no other org, so eligible_clients is now empty → no_eligible_clients page.
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('No eligible clients', body)
+        self.assertNotIn(f'<option value="{self.org.id}"', body)
 
     def test_create_loads_when_globally_on_with_no_client_row(self):
         """No ClientPSASettings row + global on → client inherits enabled."""
@@ -288,6 +291,7 @@ class TicketLifecycleTests(TestCase):
     def test_audit_log_written_on_create_via_view(self):
         c = self._login(self.user_a, self.org_a)
         resp = c.post('/psa/new/', {
+            'client': self.org_a.pk,  # PSA is global; client picked from form
             'subject': 'audit me',
             'description': 'body',
             'queue': Queue.objects.first().pk,

@@ -1,22 +1,84 @@
 {% extends "base.html" %}
 {% block title %}PSA — Tickets{% endblock %}
 {% block content %}
-{% include "psa/_scope_banner.html" %}
-
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h2 class="mb-0"><i class="fas fa-ticket-alt me-2"></i>Tickets</h2>
-        {% if current_organization %}<small class="text-muted">{{ current_organization.name }}</small>{% else %}<small class="text-muted">All clients ({{ tickets|length }} ticket{{ tickets|length|pluralize }})</small>{% endif %}
+        <h2 class="mb-0"><i class="fas fa-ticket-alt me-2"></i>PSA Tickets</h2>
+        <small class="text-muted">
+            {% if filter_values.client %}
+                {% for c in available_clients %}{% if c.id|slugify == filter_values.client %}Filtered to <strong>{{ c.name }}</strong>{% endif %}{% endfor %}
+            {% else %}
+                All clients · {{ tickets|length }} ticket{{ tickets|length|pluralize }} (newest 200)
+            {% endif %}
+        </small>
     </div>
     <div>
-        {% if current_organization %}
         <a href="{% url 'psa:ticket_create' %}" class="btn btn-primary"><i class="fas fa-plus me-1"></i>New Ticket</a>
-        <a href="{% url 'psa:client_settings' %}" class="btn btn-outline-secondary"><i class="fas fa-cog me-1"></i>Client Settings</a>
-        {% else %}
-        <button class="btn btn-primary" disabled title="Pick a client first using the banner above"><i class="fas fa-plus me-1"></i>New Ticket</button>
-        {% endif %}
     </div>
 </div>
+
+{# Filter bar — all params are URL-driven so admins can bookmark a view. #}
+<form method="get" class="card mb-3">
+    <div class="card-body py-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Client</label>
+                <select name="client" class="form-select form-select-sm">
+                    <option value="">All clients</option>
+                    {% for c in available_clients %}
+                    <option value="{{ c.id }}" {% if filter_values.client == c.id|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">Any</option>
+                    {% for s in available_statuses %}
+                    <option value="{{ s.id }}" {% if filter_values.status == s.id|stringformat:"s" %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Priority</label>
+                <select name="priority" class="form-select form-select-sm">
+                    <option value="">Any</option>
+                    {% for p in available_priorities %}
+                    <option value="{{ p.id }}" {% if filter_values.priority == p.id|stringformat:"s" %}selected{% endif %}>{{ p.code }} — {{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Queue</label>
+                <select name="queue" class="form-select form-select-sm">
+                    <option value="">Any</option>
+                    {% for q in available_queues %}
+                    <option value="{{ q.id }}" {% if filter_values.queue == q.id|stringformat:"s" %}selected{% endif %}>{{ q.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Assigned</label>
+                <select name="assigned" class="form-select form-select-sm">
+                    <option value="">Anyone</option>
+                    <option value="me" {% if filter_values.assigned == "me" %}selected{% endif %}>Me</option>
+                    <option value="unassigned" {% if filter_values.assigned == "unassigned" %}selected{% endif %}>Unassigned</option>
+                </select>
+            </div>
+            <div class="col-md-1 d-flex gap-1">
+                <button type="submit" class="btn btn-sm btn-primary w-100" title="Apply filters"><i class="fas fa-filter"></i></button>
+                {% if has_filters %}
+                <a href="{% url 'psa:ticket_list' %}" class="btn btn-sm btn-outline-secondary" title="Clear"><i class="fas fa-times"></i></a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="row g-2 mt-1">
+            <div class="col-12">
+                <input type="text" name="q" value="{{ filter_values.q }}" placeholder="Search ticket number or subject…" class="form-control form-control-sm">
+            </div>
+        </div>
+    </div>
+</form>
 
 <div class="card">
     <div class="card-body p-0">
@@ -40,8 +102,6 @@
                     <tr>
                         <td><a href="{% url 'psa:ticket_detail' t.ticket_number %}"><code>{{ t.ticket_number }}</code></a></td>
                         <td>
-                            {# Client badge — deterministic colour from the org's pk so the same
-                               client always renders the same hue across the table. #}
                             <span class="badge rounded-pill" style="background:hsl({% widthratio t.organization.id 1 47 %}, 55%, 42%); color: white;">
                                 {{ t.organization.name|default:"—" }}
                             </span>
@@ -59,9 +119,15 @@
         </div>
         {% else %}
         <div class="text-center text-muted py-5">
+            {% if has_filters %}
+            <i class="fas fa-search fa-3x mb-3 d-block"></i>
+            <p class="mb-2">No tickets match those filters.</p>
+            <a href="{% url 'psa:ticket_list' %}" class="btn btn-sm btn-outline-secondary">Clear filters</a>
+            {% else %}
             <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
             <p class="mb-2">No tickets yet.</p>
             <a href="{% url 'psa:ticket_create' %}" class="btn btn-sm btn-primary">Create the first ticket</a>
+            {% endif %}
         </div>
         {% endif %}
     </div>

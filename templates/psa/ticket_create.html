@@ -1,8 +1,6 @@
 {% extends "base.html" %}
 {% block title %}PSA — New Ticket{% endblock %}
 {% block content %}
-{% include "psa/_scope_banner.html" %}
-
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
@@ -11,21 +9,37 @@
 </nav>
 <h2 class="mb-3"><i class="fas fa-plus-circle me-2"></i>New Ticket</h2>
 
-{% if requires_client %}
+{% if no_eligible_clients %}
 <div class="card border-warning">
     <div class="card-body text-center py-5">
-        <i class="fas fa-building fa-3x text-warning mb-3 d-block"></i>
-        <h5>Pick a client first</h5>
+        <i class="fas fa-info-circle fa-3x text-warning mb-3 d-block"></i>
+        <h5>No eligible clients</h5>
         <p class="text-muted mb-3">
-            Tickets are scoped per client. Use the <strong>Pick a client</strong> picker in the banner above to choose which client this ticket belongs to.
+            You don't have any clients available for native PSA tickets.
+            Either you're not a member of any organisation, or every client you can see has an
+            active external PSA connection (ConnectWise / Halo / Autotask / etc.) — the native PSA
+            stays out of the way for those.
         </p>
+        <a href="{% url 'psa:ticket_list' %}" class="btn btn-sm btn-outline-secondary">Back to PSA</a>
     </div>
 </div>
 {% else %}
-
 <form method="post" class="card">
     {% csrf_token %}
     <div class="card-body">
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Client <span class="text-danger">*</span></label>
+                <select name="client" class="form-select" required>
+                    <option value="">Pick a client…</option>
+                    {% for c in eligible_clients %}
+                    <option value="{{ c.id }}" {% if preselected_client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Clients with an active external PSA connection are excluded.</div>
+            </div>
+        </div>
+
         <div class="mb-3">
             <label class="form-label">Subject <span class="text-danger">*</span></label>
             <input type="text" name="subject" class="form-control" required maxlength="300">

@@ -36,34 +36,87 @@ from .models import (
 
 def _scoped_ticket_qs(request):
     """
-    Tickets visible to the current request: scoped to the active org for
-    org-bound users; full set for superusers/staff in global view.
+    Tickets visible to the current request — PSA is now a global tool.
+
+      * superuser / staff_user → every ticket across every client
+      * org user               → only tickets for orgs they're a member of
+        (regardless of which org they have currently "selected" — the PSA
+        page is global, internal filtering replaces per-page client scoping)
     """
-    qs = Ticket.objects.select_related('organization', 'status', 'priority', 'queue', 'ticket_type', 'assigned_to')
-    org = get_request_organization(request)
-    if org is None:
-        if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
-            return qs.none()
+    qs = Ticket.objects.select_related(
+        'organization', 'status', 'priority', 'queue', 'ticket_type', 'assigned_to'
+    )
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
         return qs
-    return qs.filter(organization=org)
+    if hasattr(request.user, 'memberships'):
+        org_ids = list(
+            request.user.memberships.filter(is_active=True).values_list('organization_id', flat=True)
+        )
+        return qs.filter(organization_id__in=org_ids)
+    return qs.none()
 
 
 @login_required
 @require_psa_enabled
 def ticket_list(request):
-    org = get_request_organization(request)
-    if not is_psa_enabled_for_client(org):
-        # Global PSA is on, but THIS client is opted out. 404 — same as
-        # require_client_psa_enabled, but we hold off using the decorator
-        # so superusers in "global view" (no current_organization) can
-        # still see a cross-tenant list.
-        if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
-            raise Http404("PSA is not enabled for this client")
+    """
+    Global ticket list with internal filtering. Filters are URL params:
+      ?client=<org_id>&status=<status_id>&priority=<priority_id>
+      &queue=<queue_id>&assigned=<user_id|me|unassigned>&q=<text>
+    """
+    qs = _scoped_ticket_qs(request)
 
-    tickets = _scoped_ticket_qs(request).order_by('-created_at')[:200]
+    # Filters
+    client_id = request.GET.get('client') or ''
+    status_id = request.GET.get('status') or ''
+    priority_id = request.GET.get('priority') or ''
+    queue_id = request.GET.get('queue') or ''
+    assigned = request.GET.get('assigned') or ''
+    search = (request.GET.get('q') or '').strip()
+
+    if client_id:
+        qs = qs.filter(organization_id=client_id)
+    if status_id:
+        qs = qs.filter(status_id=status_id)
+    if priority_id:
+        qs = qs.filter(priority_id=priority_id)
+    if queue_id:
+        qs = qs.filter(queue_id=queue_id)
+    if assigned == 'me':
+        qs = qs.filter(assigned_to=request.user)
+    elif assigned == 'unassigned':
+        qs = qs.filter(assigned_to__isnull=True)
+    elif assigned.isdigit():
+        qs = qs.filter(assigned_to_id=int(assigned))
+    if search:
+        from django.db.models import Q
+        qs = qs.filter(Q(ticket_number__icontains=search) | Q(subject__icontains=search))
+
+    # Bound the page; full pagination is Phase 2 polish
+    tickets = qs.order_by('-created_at')[:200]
+
+    # Filter dropdown options — limited to what makes sense for the user.
+    # For org-bound users, the client filter only shows their member orgs.
+    from core.models import Organization
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        available_clients = Organization.objects.filter(is_active=True).order_by('name')
+    elif hasattr(request.user, 'memberships'):
+        ids = request.user.memberships.filter(is_active=True).values_list('organization_id', flat=True)
+        available_clients = Organization.objects.filter(id__in=list(ids), is_active=True).order_by('name')
+    else:
+        available_clients = Organization.objects.none()
+
     return render(request, 'psa/ticket_list.html', {
         'tickets': tickets,
-        'current_organization': org,
+        'available_clients': available_clients,
+        'available_statuses': TicketStatus.objects.all(),
+        'available_priorities': TicketPriority.objects.all(),
+        'available_queues': Queue.objects.filter(is_active=True),
+        'filter_values': {
+            'client': client_id, 'status': status_id, 'priority': priority_id,
+            'queue': queue_id, 'assigned': assigned, 'q': search,
+        },
+        'has_filters': any([client_id, status_id, priority_id, queue_id, assigned, search]),
     })
 
 
@@ -99,36 +152,43 @@ def ticket_detail(request, ticket_number):
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def ticket_create(request):
-    org = get_request_organization(request)
-    # In global view, refuse to create a ticket without an org context but
-    # show a friendly "pick a client" page instead of a 404. The scope
-    # banner partial handles the picker UI.
-    if org is None:
-        messages.info(request, 'Pick a client first — tickets are scoped per client.')
-        return render(request, 'psa/ticket_create.html', {
-            'queues': [], 'statuses': [], 'priorities': [], 'types': [],
-            'current_organization': None,
-            'requires_client': True,
-        })
-    # Per-client PSA gate (auto-opt-out for clients with external PSA).
-    from psa.feature_flags import is_psa_enabled_for_client
-    if not is_psa_enabled_for_client(org):
-        messages.warning(
-            request,
-            f'Native PSA is not active for {org.name} (likely an external PSA is connected). '
-            'Switch clients via the banner or change this in /psa/settings/client/.'
-        )
-        return redirect(reverse('psa:ticket_list'))
+    """
+    Create a ticket. The client/organization is chosen from a dropdown in
+    the form (filtered to clients without an active external PSA — the
+    hard rule). PSA is global; we don't depend on `current_organization`.
+    """
+    from psa.feature_flags import clients_eligible_for_native_psa
     queues = Queue.objects.filter(is_active=True)
     statuses = TicketStatus.objects.all()
     priorities = TicketPriority.objects.all()
     types = TicketType.objects.filter(is_active=True)
+    eligible_clients = clients_eligible_for_native_psa(request.user)
+
+    # If the user has zero eligible clients, we can't proceed — show a
+    # friendly dead end (every client they could pick has an external PSA,
+    # OR they have no memberships at all).
+    if not eligible_clients.exists():
+        return render(request, 'psa/ticket_create.html', {
+            'queues': [], 'statuses': [], 'priorities': [], 'types': [],
+            'eligible_clients': eligible_clients,
+            'no_eligible_clients': True,
+        })
 
     if request.method == 'POST':
         subject = (request.POST.get('subject') or '').strip()
         description = (request.POST.get('description') or '').strip()
+        client_id = request.POST.get('client') or ''
         if not subject:
             messages.error(request, 'Subject is required.')
+            return redirect(reverse('psa:ticket_create'))
+        if not client_id:
+            messages.error(request, 'Please pick a client for this ticket.')
+            return redirect(reverse('psa:ticket_create'))
+
+        try:
+            org = eligible_clients.get(pk=client_id)
+        except Exception:
+            messages.error(request, 'That client is not eligible for native PSA tickets.')
             return redirect(reverse('psa:ticket_create'))
 
         try:
@@ -169,12 +229,18 @@ def ticket_create(request):
         messages.success(request, f'Ticket {ticket.ticket_number} created.')
         return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
 
+    # Pre-select the active org if the user has one and it's eligible.
+    preselected = get_request_organization(request)
+    preselected_id = preselected.id if preselected and eligible_clients.filter(id=preselected.id).exists() else None
+
     return render(request, 'psa/ticket_create.html', {
         'queues': queues,
         'statuses': statuses,
         'priorities': priorities,
         'types': types,
-        'current_organization': org,
+        'eligible_clients': eligible_clients,
+        'preselected_client_id': preselected_id,
+        'no_eligible_clients': False,
     })
 
 
