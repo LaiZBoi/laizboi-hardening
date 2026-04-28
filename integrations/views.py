@@ -10,7 +10,8 @@ from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
 from django.db import IntegrityError
 from core.middleware import get_request_organization
 from core.decorators import require_admin, require_write
-from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection, OmadaConnection, GrandstreamConnection, DistributorConnection, DistributorWebhookEvent
+from django.core.exceptions import PermissionDenied
+from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection, OmadaConnection, GrandstreamConnection, DistributorConnection, DistributorWebhookEvent, AccountingConnection
 from .forms import PSAConnectionForm, RMMConnectionForm, UnifiConnectionForm, M365ConnectionForm, OmadaConnectionForm, GrandstreamConnectionForm
 from .sync import PSASync
 from .providers import get_provider
@@ -3059,3 +3060,187 @@ def distributor_webhook(request, token):
         process_error=error,
     )
     return JsonResponse({'ok': True})
+
+
+# ---------------------------------------------------------------------------
+# Accounting connections (Workstream 5 — billing)
+# ---------------------------------------------------------------------------
+
+import secrets as _secrets
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def accounting_list(request):
+    rows = DistributorConnection.objects.none()  # placeholder; using AccountingConnection below
+    rows = AccountingConnection.objects.select_related('organization').order_by('name')
+    return render(request, 'integrations/accounting_list.html', {'connections': rows})
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def accounting_create(request):
+    return _accounting_form(request, pk=None)
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def accounting_edit(request, pk):
+    return _accounting_form(request, pk=pk)
+
+
+def _accounting_form(request, pk):
+    from core.models import Organization
+    from .providers.accounting import PROVIDER_REGISTRY
+
+    item = get_object_or_404(AccountingConnection, pk=pk) if pk else None
+
+    if request.method == 'POST':
+        org_id = request.POST.get('organization') or ''
+        provider_type = request.POST.get('provider_type') or ''
+        name = (request.POST.get('name') or '').strip()
+        client_id = (request.POST.get('client_id') or '').strip()
+        client_secret = (request.POST.get('client_secret') or '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+        sync_enabled = request.POST.get('sync_enabled') == 'on'
+
+        if provider_type not in PROVIDER_REGISTRY:
+            messages.error(request, 'Unsupported accounting provider.')
+            return redirect(request.path)
+        try:
+            org = Organization.objects.get(pk=org_id)
+        except Organization.DoesNotExist:
+            messages.error(request, 'Pick a valid organization.')
+            return redirect(request.path)
+
+        if item is None:
+            item = AccountingConnection(organization=org, provider_type=provider_type, name=name)
+        else:
+            item.organization = org
+            item.provider_type = provider_type
+            item.name = name
+        item.is_active = is_active
+        item.sync_enabled = sync_enabled
+        try:
+            item.default_tax_rate = request.POST.get('default_tax_rate') or 0
+        except (TypeError, ValueError):
+            item.default_tax_rate = 0
+
+        creds = item.get_credentials() or {}
+        if client_id:
+            creds['client_id'] = client_id
+        if client_secret:
+            creds['client_secret'] = client_secret
+        item.set_credentials(creds)
+        item.save()
+
+        from audit.models import AuditLog
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            organization=org,
+            object_type='integrations.AccountingConnection', object_id=item.pk,
+            object_repr=item.name,
+            description=f'{"Updated" if pk else "Created"} accounting connection {item.name}',
+            path=request.path,
+        )
+        messages.success(request, f'Saved "{item.name}". Click Connect to start the OAuth flow.')
+        return redirect('integrations:accounting_list')
+
+    return render(request, 'integrations/accounting_form.html', {
+        'item': item,
+        'organizations': Organization.objects.filter(is_active=True).order_by('name'),
+        'provider_types': AccountingConnection.PROVIDER_TYPES,
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def accounting_delete(request, pk):
+    item = get_object_or_404(AccountingConnection, pk=pk)
+    if request.method == 'POST':
+        name = item.name
+        item.delete()
+        messages.success(request, f'Deleted "{name}".')
+        return redirect('integrations:accounting_list')
+    return render(request, 'integrations/accounting_confirm_delete.html', {'item': item})
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def accounting_test(request, pk):
+    from .providers.accounting import get_accounting_provider
+    item = get_object_or_404(AccountingConnection, pk=pk)
+    provider = get_accounting_provider(item)
+    if provider is None:
+        return JsonResponse({'ok': False, 'error': 'No provider for this type'})
+    try:
+        ok = provider.test_connection()
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)[:300]})
+    return JsonResponse({'ok': bool(ok)})
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def accounting_connect(request, pk):
+    """Initiate OAuth — redirect the user to the provider's authorize URL."""
+    from .providers.accounting import get_accounting_provider
+    item = get_object_or_404(AccountingConnection, pk=pk)
+    provider = get_accounting_provider(item)
+    if provider is None:
+        messages.error(request, 'Unknown provider.')
+        return redirect('integrations:accounting_list')
+
+    # Generate + persist a CSRF state token.
+    state = _secrets.token_urlsafe(32)
+    request.session[f'oauth_state_{item.pk}'] = state
+    redirect_uri = request.build_absolute_uri(
+        '/integrations/accounting/oauth/callback/'
+    )
+    request.session['oauth_pending_pk'] = item.pk
+    try:
+        url = provider.build_authorize_url(state=state, redirect_uri=redirect_uri)
+    except Exception as exc:
+        messages.error(request, f'OAuth setup failed: {exc}')
+        return redirect('integrations:accounting_edit', pk=item.pk)
+    from django.shortcuts import redirect as _redirect
+    return _redirect(url)
+
+
+@login_required
+def accounting_oauth_callback(request):
+    """Receive the OAuth callback from QuickBooks Online / Xero / etc."""
+    from .providers.accounting import get_accounting_provider
+    if not (request.user.is_superuser or request.user.is_staff):
+        raise PermissionDenied()
+    pk = request.session.get('oauth_pending_pk')
+    if not pk:
+        messages.error(request, 'No pending OAuth flow.')
+        return redirect('integrations:accounting_list')
+    item = get_object_or_404(AccountingConnection, pk=pk)
+    expected_state = request.session.get(f'oauth_state_{pk}', '')
+    state = request.GET.get('state', '')
+    if not expected_state or expected_state != state:
+        messages.error(request, 'OAuth state mismatch — abort.')
+        return redirect('integrations:accounting_list')
+
+    code = request.GET.get('code') or ''
+    realm_id = request.GET.get('realmId') or ''  # QBO-specific param
+    if not code:
+        messages.error(request, f'OAuth callback missing code: {request.GET.get("error", "")}')
+        return redirect('integrations:accounting_edit', pk=item.pk)
+
+    provider = get_accounting_provider(item)
+    redirect_uri = request.build_absolute_uri('/integrations/accounting/oauth/callback/')
+    try:
+        provider.handle_callback(code=code, redirect_uri=redirect_uri, realm_id=realm_id or None)
+    except Exception as exc:
+        messages.error(request, f'OAuth completion failed: {exc}')
+        return redirect('integrations:accounting_edit', pk=item.pk)
+
+    # Clean up session keys
+    for k in [f'oauth_state_{pk}', 'oauth_pending_pk']:
+        request.session.pop(k, None)
+
+    messages.success(request, f'Connected to {item.get_provider_type_display()}.')
+    return redirect('integrations:accounting_list')

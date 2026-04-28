@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.96] - 2026-04-28
+
+### Added — PSA Phase 8: Invoices, Payments, Accounting integrations, Quote e-signature
+A complete billing pipeline plus customer-facing quote signing.
+
+- **Invoices** (`psa.Invoice` + `InvoiceLineItem`) — auto-numbered `INV-YYYY-NNNNN`, draft → sent → partial → paid → overdue → void lifecycle, tax rate with auto subtotal/tax/total, `balance` property, source pointers to a quote / ticket / contract.
+- **Payments** (`psa.Payment`) — record a payment against an invoice; saving auto-calls `Invoice.recompute_totals()` which updates `amount_paid` and flips status to partial / paid as appropriate.
+- **Generate-from-ticket** — one button on the ticket detail creates a draft invoice from the ticket's billable time entries (priced at the active contract's hourly rate) and billable expenses.
+- **AccountingConnection** (`integrations.AccountingConnection`) — per-organization OAuth2 connection with encrypted credentials (client_id + client_secret + refresh_token + tenant/realm IDs all stored in a single AES-encrypted JSON blob).
+- **QuickBooks Online provider** — full OAuth2 (authorize → callback → refresh-rotation), customer-by-name lookup with auto-create fallback (mapping cached on the connection), and Invoice push via `/v3/company/<realm>/invoice`. `record_payment()` posts to `/payment` with a LinkedTxn back to the invoice.
+- **Xero provider** — OAuth2 with `offline_access` for refresh tokens, tenant_id discovery via `/connections`, Contact upsert, Invoice push to `/api.xro/2.0/Invoices`, Payment push to `/Payments`.
+- **Quote e-signature** (`psa.QuoteSignature`) — public, no-login customer URL `/portal/quote/<token>/sign/` with an HTML5 canvas signature pad. POST records the base64-PNG signature, signer name/email/title, IP address, and user-agent, then auto-flips the quote to `accepted` and creates the converted ticket. Quote list page has a one-click **Copy Sign URL** button.
+
+### Changed — Dispatch board shows everything
+- Removed the `is_terminal=False` filter — closed/resolved tickets now appear too (rendered with a grey priority badge so you can still distinguish at a glance).
+- Removed the 7-day window cap. Tickets without a due date or with a due date outside the next week land in a new **Other** column on the right.
+
+### Cleanup — untracked `.gradle/` build cache
+- Removed 21,220 stale Gradle wrapper / cache files from the index that were committed before `.gradle/` was added to `.gitignore`. Local files are kept; future clones drop ~3.8GB.
+
 ## [3.17.95] - 2026-04-28
 
 ### Fixed — Dispatch board dark-mode contrast + size

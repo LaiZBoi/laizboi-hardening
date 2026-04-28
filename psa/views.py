@@ -2288,22 +2288,18 @@ def workflow_rule_delete(request, pk):
 @require_psa_enabled
 def dispatch_board(request):
     """
-    Simple dispatch board: 7-day grid (today + 6 days), columns = days,
-    rows = techs (users with any assigned active ticket OR recent assignment).
-    Each cell shows tickets assigned to that tech with due_at in that day.
-    Unassigned tickets are listed in a separate row at the top.
+    Dispatch board: 7-day grid + an Other column for tickets outside the
+    window or without a due date. Shows ALL tickets (open + closed) so
+    nothing is hidden — closed/resolved still appear so you can see what
+    a tech wrapped up. Unassigned tickets get their own row at the top.
+    Overdue open tickets surface in a separate panel above the grid.
     """
     from datetime import date, timedelta
-    from django.contrib.auth import get_user_model
-    User = get_user_model()
 
     org = get_request_organization(request)
     qs = Ticket.objects.select_related('assigned_to', 'priority', 'status', 'organization')
     if org is not None:
         qs = qs.filter(organization=org)
-
-    # Open tickets only
-    qs = qs.filter(status__is_terminal=False)
 
     days = []
     today = date.today()
@@ -2311,43 +2307,292 @@ def dispatch_board(request):
         d = today + timedelta(days=i)
         days.append(d)
 
-    # Bucket tickets: (assignee_id_or_None, day) -> list[ticket]
+    # Cells use day-key for the 7 columns + the literal string 'other' for
+    # tickets without a due date OR with a due date outside the window.
+    OTHER = 'other'
     cells = {}
-    techs = {}  # user_id -> User (only those with any open assigned ticket)
+    techs = {}
     unassigned_by_day = {d: [] for d in days}
+    unassigned_by_day[OTHER] = []
     overdue = []
 
-    for t in qs[:500]:
+    for t in qs.order_by('-created_at')[:1000]:
         due = t.resolution_due_at or t.first_response_due_at
-        if not due:
-            # No due date — bucket onto today for the assignee
-            d = today
-        else:
+        is_open = not (t.status_id and t.status.is_terminal)
+        bucket = OTHER  # default for no-due-date or outside window
+        if due:
             d_local = timezone.localtime(due).date() if hasattr(due, 'date') else due
-            if d_local < today:
+            if d_local < today and is_open:
                 overdue.append(t)
                 continue
-            if d_local > today + timedelta(days=6):
-                continue
-            d = d_local
+            if today <= d_local <= today + timedelta(days=6):
+                bucket = d_local
         if t.assigned_to_id:
             techs[t.assigned_to_id] = t.assigned_to
-            cells.setdefault((t.assigned_to_id, d), []).append(t)
+            cells.setdefault((t.assigned_to_id, bucket), []).append(t)
         else:
-            unassigned_by_day[d].append(t)
+            unassigned_by_day[bucket].append(t)
 
-    # Build a list of (tech, [tickets_per_day]) preserving insertion order
     techs_sorted = sorted(techs.values(), key=lambda u: (u.username or '').lower())
     rows = []
     for u in techs_sorted:
         rows.append({
             'tech': u,
             'cells': [cells.get((u.id, d), []) for d in days],
+            'other': cells.get((u.id, OTHER), []),
         })
 
     return render(request, 'psa/dispatch_board.html', {
         'days': days,
         'rows': rows,
         'unassigned_by_day': [unassigned_by_day[d] for d in days],
+        'unassigned_other': unassigned_by_day[OTHER],
         'overdue': overdue,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 — Invoices + Payments + Accounting integration handoff
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_psa_enabled
+def invoice_list(request):
+    from .models import Invoice
+    org = get_request_organization(request)
+    qs = Invoice.objects.select_related('client_org', 'created_by')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    status = request.GET.get('status')
+    if status in {'draft', 'sent', 'partial', 'paid', 'overdue', 'void'}:
+        qs = qs.filter(status=status)
+    return render(request, 'psa/invoice_list.html', {
+        'invoices': qs.order_by('-invoice_date', '-created_at')[:200],
+        'status_filter': status or '',
+    })
+
+
+@login_required
+@require_psa_enabled
+def invoice_detail(request, pk):
+    from .models import Invoice
+    org = get_request_organization(request)
+    qs = Invoice.objects.select_related('client_org', 'source_quote', 'source_ticket', 'source_contract')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    return render(request, 'psa/invoice_detail.html', {
+        'item': item,
+        'line_items': item.line_items.all(),
+        'payments': item.payments.all(),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def invoice_form(request, pk=None):
+    from .models import Invoice, InvoiceLineItem
+    from core.models import Organization
+    from datetime import date as _date
+    org = get_request_organization(request)
+    if org is None:
+        messages.error(request, 'Pick a client first.')
+        return redirect('psa:invoice_list')
+    item = get_object_or_404(Invoice, pk=pk, organization=org) if pk else None
+
+    if request.method == 'POST':
+        title = (request.POST.get('title') or '').strip()
+        client_org_id = request.POST.get('client_org')
+        if not title or not client_org_id:
+            messages.error(request, 'Title and client are required.')
+            return redirect(request.path)
+        try:
+            client_org = Organization.objects.get(pk=client_org_id)
+        except Organization.DoesNotExist:
+            messages.error(request, 'Client not found.')
+            return redirect(request.path)
+
+        if item is None:
+            item = Invoice(organization=org, client_org=client_org, title=title,
+                           invoice_date=_date.today(), created_by=request.user)
+        else:
+            item.client_org = client_org
+            item.title = title
+        item.description = (request.POST.get('description') or '').strip()
+        item.status = request.POST.get('status') or 'draft'
+        item.invoice_date = request.POST.get('invoice_date') or item.invoice_date
+        item.due_date = request.POST.get('due_date') or None
+        item.currency = (request.POST.get('currency') or 'USD')[:8]
+        try:
+            item.tax_rate = request.POST.get('tax_rate') or 0
+        except (TypeError, ValueError):
+            item.tax_rate = 0
+        item.notes = (request.POST.get('notes') or '').strip()
+        item.save()
+
+        # Replace line items
+        descs = request.POST.getlist('li_description')
+        qtys = request.POST.getlist('li_quantity')
+        prices = request.POST.getlist('li_unit_price')
+        if descs:
+            item.line_items.all().delete()
+            for i, (d, q, p) in enumerate(zip(descs, qtys, prices)):
+                if not (d or '').strip():
+                    continue
+                try:
+                    qf = float(q or 1)
+                    pf = float(p or 0)
+                except ValueError:
+                    qf, pf = 1, 0
+                InvoiceLineItem.objects.create(
+                    invoice=item, sort_order=i,
+                    description=d.strip()[:300], quantity=qf, unit_price=pf,
+                )
+        item.recompute_totals()
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            organization=org,
+            object_type='psa.Invoice', object_id=item.pk,
+            object_repr=item.invoice_number,
+            description=f'{"Updated" if pk else "Created"} invoice {item.invoice_number}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Saved {item.invoice_number}.')
+        return redirect('psa:invoice_detail', pk=item.pk)
+
+    return render(request, 'psa/invoice_form.html', {
+        'item': item,
+        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
+        'status_choices': Invoice.STATUS_CHOICES,
+        'line_items': item.line_items.all() if item else [],
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def invoice_from_ticket(request, ticket_number):
+    """Generate a draft invoice from a ticket's billable time + expenses."""
+    from .models import Invoice, InvoiceLineItem
+    from datetime import date as _date
+    org = get_request_organization(request)
+    qs = Ticket.objects.select_related('organization')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    ticket = get_object_or_404(qs, ticket_number=ticket_number)
+
+    # Default rate from contract, fallback to 0
+    contract = Contract.for_ticket(ticket)
+    rate = float(contract.hourly_rate) if contract else 0.0
+
+    invoice = Invoice.objects.create(
+        organization=org or ticket.organization,
+        client_org=ticket.organization,
+        title=f'Invoice for {ticket.ticket_number} — {ticket.subject}'[:300],
+        description=f'Billable time + expenses for ticket {ticket.ticket_number}',
+        invoice_date=_date.today(),
+        source_ticket=ticket,
+        source_contract=contract,
+        created_by=request.user,
+    )
+    sort_order = 0
+    for te in ticket.time_entries.filter(is_billable=True):
+        if not te.duration_minutes:
+            continue
+        InvoiceLineItem.objects.create(
+            invoice=invoice, sort_order=sort_order,
+            description=f'Time: {te.notes or "work"}'[:300],
+            quantity=round(te.duration_minutes / 60.0, 2),
+            unit_price=rate,
+            source='time', source_id=str(te.pk),
+        )
+        sort_order += 1
+    for e in ticket.expenses.filter(is_billable=True):
+        InvoiceLineItem.objects.create(
+            invoice=invoice, sort_order=sort_order,
+            description=f'Expense: {e.description}'[:300],
+            quantity=1, unit_price=float(e.amount),
+            source='expense', source_id=str(e.pk),
+        )
+        sort_order += 1
+    invoice.recompute_totals()
+    messages.success(request, f'Draft invoice {invoice.invoice_number} created from {ticket.ticket_number}.')
+    return redirect('psa:invoice_detail', pk=invoice.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def payment_add(request, invoice_pk):
+    from .models import Invoice, Payment
+    from datetime import date as _date
+    org = get_request_organization(request)
+    qs = Invoice.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    invoice = get_object_or_404(qs, pk=invoice_pk)
+    try:
+        amount = float(request.POST.get('amount') or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    if amount <= 0:
+        messages.error(request, 'Amount must be positive.')
+        return redirect('psa:invoice_detail', pk=invoice.pk)
+    Payment.objects.create(
+        invoice=invoice, amount=amount,
+        paid_on=request.POST.get('paid_on') or _date.today(),
+        method=request.POST.get('method') or 'ach',
+        reference=(request.POST.get('reference') or '')[:120],
+        notes=(request.POST.get('notes') or '').strip(),
+        created_by=request.user,
+    )
+    messages.success(request, f'Payment of {amount:.2f} recorded.')
+    return redirect('psa:invoice_detail', pk=invoice.pk)
+
+
+@login_required
+@require_admin
+@require_psa_enabled
+@require_http_methods(['POST'])
+def invoice_push_to_accounting(request, pk):
+    """Push the invoice to the configured accounting provider for this org."""
+    from .models import Invoice
+    from integrations.models import AccountingConnection
+    from integrations.providers.accounting import get_accounting_provider
+    org = get_request_organization(request)
+    qs = Invoice.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    invoice = get_object_or_404(qs, pk=pk)
+
+    conn = AccountingConnection.objects.filter(
+        organization=invoice.organization,
+        is_active=True, sync_enabled=True,
+    ).first()
+    if conn is None:
+        messages.error(request, 'No active accounting connection with sync enabled. Configure one in Integrations.')
+        return redirect('psa:invoice_detail', pk=invoice.pk)
+
+    provider = get_accounting_provider(conn)
+    if provider is None:
+        messages.error(request, 'Provider class not registered.')
+        return redirect('psa:invoice_detail', pk=invoice.pk)
+
+    try:
+        result = provider.push_invoice(invoice)
+    except Exception as exc:
+        messages.error(request, f'Push failed: {exc}')
+        return redirect('psa:invoice_detail', pk=invoice.pk)
+
+    if result.get('success'):
+        messages.success(request, f'Pushed to {conn.get_provider_type_display()} (id {result.get("invoice_id")}).')
+    else:
+        messages.error(request, f'Push failed: {result.get("error", "unknown")}')
+    return redirect('psa:invoice_detail', pk=invoice.pk)

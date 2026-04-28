@@ -45,8 +45,15 @@
                     </td>
                     <td>{{ q.total }}</td>
                     <td>{{ q.created_at|date:'Y-m-d' }}</td>
-                    <td>
+                    <td class="text-nowrap">
                         <a href="{% url 'psa:quote_edit' q.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        {% if q.customer_token and q.status != 'accepted' and q.status != 'rejected' %}
+                        <button class="btn btn-sm btn-outline-info copy-sign-link"
+                                data-link="{{ request.scheme }}://{{ request.get_host }}/portal/quote/{{ q.customer_token }}/sign/"
+                                title="Copy customer e-sign URL">
+                            <i class="fas fa-signature"></i> Sign URL
+                        </button>
+                        {% endif %}
                         {% if q.status != 'accepted' and q.status != 'rejected' %}
                         <form method="post" action="{% url 'psa:quote_accept' q.pk %}" class="d-inline">
                             {% csrf_token %}
@@ -63,4 +70,17 @@
         </table>
     </div>
 </div>
+
+<script>
+document.querySelectorAll('.copy-sign-link').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const link = btn.dataset.link;
+        navigator.clipboard.writeText(link).then(() => {
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+            setTimeout(() => { btn.innerHTML = orig; }, 1500);
+        }).catch(() => alert('Sign URL: ' + link));
+    });
+});
+</script>
 {% endblock %}

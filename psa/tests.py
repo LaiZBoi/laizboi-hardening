@@ -1848,3 +1848,115 @@ class Phase7WorkflowTests(TestCase):
         call_command('psa_seed_sample_workflows', '--org-id', str(self.org.id), verbosity=0)
         after = WorkflowRule.objects.filter(organization=self.org).count()
         self.assertGreater(after, before)
+
+
+class Phase8BillingTests(TestCase):
+    """Phase 8: Invoices, line items, payments, generate-from-ticket."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ACME P8', slug='acme-p8')
+        self.client_org = Organization.objects.create(name='Client P8', slug='client-p8')
+        self.user = User.objects.create_user('p8', password='pw', email='p8@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def test_invoice_auto_numbers(self):
+        from psa.models import Invoice
+        from datetime import date
+        i = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='January work', invoice_date=date.today(),
+        )
+        self.assertTrue(i.invoice_number.startswith(f'INV-{date.today().year}-'))
+
+    def test_invoice_recompute_totals_with_payments_updates_status(self):
+        from psa.models import Invoice, InvoiceLineItem, Payment
+        from datetime import date
+        from decimal import Decimal
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Onboarding', invoice_date=date.today(), status='sent',
+        )
+        InvoiceLineItem.objects.create(invoice=inv, description='Setup', quantity=1, unit_price=200)
+        InvoiceLineItem.objects.create(invoice=inv, description='Training', quantity=2, unit_price=100)
+        inv.recompute_totals()
+        self.assertEqual(inv.total, Decimal('400.00'))
+        Payment.objects.create(invoice=inv, amount=Decimal('150.00'), paid_on=date.today(), method='ach')
+        inv.refresh_from_db()
+        self.assertEqual(inv.amount_paid, Decimal('150.00'))
+        self.assertEqual(inv.status, 'partial')
+        Payment.objects.create(invoice=inv, amount=Decimal('250.00'), paid_on=date.today(), method='ach')
+        inv.refresh_from_db()
+        self.assertEqual(inv.amount_paid, Decimal('400.00'))
+        self.assertEqual(inv.status, 'paid')
+
+    def test_invoice_balance_computed(self):
+        from psa.models import Invoice, InvoiceLineItem, Payment
+        from datetime import date
+        from decimal import Decimal
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='X', invoice_date=date.today(), status='sent',
+        )
+        InvoiceLineItem.objects.create(invoice=inv, description='item', quantity=1, unit_price=500)
+        inv.recompute_totals()
+        Payment.objects.create(invoice=inv, amount=Decimal('200'), paid_on=date.today(), method='ach')
+        inv.refresh_from_db()
+        self.assertEqual(inv.balance, Decimal('300.00'))
+
+
+class AccountingConnectionTests(TestCase):
+    """Encrypted credentials + provider registry round-trip."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='ACME Acct', slug='acme-acct')
+
+    def test_credentials_round_trip_encrypted(self):
+        from integrations.models import AccountingConnection
+        c = AccountingConnection.objects.create(
+            organization=self.org, provider_type='quickbooks_online', name='QBO Live',
+        )
+        c.set_credentials({'client_id': 'cid', 'client_secret': 'shhh',
+                           'refresh_token': 'rrrt'})
+        c.save()
+        reloaded = AccountingConnection.objects.get(pk=c.pk)
+        self.assertEqual(reloaded.get_credentials()['client_secret'], 'shhh')
+        self.assertNotIn('shhh', reloaded.encrypted_credentials)
+
+    def test_update_credentials_merges(self):
+        from integrations.models import AccountingConnection
+        c = AccountingConnection.objects.create(
+            organization=self.org, provider_type='xero', name='Xero Live',
+        )
+        c.set_credentials({'client_id': 'cid'})
+        c.save()
+        c.update_credentials(refresh_token='rt', tenant_id='tid')
+        c.save()
+        reloaded = AccountingConnection.objects.get(pk=c.pk)
+        creds = reloaded.get_credentials()
+        self.assertEqual(creds['client_id'], 'cid')
+        self.assertEqual(creds['refresh_token'], 'rt')
+        self.assertEqual(creds['tenant_id'], 'tid')
+
+    def test_provider_registry(self):
+        from integrations.providers.accounting import (
+            PROVIDER_REGISTRY, get_accounting_provider,
+        )
+        self.assertIn('quickbooks_online', PROVIDER_REGISTRY)
+        self.assertIn('xero', PROVIDER_REGISTRY)
+        from integrations.models import AccountingConnection
+        c = AccountingConnection.objects.create(
+            organization=self.org, provider_type='quickbooks_online', name='X',
+        )
+        p = get_accounting_provider(c)
+        self.assertEqual(p.provider_name, 'QuickBooks Online')
+        self.assertIn('quickbooks.api.intuit.com', p.base_url)

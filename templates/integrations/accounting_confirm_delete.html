@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Delete Accounting Connection{% endblock %}
+{% block content %}
+<h1 class="mb-4">Delete Accounting Connection</h1>
+<div class="card">
+    <div class="card-body">
+        <p>Delete <strong>{{ item.name }}</strong> ({{ item.get_provider_type_display }})? OAuth tokens will be discarded.</p>
+        <form method="post">
+            {% csrf_token %}
+            <button class="btn btn-danger">Delete</button>
+            <a href="{% url 'integrations:accounting_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

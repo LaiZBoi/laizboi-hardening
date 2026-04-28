@@ -180,3 +180,112 @@ def ticket_create(request):
     return render(request, 'portal/ticket_create.html', {
         'organization': m.organization,
     })
+
+
+# ---------------------------------------------------------------------------
+# Customer-facing quote signing — opaque token URL, no portal login required
+# ---------------------------------------------------------------------------
+
+import json as _json_qs
+
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_http_methods
+
+
+def _client_ip_qs(request):
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
+@require_http_methods(['GET', 'POST'])
+def quote_sign(request, token):
+    """
+    Public sign-and-accept page. The token is on `Quote.customer_token`
+    and is generated server-side; only the customer with the link can
+    sign. POSTing a signature flips the quote to 'accepted', creates the
+    QuoteSignature record, and runs Quote.mark_accepted (which optionally
+    creates a ticket).
+    """
+    from psa.models import (
+        Queue, Quote, QuoteSignature,
+        TicketPriority, TicketStatus, TicketType,
+    )
+
+    quote = get_object_or_404(Quote.objects.select_related('client_org'),
+                              customer_token=token)
+
+    if request.method == 'POST':
+        if quote.status in ('accepted', 'rejected'):
+            return render(request, 'portal/quote_sign.html', {
+                'quote': quote,
+                'organization': quote.client_org,
+                'already': True,
+            })
+
+        signed_by_name = (request.POST.get('signed_by_name') or '').strip()[:200]
+        signed_by_email = (request.POST.get('signed_by_email') or '').strip()[:254]
+        signed_by_title = (request.POST.get('signed_by_title') or '').strip()[:200]
+        signature_data = (request.POST.get('signature_data') or '').strip()
+
+        if not signed_by_name or not signed_by_email or not signature_data.startswith('data:image/'):
+            messages.error(request, 'Please complete the form and draw your signature.')
+            return redirect(request.path)
+        if len(signature_data) > 200_000:
+            messages.error(request, 'Signature image is too large.')
+            return redirect(request.path)
+
+        QuoteSignature.objects.update_or_create(
+            quote=quote,
+            defaults={
+                'signed_by_name': signed_by_name,
+                'signed_by_email': signed_by_email,
+                'signed_by_title': signed_by_title,
+                'signature_data': signature_data,
+                'ip_address': _client_ip_qs(request),
+                'user_agent': (request.META.get('HTTP_USER_AGENT') or '')[:400],
+            },
+        )
+
+        # Flip status + optionally create ticket
+        queue = Queue.objects.filter(is_active=True).first()
+        priority = TicketPriority.objects.order_by('sort_order').first()
+        ttype = TicketType.objects.filter(is_active=True).first()
+        new_status = TicketStatus.objects.filter(slug='new').first()
+        try:
+            quote.mark_accepted(
+                user=None, create_ticket=True,
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=new_status,
+            )
+        except Exception:
+            quote.status = 'accepted'
+            quote.save()
+
+        try:
+            from audit.models import AuditLog
+            AuditLog.log(
+                user=None, action='update',
+                organization=quote.organization,
+                object_type='psa.Quote', object_id=quote.pk,
+                object_repr=quote.quote_number,
+                description=f'Quote {quote.quote_number} signed by {signed_by_name} <{signed_by_email}> from IP {_client_ip_qs(request)}',
+                path=request.path,
+                extra_data={'signed_by_email': signed_by_email,
+                            'signed_by_name': signed_by_name},
+            )
+        except Exception:
+            pass
+
+        return render(request, 'portal/quote_sign.html', {
+            'quote': quote,
+            'organization': quote.client_org,
+            'just_signed': True,
+        })
+
+    return render(request, 'portal/quote_sign.html', {
+        'quote': quote,
+        'organization': quote.client_org,
+        'line_items': quote.line_items.all(),
+    })

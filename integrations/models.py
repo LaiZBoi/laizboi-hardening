@@ -941,3 +941,79 @@ class DistributorWebhookEvent(BaseModel):
 
     def __str__(self):
         return f'{self.connection_id}/{self.event_type or "?"}@{self.received_at:%Y-%m-%d %H:%M}'
+
+
+# ---------------------------------------------------------------------------
+# Accounting integrations — push invoices to QuickBooks Online / Xero / etc.
+# ---------------------------------------------------------------------------
+
+class AccountingConnection(BaseModel):
+    """
+    Per-organization OAuth2 connection to an accounting system. Distinct
+    from PSAConnection (third-party PSAs) and DistributorConnection
+    (catalogs/orders). Stores client_id + client_secret + refresh_token
+    encrypted; accessing the access_token refreshes it automatically when
+    near expiry.
+    """
+    PROVIDER_TYPES = [
+        ('quickbooks_online', 'QuickBooks Online'),
+        ('xero', 'Xero'),
+        ('freshbooks', 'FreshBooks'),
+        ('wave', 'Wave Accounting'),
+        ('zoho_books', 'Zoho Books'),
+        ('sage_business_cloud', 'Sage Business Cloud'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='accounting_connections',
+    )
+    provider_type = models.CharField(max_length=50, choices=PROVIDER_TYPES)
+    name = models.CharField(max_length=255)
+
+    base_url = models.URLField(max_length=500, blank=True,
+        help_text='Defaults to provider production endpoint when blank')
+
+    # All credentials (client_id, client_secret, refresh_token, access_token,
+    # expires_at, realm_id for QBO, tenant_id for Xero, etc.) encrypted as
+    # a single JSON blob.
+    encrypted_credentials = models.TextField(blank=True)
+
+    # Default tax rate to apply when creating invoices on the provider side
+    # (when our line items don't have an explicit tax rate already mapped).
+    default_tax_rate = models.DecimalField(max_digits=5, decimal_places=4, default=0)
+
+    sync_enabled = models.BooleanField(default=False,
+        help_text='Allow live invoice push (off by default — sandbox first)')
+    is_active = models.BooleanField(default=True)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=50, blank=True)
+    last_error = models.TextField(blank=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'accounting_connections'
+        unique_together = [['organization', 'name']]
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.organization.slug}:{self.name} ({self.get_provider_type_display()})'
+
+    def set_credentials(self, credentials_dict):
+        encrypted = encrypt_dict(credentials_dict)
+        self.encrypted_credentials = json.dumps(encrypted)
+
+    def get_credentials(self):
+        if not self.encrypted_credentials:
+            return {}
+        try:
+            return decrypt_dict(json.loads(self.encrypted_credentials))
+        except Exception:
+            return {}
+
+    def update_credentials(self, **kwargs):
+        """Merge new fields into the encrypted credentials blob."""
+        creds = self.get_credentials()
+        creds.update(kwargs)
+        self.set_credentials(creds)

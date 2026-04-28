@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{% if item %}Edit{% else %}Add{% endif %} Accounting Connection{% endblock %}
+{% block content %}
+<h1 class="mb-4">{% if item %}Edit Accounting Connection{% else %}Add Accounting Connection{% endif %}</h1>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" required value="{{ item.name|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Provider</label>
+                <select name="provider_type" class="form-select" required {% if item %}disabled{% endif %}>
+                    {% for code, label in provider_types %}
+                    <option value="{{ code }}" {% if item.provider_type == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                {% if item %}<input type="hidden" name="provider_type" value="{{ item.provider_type }}">{% endif %}
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Organization</label>
+                <select name="organization" class="form-select" required>
+                    <option value="">— select —</option>
+                    {% for org in organizations %}
+                    <option value="{{ org.pk }}" {% if item.organization_id == org.pk %}selected{% endif %}>{{ org.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Default tax rate</label>
+                <input type="number" step="0.0001" name="default_tax_rate" class="form-control" value="{{ item.default_tax_rate|default:0 }}">
+            </div>
+            <div class="col-md-3 form-check ms-3 mt-4">
+                <input type="checkbox" id="is_active" name="is_active" class="form-check-input" {% if not item or item.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="is_active">Active</label>
+            </div>
+
+            <div class="col-12"><hr><h5>OAuth credentials</h5>
+                <p class="text-muted small mb-2">Paste the client_id + client_secret from your provider portal. After saving, click <strong>Connect</strong> to start the OAuth flow.</p>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Client ID</label>
+                <input type="text" name="client_id" class="form-control" autocomplete="off"
+                       placeholder="{% if item %}(unchanged){% endif %}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Client Secret</label>
+                <input type="password" name="client_secret" class="form-control" autocomplete="new-password"
+                       placeholder="{% if item %}(unchanged){% endif %}">
+            </div>
+
+            <div class="col-12 form-check ms-3 mt-3">
+                <input type="checkbox" id="sync_enabled" name="sync_enabled" class="form-check-input" {% if item.sync_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="sync_enabled">
+                    Allow live invoice push (default OFF — connect to sandbox first)
+                </label>
+            </div>
+
+            {% if item %}
+            <div class="col-12">
+                <label class="form-label">Redirect URI (set this in your provider's OAuth app config)</label>
+                <input type="text" class="form-control font-monospace" readonly
+                       value="{{ request.scheme }}://{{ request.get_host }}/integrations/accounting/oauth/callback/">
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'integrations:accounting_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

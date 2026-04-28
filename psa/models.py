@@ -1196,6 +1196,9 @@ class Quote(models.Model):
         null=True, blank=True, related_name='source_quotes',
     )
 
+    customer_token = models.CharField(max_length=64, blank=True, db_index=True,
+        help_text='Opaque token for the customer-facing sign-and-accept URL')
+
     created_by = models.ForeignKey(
         django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='created_psa_quotes',
@@ -1217,6 +1220,9 @@ class Quote(models.Model):
     def save(self, *args, **kwargs):
         if not self.quote_number:
             self.quote_number = self._next_number()
+        if not self.customer_token:
+            import secrets as _secrets
+            self.customer_token = _secrets.token_urlsafe(32)
         super().save(*args, **kwargs)
 
     def _next_number(self) -> str:
@@ -1485,3 +1491,225 @@ class WorkflowRule(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.get_trigger_display()})'
+
+
+# ---------------------------------------------------------------------------
+# Billing — invoices + payments (Workstream 5 expansion)
+# ---------------------------------------------------------------------------
+
+class Invoice(models.Model):
+    """
+    Customer invoice. Generated from a quote, a ticket's billable time +
+    expenses, or a contract's reporting period. Pushed to an accounting
+    system (QuickBooks Online / Xero) via integrations.AccountingConnection.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent'),
+        ('partial', 'Partially Paid'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+        ('void', 'Void'),
+    ]
+
+    invoice_number = models.CharField(max_length=32, unique=True, db_index=True, blank=True)
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_invoices',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_client_invoices',
+    )
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    invoice_date = models.DateField()
+    due_date = models.DateField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Money
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=4, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=8, default='USD')
+
+    # Sources
+    source_quote = models.ForeignKey('Quote', on_delete=models.SET_NULL,
+                                     null=True, blank=True, related_name='invoices')
+    source_ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL,
+                                      null=True, blank=True, related_name='invoices')
+    source_contract = models.ForeignKey('Contract', on_delete=models.SET_NULL,
+                                        null=True, blank=True, related_name='invoices')
+
+    # Accounting integration handoff
+    accounting_provider = models.CharField(max_length=50, blank=True,
+        help_text='quickbooks_online | xero | etc.')
+    accounting_external_id = models.CharField(max_length=120, blank=True,
+        help_text='Invoice ID in the external accounting system')
+    pushed_to_accounting_at = models.DateTimeField(null=True, blank=True)
+    last_push_error = models.TextField(blank=True)
+
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_psa_invoices',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_invoices'
+        ordering = ['-invoice_date', '-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'status', '-invoice_date']),
+            models.Index(fields=['client_org', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.invoice_number} — {self.title}'
+
+    @property
+    def balance(self):
+        from decimal import Decimal
+        return (Decimal(self.total) - Decimal(self.amount_paid)).quantize(Decimal('0.01'))
+
+    def save(self, *args, **kwargs):
+        if not self.invoice_number:
+            self.invoice_number = self._next_number()
+        super().save(*args, **kwargs)
+
+    def _next_number(self) -> str:
+        year = timezone.now().year
+        prefix = f'INV-{year}-'
+        last = Invoice.objects.filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
+        if last and last.invoice_number:
+            try:
+                n = int(last.invoice_number.rsplit('-', 1)[-1])
+            except ValueError:
+                n = 0
+        else:
+            n = 0
+        return f'{prefix}{n + 1:05d}'
+
+    def recompute_totals(self):
+        from decimal import Decimal
+        sub = sum((li.line_total for li in self.line_items.all()), Decimal('0'))
+        self.subtotal = sub
+        self.tax_amount = (sub * (self.tax_rate or 0)).quantize(Decimal('0.01'))
+        self.total = sub + self.tax_amount
+        # Recompute amount_paid from related Payment rows
+        paid = sum((p.amount for p in self.payments.all()), Decimal('0'))
+        self.amount_paid = paid
+        # Auto status update
+        if self.status not in ('void', 'draft'):
+            if paid >= self.total > 0:
+                self.status = 'paid'
+            elif paid > 0:
+                self.status = 'partial'
+        self.save(update_fields=['subtotal', 'tax_amount', 'total',
+                                 'amount_paid', 'status', 'updated_at'])
+
+
+class InvoiceLineItem(models.Model):
+    SOURCE_CHOICES = [
+        ('manual', 'Manual'),
+        ('time', 'Time Entry'),
+        ('expense', 'Expense'),
+        ('quote_line', 'Quote Line'),
+        ('contract', 'Contract Period'),
+    ]
+
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='line_items')
+    sort_order = models.PositiveIntegerField(default=0)
+
+    description = models.CharField(max_length=300)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    is_taxable = models.BooleanField(default=True)
+
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual')
+    source_id = models.CharField(max_length=80, blank=True,
+        help_text='Loose pointer to the source row id (e.g. time_entry pk)')
+
+    class Meta:
+        db_table = 'psa_invoice_line_items'
+        ordering = ['sort_order', 'pk']
+
+    @property
+    def line_total(self):
+        from decimal import Decimal
+        return (self.quantity * self.unit_price).quantize(Decimal('0.01'))
+
+    def __str__(self):
+        return f'{self.description} ({self.quantity} × {self.unit_price})'
+
+
+class Payment(models.Model):
+    """A payment received against an Invoice."""
+    METHOD_CHOICES = [
+        ('check', 'Check'),
+        ('ach', 'ACH'),
+        ('credit_card', 'Credit Card'),
+        ('wire', 'Wire'),
+        ('cash', 'Cash'),
+        ('other', 'Other'),
+    ]
+
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_on = models.DateField()
+    method = models.CharField(max_length=20, choices=METHOD_CHOICES, default='ach')
+    reference = models.CharField(max_length=120, blank=True,
+        help_text='Check number, wire confirmation, etc.')
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_payments_recorded',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_payments'
+        ordering = ['-paid_on', '-created_at']
+
+    def __str__(self):
+        return f'{self.amount} on {self.paid_on} ({self.get_method_display()})'
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Refresh the parent invoice's amount_paid + status
+        try:
+            self.invoice.recompute_totals()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Quote e-signature (Workstream 5)
+# ---------------------------------------------------------------------------
+
+class QuoteSignature(models.Model):
+    """Customer signature record for a Quote. Signature drawn on the
+    portal sign page is captured as a base64-encoded PNG.
+    """
+    quote = models.OneToOneField('Quote', on_delete=models.CASCADE,
+                                 related_name='signature')
+    signed_by_name = models.CharField(max_length=200)
+    signed_by_email = models.EmailField()
+    signed_by_title = models.CharField(max_length=200, blank=True,
+        help_text='Optional — signer\'s job title')
+    signature_data = models.TextField(
+        help_text='Base64 data URI of the drawn signature (image/png)')
+    signed_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=400, blank=True)
+
+    class Meta:
+        db_table = 'psa_quote_signatures'
+
+    def __str__(self):
+        return f'Signed by {self.signed_by_name} at {self.signed_at:%Y-%m-%d %H:%M}'

@@ -1,0 +1,149 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ quote.quote_number }} — Sign &amp; Accept{% endblock %}
+{% block content %}
+<h1 class="mb-3">{{ quote.title }}</h1>
+<p class="text-muted">
+    Quote <code>{{ quote.quote_number }}</code> for <strong>{{ quote.client_org.name }}</strong>
+    {% if quote.valid_until %} — valid through {{ quote.valid_until }}{% endif %}.
+</p>
+
+{% if quote.status == 'accepted' or already %}
+<div class="alert alert-success">
+    <h5 class="mb-1"><i class="fas fa-check-circle"></i> This quote has already been accepted.</h5>
+    {% if quote.signature %}
+    <p class="mb-0 small">Signed by {{ quote.signature.signed_by_name }} on {{ quote.signature.signed_at|date:'Y-m-d H:i' }}.</p>
+    {% endif %}
+</div>
+{% elif just_signed %}
+<div class="alert alert-success">
+    <h5 class="mb-1"><i class="fas fa-check-circle"></i> Thanks — your acceptance is recorded.</h5>
+    <p class="mb-0">A signed copy and confirmation will be sent to your email.</p>
+</div>
+{% elif quote.status == 'rejected' %}
+<div class="alert alert-warning">This quote has been marked rejected and is no longer signable.</div>
+{% else %}
+
+{% if quote.description %}
+<div class="card mb-3"><div class="card-body"><p class="mb-0">{{ quote.description|linebreaksbr }}</p></div></div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header"><strong>Line items</strong></div>
+    <table class="table mb-0">
+        <thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th class="text-end">Line total</th></tr></thead>
+        <tbody>
+            {% for li in line_items %}
+            <tr><td>{{ li.description }}</td><td>{{ li.quantity }}</td><td>{{ li.unit_price }}</td><td class="text-end">{{ li.line_total }}</td></tr>
+            {% empty %}<tr><td colspan="4" class="text-center text-muted">No line items.</td></tr>{% endfor %}
+        </tbody>
+        <tfoot>
+            <tr><td colspan="3" class="text-end">Subtotal</td><td class="text-end">{{ quote.subtotal }}</td></tr>
+            <tr><td colspan="3" class="text-end">Tax</td><td class="text-end">{{ quote.tax_amount }}</td></tr>
+            <tr class="table-active"><td colspan="3" class="text-end"><strong>Total</strong></td><td class="text-end"><strong>{{ quote.total }}</strong></td></tr>
+        </tfoot>
+    </table>
+</div>
+
+<div class="card">
+    <div class="card-header"><strong>Sign &amp; accept</strong></div>
+    <form method="post" id="sign-form">
+        {% csrf_token %}
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Your full name</label>
+                    <input type="text" name="signed_by_name" class="form-control" required maxlength="200">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="signed_by_email" class="form-control" required maxlength="254">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Title (optional)</label>
+                    <input type="text" name="signed_by_title" class="form-control" maxlength="200">
+                </div>
+                <div class="col-12">
+                    <label class="form-label d-block">Signature</label>
+                    <canvas id="sig-pad" width="600" height="180"
+                            style="border:1px solid var(--bs-border-color); border-radius:6px; touch-action:none; max-width:100%; background:#fff;"></canvas>
+                    <div class="mt-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sig-clear">Clear</button>
+                        <small class="text-muted ms-2">Use mouse, finger, or stylus.</small>
+                    </div>
+                    <input type="hidden" name="signature_data" id="signature_data">
+                </div>
+                <div class="col-12 small text-muted">
+                    By clicking <strong>Accept &amp; Sign</strong> you agree to the terms of this quote and
+                    authorize the work above. Your IP address, browser, and signature are recorded.
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <button type="submit" class="btn btn-success" id="sign-submit"><i class="fas fa-signature"></i> Accept &amp; Sign</button>
+        </div>
+    </form>
+</div>
+
+<script>
+(function() {
+    const canvas = document.getElementById('sig-pad');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    let hasInk = false;
+
+    function start(e) {
+        drawing = true;
+        const r = canvas.getBoundingClientRect();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+        const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+        ctx.beginPath();
+        ctx.moveTo(x * (canvas.width / r.width), y * (canvas.height / r.height));
+        e.preventDefault();
+    }
+    function move(e) {
+        if (!drawing) return;
+        const r = canvas.getBoundingClientRect();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+        const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#000';
+        ctx.lineTo(x * (canvas.width / r.width), y * (canvas.height / r.height));
+        ctx.stroke();
+        hasInk = true;
+        e.preventDefault();
+    }
+    function end() { drawing = false; ctx.beginPath(); }
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, {passive: false});
+    canvas.addEventListener('touchmove', move, {passive: false});
+    canvas.addEventListener('touchend', end);
+
+    document.getElementById('sig-clear').addEventListener('click', () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        hasInk = false;
+    });
+
+    document.getElementById('sign-form').addEventListener('submit', (e) => {
+        if (!hasInk) {
+            e.preventDefault();
+            alert('Please draw your signature before submitting.');
+            return;
+        }
+        // Render to a white background so the saved PNG is readable.
+        const out = document.createElement('canvas');
+        out.width = canvas.width; out.height = canvas.height;
+        const oc = out.getContext('2d');
+        oc.fillStyle = '#fff';
+        oc.fillRect(0, 0, out.width, out.height);
+        oc.drawImage(canvas, 0, 0);
+        document.getElementById('signature_data').value = out.toDataURL('image/png');
+    });
+})();
+</script>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}{{ item.invoice_number }} — PSA Invoice{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:invoice_list' %}">Invoices</a></li>
+        <li class="breadcrumb-item active">{{ item.invoice_number }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">{{ item.invoice_number }} — {{ item.title }}
+        {% if item.status == 'paid' %}<span class="badge text-bg-success">Paid</span>
+        {% elif item.status == 'partial' %}<span class="badge text-bg-warning">Partial</span>
+        {% elif item.status == 'sent' %}<span class="badge text-bg-info">Sent</span>
+        {% elif item.status == 'draft' %}<span class="badge text-bg-secondary">Draft</span>
+        {% elif item.status == 'overdue' %}<span class="badge text-bg-danger">Overdue</span>
+        {% else %}<span class="badge text-bg-secondary">{{ item.get_status_display }}</span>{% endif %}
+    </h2>
+    <div>
+        <a href="{% url 'psa:invoice_edit' item.pk %}" class="btn btn-outline-secondary"><i class="fas fa-pen"></i> Edit</a>
+        <form method="post" action="{% url 'psa:invoice_push_to_accounting' item.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button class="btn btn-warning"
+                    onclick="return confirm('Push this invoice to the configured accounting provider?')">
+                <i class="fas fa-cloud-upload-alt"></i> Push to accounting
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-5">Client</dt><dd class="col-7">{{ item.client_org.name }}</dd>
+                    <dt class="col-5">Date</dt><dd class="col-7">{{ item.invoice_date }}</dd>
+                    <dt class="col-5">Due</dt><dd class="col-7">{{ item.due_date|default:'—' }}</dd>
+                    <dt class="col-5">Currency</dt><dd class="col-7">{{ item.currency }}</dd>
+                    <dt class="col-5">Subtotal</dt><dd class="col-7">{{ item.subtotal }}</dd>
+                    <dt class="col-5">Tax</dt><dd class="col-7">{{ item.tax_amount }} ({{ item.tax_rate }})</dd>
+                    <dt class="col-5">Total</dt><dd class="col-7"><strong>{{ item.total }}</strong></dd>
+                    <dt class="col-5">Paid</dt><dd class="col-7">{{ item.amount_paid }}</dd>
+                    <dt class="col-5">Balance</dt><dd class="col-7"><strong>{{ item.balance }}</strong></dd>
+                </dl>
+                {% if item.accounting_external_id %}
+                <hr>
+                <p class="mb-0 small text-success">
+                    <i class="fas fa-check-circle"></i> Pushed to <strong>{{ item.accounting_provider }}</strong>
+                    (id <code>{{ item.accounting_external_id }}</code>) at {{ item.pushed_to_accounting_at|date:'Y-m-d H:i' }}
+                </p>
+                {% elif item.last_push_error %}
+                <div class="alert alert-danger small mt-3 mb-0">{{ item.last_push_error }}</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header"><strong>Record Payment</strong></div>
+            <div class="card-body">
+                <form method="post" action="{% url 'psa:payment_add' item.pk %}" class="row g-2 small">
+                    {% csrf_token %}
+                    <div class="col-6"><input type="number" step="0.01" name="amount" class="form-control form-control-sm" required placeholder="Amount"></div>
+                    <div class="col-6"><input type="date" name="paid_on" class="form-control form-control-sm" required></div>
+                    <div class="col-6">
+                        <select name="method" class="form-select form-select-sm">
+                            <option value="ach">ACH</option><option value="check">Check</option>
+                            <option value="credit_card">Credit Card</option><option value="wire">Wire</option>
+                            <option value="cash">Cash</option><option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-6"><input type="text" name="reference" class="form-control form-control-sm" placeholder="Ref / Check #"></div>
+                    <div class="col-12"><textarea name="notes" rows="2" class="form-control form-control-sm" placeholder="Notes"></textarea></div>
+                    <div class="col-12"><button class="btn btn-sm btn-primary">Record</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Line items</strong></div>
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th class="text-end">Line total</th></tr></thead>
+                <tbody>
+                    {% for li in line_items %}
+                    <tr>
+                        <td>
+                            {{ li.description }}
+                            {% if li.source != 'manual' %}<small class="badge text-bg-secondary">{{ li.get_source_display }}</small>{% endif %}
+                        </td>
+                        <td>{{ li.quantity }}</td>
+                        <td>{{ li.unit_price }}</td>
+                        <td class="text-end">{{ li.line_total }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted">No line items.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><strong>Payments received</strong></div>
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead>
+                <tbody>
+                    {% for p in payments %}
+                    <tr>
+                        <td>{{ p.paid_on }}</td>
+                        <td>{{ p.amount }} {{ item.currency }}</td>
+                        <td>{{ p.get_method_display }}</td>
+                        <td>{{ p.reference|default:'—' }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted">No payments recorded.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

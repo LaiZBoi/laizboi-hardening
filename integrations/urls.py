@@ -90,4 +90,14 @@ urlpatterns = [
     # Webhook receiver — opaque token in path, signature verified inside.
     path('distributors/webhooks/<str:token>/', views.distributor_webhook,
          name='distributor_webhook'),
+
+    # Accounting (Workstream 5 — billing handoff)
+    path('accounting/', views.accounting_list, name='accounting_list'),
+    path('accounting/create/', views.accounting_create, name='accounting_create'),
+    path('accounting/<int:pk>/edit/', views.accounting_edit, name='accounting_edit'),
+    path('accounting/<int:pk>/delete/', views.accounting_delete, name='accounting_delete'),
+    path('accounting/<int:pk>/test/', views.accounting_test, name='accounting_test'),
+    path('accounting/<int:pk>/connect/', views.accounting_connect, name='accounting_connect'),
+    path('accounting/oauth/callback/', views.accounting_oauth_callback,
+         name='accounting_oauth_callback'),
 ]

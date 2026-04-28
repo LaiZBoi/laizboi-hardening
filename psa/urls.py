@@ -71,4 +71,12 @@ urlpatterns = [
     path('rules/<int:pk>/delete/', views.workflow_rule_delete, name='workflow_rule_delete'),
     # Dispatch board
     path('dispatch/', views.dispatch_board, name='dispatch_board'),
+    # Invoices + payments (Workstream 5 billing)
+    path('invoices/', views.invoice_list, name='invoice_list'),
+    path('invoices/new/', views.invoice_form, name='invoice_create'),
+    path('invoices/<int:pk>/', views.invoice_detail, name='invoice_detail'),
+    path('invoices/<int:pk>/edit/', views.invoice_form, name='invoice_edit'),
+    path('invoices/<int:pk>/payment/', views.payment_add, name='payment_add'),
+    path('invoices/<int:pk>/push/', views.invoice_push_to_accounting, name='invoice_push_to_accounting'),
+    path('invoices/from-ticket/<str:ticket_number>/', views.invoice_from_ticket, name='invoice_from_ticket'),
 ]

@@ -400,6 +400,20 @@
             {% endif %}
         </div>
 
+        {# Invoice from this ticket #}
+        <div class="card mt-3">
+            <div class="card-body p-2 d-flex justify-content-between align-items-center small">
+                <span><i class="fas fa-file-invoice me-1"></i>Generate invoice from billable time + expenses</span>
+                <form method="post" action="{% url 'psa:invoice_from_ticket' ticket.ticket_number %}" class="d-inline">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-primary"
+                            onclick="return confirm('Create a draft invoice from this ticket\'s billable time + expenses?')">
+                        <i class="fas fa-plus"></i> Invoice this ticket
+                    </button>
+                </form>
+            </div>
+        </div>
+
         {# Expenses (Phase 5) #}
         <div class="card mt-3">
             <div class="card-header d-flex justify-content-between align-items-center">

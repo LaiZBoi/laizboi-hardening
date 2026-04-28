@@ -41,6 +41,7 @@
                     {{ d|date:'D' }} <small class="text-muted">{{ d|date:'M j' }}</small>
                 </th>
                 {% endfor %}
+                <th class="text-center">Other<br><small class="text-muted">no due / outside window</small></th>
             </tr>
         </thead>
         <tbody>
@@ -61,6 +62,17 @@
                     {% endfor %}
                 </td>
                 {% endfor %}
+                <td class="dispatch-cell">
+                    {% for t in unassigned_other %}
+                    <div class="dispatch-card">
+                        <span class="badge text-bg-secondary">{{ t.priority.code }}</span>
+                        <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
+                        <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
+                    </div>
+                    {% empty %}
+                    <span class="text-muted">·</span>
+                    {% endfor %}
+                </td>
             </tr>
             {% for row in rows %}
             <tr>
@@ -69,7 +81,7 @@
                 <td class="dispatch-cell">
                     {% for t in cell %}
                     <div class="dispatch-card">
-                        <span class="badge text-bg-info">{{ t.priority.code }}</span>
+                        <span class="badge {% if t.status.is_terminal %}text-bg-secondary{% else %}text-bg-info{% endif %}">{{ t.priority.code }}</span>
                         <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
                         <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
                     </div>
@@ -78,10 +90,21 @@
                     {% endfor %}
                 </td>
                 {% endfor %}
+                <td class="dispatch-cell">
+                    {% for t in row.other %}
+                    <div class="dispatch-card">
+                        <span class="badge {% if t.status.is_terminal %}text-bg-secondary{% else %}text-bg-info{% endif %}">{{ t.priority.code }}</span>
+                        <a href="{% url 'psa:ticket_detail' t.ticket_number %}" class="dispatch-card-link">{{ t.ticket_number }}</a>
+                        <div class="dispatch-card-subject">{{ t.subject|truncatechars:35 }}</div>
+                    </div>
+                    {% empty %}
+                    <span class="text-muted">·</span>
+                    {% endfor %}
+                </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="{{ days|length|add:1 }}" class="text-center text-muted py-3 small">No assigned open tickets in the next 7 days.</td>
+                <td colspan="{{ days|length|add:2 }}" class="text-center text-muted py-3 small">No assigned tickets.</td>
             </tr>
             {% endfor %}
         </tbody>

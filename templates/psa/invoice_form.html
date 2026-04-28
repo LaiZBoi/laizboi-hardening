@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{% if item %}Edit{% else %}New{% endif %} Invoice — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:invoice_list' %}">Invoices</a></li>
+        <li class="breadcrumb-item active">{% if item %}{{ item.invoice_number }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3">{% if item %}Edit Invoice {{ item.invoice_number }}{% else %}New Invoice{% endif %}</h2>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Title</label>
+                <input type="text" name="title" class="form-control" required value="{{ item.title|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Client</label>
+                <select name="client_org" class="form-select" required>
+                    {% for o in client_orgs %}
+                    <option value="{{ o.pk }}" {% if item.client_org_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    {% for code, label in status_choices %}
+                    <option value="{{ code }}" {% if item.status == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Invoice date</label>
+                <input type="date" name="invoice_date" class="form-control" required value="{{ item.invoice_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Due date</label>
+                <input type="date" name="due_date" class="form-control" value="{{ item.due_date|date:'Y-m-d'|default:'' }}">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Cur.</label>
+                <input type="text" name="currency" class="form-control" maxlength="8" value="{{ item.currency|default:'USD' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tax rate</label>
+                <input type="number" step="0.0001" name="tax_rate" class="form-control" value="{{ item.tax_rate|default:0 }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Description</label>
+                <textarea name="description" rows="2" class="form-control">{{ item.description|default:'' }}</textarea>
+            </div>
+
+            <div class="col-12"><hr><h5>Line items</h5></div>
+            <div class="col-12">
+                <table class="table table-sm">
+                    <thead><tr><th>Description</th><th style="width:120px;">Quantity</th><th style="width:140px;">Unit price</th><th style="width:140px;">Line total</th></tr></thead>
+                    <tbody>
+                        {% for li in line_items %}
+                        <tr>
+                            <td><input type="text" name="li_description" class="form-control form-control-sm" value="{{ li.description }}"></td>
+                            <td><input type="number" step="0.01" name="li_quantity" class="form-control form-control-sm li-qty" value="{{ li.quantity }}"></td>
+                            <td><input type="number" step="0.01" name="li_unit_price" class="form-control form-control-sm li-price" value="{{ li.unit_price }}"></td>
+                            <td class="li-total text-end">{{ li.line_total }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% for _ in "xxx" %}
+                        <tr>
+                            <td><input type="text" name="li_description" class="form-control form-control-sm"></td>
+                            <td><input type="number" step="0.01" name="li_quantity" class="form-control form-control-sm li-qty" value="1"></td>
+                            <td><input type="number" step="0.01" name="li_unit_price" class="form-control form-control-sm li-price" value="0"></td>
+                            <td class="li-total text-end">0</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Notes</label>
+                <textarea name="notes" rows="2" class="form-control">{{ item.notes|default:'' }}</textarea>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'psa:invoice_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+<script>
+document.querySelectorAll('tbody tr').forEach(row => {
+    const q = row.querySelector('.li-qty');
+    const p = row.querySelector('.li-price');
+    const t = row.querySelector('.li-total');
+    if (!q || !p || !t) return;
+    const recompute = () => {
+        const qv = parseFloat(q.value || 0);
+        const pv = parseFloat(p.value || 0);
+        t.textContent = (qv * pv).toFixed(2);
+    };
+    q.addEventListener('input', recompute);
+    p.addEventListener('input', recompute);
+});
+</script>
+{% endblock %}
