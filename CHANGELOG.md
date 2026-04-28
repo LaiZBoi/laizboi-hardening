@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.100] - 2026-04-28
+
+### Changed — Dev workflow: assistant edits gated by Apply update
+Going forward the AI assistant works in a separate worktree at `/home/administrator/.dev-worktree/` on the `dev-work` branch. Pushes go to `origin/main`, so `/home/administrator/` sees an **Update available** prompt and the user must click **Apply update** in the web UI (Settings → Updates) for changes to land. The assistant no longer edits the running source tree directly nor restarts gunicorn.
+
+This commit is the first one made entirely through the new workflow — if you're seeing it as "Update available" in the dashboard rather than already applied, the gating is working.
+
 ## [3.17.99] - 2026-04-28
 
 ### Changed — Invoice form matches the compact quote form
