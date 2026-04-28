@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.88] - 2026-04-28
+
+### Added — PSA Phase 2c remainder
+- **Similar tickets** card on the ticket detail page (same-asset + Jaccard token overlap on subject) so techs can spot duplicates and one-click merge.
+- **`@mention` parser** — typing `@username` or `@user@example.com` in a comment auto-adds them as a watcher and emails them.
+- **Ticket merge** moves comments + attachments to the target ticket, marks the source as a duplicate, and audit-logs both.
+
+### Added — Distributors (Workstream 8)
+- **`integrations.DistributorConnection` + `DistributorWebhookEvent`** with encrypted credentials/secrets, opaque per-connection webhook tokens, and tenant scoping.
+- **Ingram Micro Xvantage** adapter — OAuth2 client-credentials, catalog list, price + availability, order placement (gated by `sync_enabled`, off by default), HMAC-SHA256 webhook verification.
+- **Six other distributors** (TD Synnex, D&H, ScanSource, Pax8, QBS, Westcoast) reserved as `provider_type` choices for future adapters.
+- **Admin UI** — list, create/edit, delete, ad-hoc pricing lookup, connection test endpoint.
+- **`sync_distributors` management command** for cron health probes.
+
+### Added — PSA AI Phase 10c
+- **11 granular RoleTemplate booleans** (`psa_ai_view`, `_send_low_risk`, `_send_high_risk`, `_approve_reply`, `_apply_low_risk`, `_apply_high_risk`, `_approve_action`, `_run_script`, `_create_workflow`, `_billing`, `_admin`) and a data migration backfilling the seven system templates per the role matrix.
+- `psa_ai/permissions.py` resolver was already wired for these — now reads authoritative values rather than falling back to simple-role heuristics.
+
 ## [3.17.77] - 2026-04-28
 
 ### UX
