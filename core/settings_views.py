@@ -226,6 +226,7 @@ def settings_features(request):
         settings.vehicles_enabled = request.POST.get('vehicles_enabled') == 'on'
         settings.inventory_enabled = request.POST.get('inventory_enabled') == 'on'
         settings.scheduling_enabled = request.POST.get('scheduling_enabled') == 'on'
+        settings.psa_enabled = request.POST.get('psa_enabled') == 'on'
 
         settings.updated_by = request.user
         settings.save()
