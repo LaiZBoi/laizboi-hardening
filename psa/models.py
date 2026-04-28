@@ -33,7 +33,11 @@ class ClientPSASettings(models.Model):
         related_name='psa_settings',
     )
 
-    enabled = models.BooleanField(default=False, help_text='Enable PSA for this client')
+    enabled = models.BooleanField(
+        default=True,
+        help_text='Enable PSA for this client. Inherits the global PSA flag — '
+                  'use this to opt a specific client OUT.',
+    )
 
     # Surface flags — every external surface defaults to OFF.
     portal_enabled = models.BooleanField(default=False, help_text='Allow this client to use the customer portal')

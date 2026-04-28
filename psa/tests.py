@@ -67,20 +67,36 @@ class FeatureFlagDefaultsTests(TestCase):
         self.assertFalse(s.psa_enabled, 'SystemSetting.psa_enabled must default to False')
         self.assertFalse(is_psa_enabled())
 
-    def test_client_settings_defaults_off(self):
+    def test_client_inherits_global_when_no_row(self):
+        """When PSA is on globally and a client has no ClientPSASettings row,
+        treat it as enabled (cascade UX)."""
         org = Organization.objects.create(name='ACME', slug='acme')
-        # Helper returns False even if no ClientPSASettings exists yet.
-        _enable_psa_global()
+        # Off globally → False regardless.
         self.assertFalse(is_psa_enabled_for_client(org))
 
+        # On globally, no row → True (lazy default).
+        _enable_psa_global()
+        self.assertTrue(is_psa_enabled_for_client(org))
+
+    def test_per_surface_flags_stay_off_by_default(self):
+        """Sensitive per-surface flags must remain off even when the master
+        ClientPSASettings.enabled defaults to True."""
+        org = Organization.objects.create(name='ACME', slug='acme')
         cps = ClientPSASettings.objects.create(organization=org)
-        self.assertFalse(cps.enabled)
+        self.assertTrue(cps.enabled, 'master enabled flag should default to True (cascades from global)')
         self.assertFalse(cps.portal_enabled)
         self.assertFalse(cps.anonymous_ticket_form_enabled)
         self.assertFalse(cps.email_to_ticket_enabled)
         self.assertFalse(cps.sms_notifications_enabled)
         self.assertFalse(cps.desktop_alerts_enabled)
         self.assertFalse(cps.external_alert_ingest_enabled)
+
+    def test_explicit_client_opt_out_blocks(self):
+        """Admins can still opt a specific client OUT by setting enabled=False."""
+        org = Organization.objects.create(name='ACME', slug='acme')
+        _enable_psa_global()
+        ClientPSASettings.objects.create(organization=org, enabled=False)
+        self.assertFalse(is_psa_enabled_for_client(org))
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
@@ -105,11 +121,26 @@ class RouteGatingTests(TestCase):
         self.assertEqual(self.client.get('/psa/new/').status_code, 404)
         self.assertEqual(self.client.get('/psa/t/PSA-2026-000001/').status_code, 404)
 
-    def test_create_404_when_global_on_but_client_off(self):
+    def test_create_404_when_client_explicitly_disabled(self):
+        """Cascade UX: enabling globally auto-enables clients. To block
+        a client, an admin must explicitly opt them out."""
         _enable_psa_global()
         _setup_seed()
-        # Per-client off -> create returns 404 via require_client_psa_enabled
+        # Explicitly opt out the client.
+        ClientPSASettings.objects.update_or_create(
+            organization=self.org,
+            defaults={'enabled': False},
+        )
         self.assertEqual(self.client.get('/psa/new/').status_code, 404)
+
+    def test_create_loads_when_globally_on_with_no_client_row(self):
+        """No ClientPSASettings row + global on → client inherits enabled."""
+        _enable_psa_global()
+        _setup_seed()
+        # Do NOT call _enable_psa_for — there should be no row at all.
+        self.assertFalse(ClientPSASettings.objects.filter(organization=self.org).exists())
+        resp = self.client.get('/psa/new/')
+        self.assertEqual(resp.status_code, 200)
 
     def test_list_loads_when_both_flags_on(self):
         _enable_psa_global()
