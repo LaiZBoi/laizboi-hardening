@@ -104,6 +104,8 @@
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{% url 'psa:ticket_list' %}"><i class="fas fa-list"></i> {% trans "Tickets" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'psa:ticket_create' %}"><i class="fas fa-plus"></i> {% trans "New Ticket" %}</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'psa:canned_reply_list' %}"><i class="fas fa-magic"></i> {% trans "Canned Replies" %}</a></li>
                         </ul>
                     </li>
                     {% endif %}

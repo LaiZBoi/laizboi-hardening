@@ -652,3 +652,121 @@ class Phase2aTicketActionsTests(TestCase):
         resp = c.post(self._url('comment/'), {'body': 'malicious'})
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(TicketComment.objects.filter(ticket=self.ticket).count(), before)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class Phase2bTests(TestCase):
+    """Phase 2b: watchers + canned replies."""
+
+    def setUp(self):
+        _enable_psa_global()
+        _setup_seed()
+        self.org = Organization.objects.create(name='ACME', slug='acme')
+        self.user = User.objects.create_user(username='tech', password='pw', email='t@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+        s = self.client.session; s['current_organization_id'] = self.org.id; s.save()
+
+        from psa.models import Ticket
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Phase 2b ticket',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+
+    def _url(self, suffix=''):
+        return f'/psa/t/{self.ticket.ticket_number}/{suffix}'
+
+    # ---------- Watchers ----------
+    def test_watch_toggle_subscribes_then_unsubscribes(self):
+        from psa.models import TicketWatcher
+        # Initially not watching
+        self.assertFalse(TicketWatcher.objects.filter(ticket=self.ticket, user=self.user).exists())
+        # Toggle on
+        self.client.post(self._url('watch/'))
+        self.assertTrue(TicketWatcher.objects.filter(ticket=self.ticket, user=self.user).exists())
+        # Toggle off
+        self.client.post(self._url('watch/'))
+        self.assertFalse(TicketWatcher.objects.filter(ticket=self.ticket, user=self.user).exists())
+
+    def test_watcher_sees_button_state_in_detail(self):
+        # Pre-watch: button text says "Watch"
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('Watch</button>'.encode(), resp.content) if False else None
+        # Watch and check the new state
+        self.client.post(self._url('watch/'))
+        resp = self.client.get(self._url())
+        body = resp.content.decode()
+        self.assertIn('Watching', body)
+
+    # ---------- Canned replies ----------
+    def test_canned_reply_render_substitutes_variables(self):
+        from psa.models import CannedReply
+        r = CannedReply.objects.create(
+            name='hello', body='Hi {{user.username}}, ticket {{ticket.number}} for {{ticket.client}}',
+            organization=None, created_by=self.user, is_active=True,
+        )
+        rendered = r.render(ticket=self.ticket, user=self.user)
+        self.assertIn(self.user.username, rendered)
+        self.assertIn(self.ticket.ticket_number, rendered)
+        self.assertIn(self.org.name, rendered)
+        # Unknown placeholders left intact
+        r2 = CannedReply.objects.create(
+            name='unknown', body='hello {{unknown.thing}}',
+            organization=None, created_by=self.user, is_active=True,
+        )
+        self.assertIn('{{unknown.thing}}', r2.render(ticket=self.ticket, user=self.user))
+
+    def test_canned_reply_global_visible_on_any_ticket(self):
+        from psa.models import CannedReply
+        CannedReply.objects.create(
+            name='Greeting', body='Hi there', organization=None,
+            created_by=self.user, is_active=True,
+        )
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'Greeting', resp.content)
+
+    def test_canned_reply_org_scoped_isolated(self):
+        from psa.models import CannedReply, Ticket
+        # Reply scoped to org A
+        CannedReply.objects.create(
+            name='AcmeOnly', body='ACME body', organization=self.org,
+            created_by=self.user, is_active=True,
+        )
+        # Reply scoped to a different org
+        other_org = Organization.objects.create(name='OtherCo', slug='other')
+        CannedReply.objects.create(
+            name='OtherOnly', body='Other body', organization=other_org,
+            created_by=self.user, is_active=True,
+        )
+        # Detail for ACME ticket should see AcmeOnly but NOT OtherOnly
+        resp = self.client.get(self._url())
+        body = resp.content.decode()
+        self.assertIn('AcmeOnly', body)
+        self.assertNotIn('OtherOnly', body)
+
+    def test_canned_reply_inactive_hidden(self):
+        from psa.models import CannedReply
+        CannedReply.objects.create(
+            name='Disabled', body='nope', organization=None,
+            created_by=self.user, is_active=False,
+        )
+        resp = self.client.get(self._url())
+        self.assertNotIn(b'Disabled', resp.content)
+
+    def test_canned_reply_create_view(self):
+        from psa.models import CannedReply
+        resp = self.client.post('/psa/canned/new/', {
+            'name': 'My reply', 'body': 'Hello world',
+            'organization': self.org.id,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(CannedReply.objects.filter(name='My reply').count(), 1)

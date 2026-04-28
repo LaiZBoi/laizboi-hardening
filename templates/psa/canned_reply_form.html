@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}PSA — {% if reply %}Edit{% else %}New{% endif %} Canned Reply{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:canned_reply_list' %}">Canned Replies</a></li>
+        <li class="breadcrumb-item active">{% if reply %}{{ reply.name }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3">
+    <i class="fas fa-magic me-2"></i>{% if reply %}Edit Canned Reply{% else %}New Canned Reply{% endif %}
+</h2>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required maxlength="120"
+                   value="{% if reply %}{{ reply.name }}{% endif %}">
+            <div class="form-text">Short label shown in the dropdown on the ticket detail page.</div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Scope</label>
+            <select name="organization" class="form-select">
+                {% if can_create_global %}
+                <option value="" {% if reply and not reply.organization_id %}selected{% endif %}>— Global (every client) —</option>
+                {% endif %}
+                {% for c in eligible_clients %}
+                <option value="{{ c.id }}" {% if reply and reply.organization_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Body <span class="text-danger">*</span></label>
+            <textarea name="body" class="form-control font-monospace" rows="10" required>{% if reply %}{{ reply.body }}{% endif %}</textarea>
+            <div class="form-text">
+                Use placeholders:
+                <code>{% verbatim %}{{ticket.number}}{% endverbatim %}</code>,
+                <code>{% verbatim %}{{ticket.subject}}{% endverbatim %}</code>,
+                <code>{% verbatim %}{{ticket.client}}{% endverbatim %}</code>,
+                <code>{% verbatim %}{{user.first_name}}{% endverbatim %}</code>,
+                <code>{% verbatim %}{{user.last_name}}{% endverbatim %}</code>,
+                <code>{% verbatim %}{{user.username}}{% endverbatim %}</code>.
+            </div>
+        </div>
+
+        {% if reply %}
+        <div class="form-check form-switch">
+            <input type="checkbox" name="is_active" id="is_active" class="form-check-input" {% if reply.is_active %}checked{% endif %}>
+            <label class="form-check-label" for="is_active">Active</label>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-footer d-flex justify-content-between">
+        <a href="{% url 'psa:canned_reply_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        <div>
+            {% if reply %}
+            <button type="submit" name="delete" value="1" class="btn btn-outline-danger me-2"
+                    onclick="return confirm('Delete this canned reply?');">
+                <i class="fas fa-trash me-1"></i>Delete
+            </button>
+            {% endif %}
+            <button type="submit" class="btn btn-primary">{% if reply %}Save{% else %}Create{% endif %}</button>
+        </div>
+    </div>
+</form>
+{% endblock %}

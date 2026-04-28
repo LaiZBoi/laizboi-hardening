@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}PSA — Canned Replies{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Canned Replies</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0"><i class="fas fa-magic me-2"></i>Canned Replies</h2>
+        <small class="text-muted">Reusable comment templates with variable substitution.</small>
+    </div>
+    <a href="{% url 'psa:canned_reply_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus me-1"></i>New Canned Reply
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if replies %}
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Name</th>
+                    <th>Scope</th>
+                    <th>Active</th>
+                    <th>Body preview</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in replies %}
+                <tr>
+                    <td>{{ r.name }}</td>
+                    <td>
+                        {% if r.organization %}
+                            <span class="badge rounded-pill" style="background:hsl({% widthratio r.organization.id 1 47 %}, 55%, 42%); color: white;">{{ r.organization.name }}</span>
+                        {% else %}
+                            <span class="badge bg-info text-dark">Global</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if r.is_active %}
+                            <span class="badge bg-success">on</span>
+                        {% else %}
+                            <span class="badge bg-secondary">off</span>
+                        {% endif %}
+                    </td>
+                    <td><small class="text-muted">{{ r.body|truncatechars:80 }}</small></td>
+                    <td><a href="{% url 'psa:canned_reply_edit' r.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-magic fa-3x mb-3 d-block"></i>
+            <p class="mb-2">No canned replies yet.</p>
+            <a href="{% url 'psa:canned_reply_create' %}" class="btn btn-sm btn-primary">Create the first one</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="alert alert-light border mt-3 small">
+    <strong>Variable placeholders:</strong>
+    <code>{% verbatim %}{{ticket.number}}{% endverbatim %}</code>,
+    <code>{% verbatim %}{{ticket.subject}}{% endverbatim %}</code>,
+    <code>{% verbatim %}{{ticket.client}}{% endverbatim %}</code>,
+    <code>{% verbatim %}{{user.first_name}}{% endverbatim %}</code>,
+    <code>{% verbatim %}{{user.last_name}}{% endverbatim %}</code>,
+    <code>{% verbatim %}{{user.username}}{% endverbatim %}</code>.
+    Substituted at insert time on the ticket detail page.
+</div>
+{% endblock %}

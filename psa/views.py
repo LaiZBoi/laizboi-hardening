@@ -7,6 +7,7 @@ will flesh out merge/split, macros, canned replies, etc.
 """
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import models
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -25,6 +26,7 @@ from .feature_flags import (
     require_psa_enabled,
 )
 from .models import (
+    CannedReply,
     ClientPSASettings,
     Queue,
     Ticket,
@@ -33,6 +35,7 @@ from .models import (
     TicketPriority,
     TicketStatus,
     TicketType,
+    TicketWatcher,
 )
 
 
@@ -160,6 +163,24 @@ def ticket_detail(request, ticket_number):
 
     is_closed = bool(ticket.closed_at) or (ticket.status_id and ticket.status.is_terminal)
 
+    # Phase 2b — watchers + canned replies
+    watchers_count = ticket.watchers.count()
+    is_watcher = ticket.watchers.filter(user=request.user).exists()
+
+    # Canned replies visible for this ticket: global ones + ones scoped to the
+    # ticket's client. Pre-render each so the template can drop the result
+    # into the textarea on click without a round-trip.
+    canned = (
+        CannedReply.objects
+        .filter(is_active=True)
+        .filter(models.Q(organization__isnull=True) | models.Q(organization=ticket.organization))
+        .order_by('sort_order', 'name')
+    )
+    canned_replies = [
+        {'id': c.id, 'name': c.name, 'rendered': c.render(ticket=ticket, user=request.user)}
+        for c in canned
+    ]
+
     return render(request, 'psa/ticket_detail.html', {
         'ticket': ticket,
         'comments': ticket.comments.select_related('author').order_by('created_at'),
@@ -170,6 +191,9 @@ def ticket_detail(request, ticket_number):
         'closure_categories': Ticket.CLOSURE_CATEGORIES,
         'is_closed': is_closed,
         'attachment_max_mb': ATTACHMENT_MAX_BYTES // (1024 * 1024),
+        'watchers_count': watchers_count,
+        'is_watcher': is_watcher,
+        'canned_replies': canned_replies,
     })
 
 
@@ -452,6 +476,8 @@ def ticket_post_comment(request, ticket_number):
         ip_address=_client_ip(request), path=request.path,
         extra_data={'is_internal': is_internal, 'length': len(body)},
     )
+    # Notify watchers (best-effort; SMTP failures don't block the request).
+    _notify_watchers(ticket, comment, request.user)
     messages.success(request, 'Comment added.')
     return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
 
@@ -616,3 +642,239 @@ def ticket_quick_action(request, ticket_number):
     )
     messages.success(request, description)
     return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+
+# ---------------------------------------------------------------------------
+# Phase 2b — watchers + canned replies
+# ---------------------------------------------------------------------------
+
+def _notify_watchers(ticket, comment, actor):
+    """
+    Email each watcher (excluding the comment author) about new activity.
+    Best-effort: SMTP failures are logged but don't block the request.
+    Internal notes go to staff watchers only — current model has all
+    watchers as authenticated staff users, so we send all of them.
+    """
+    try:
+        from core.models import SystemSetting
+        from django.core.mail import send_mail, get_connection
+        from django.contrib.auth import get_user_model
+    except Exception:
+        return 0
+
+    settings = SystemSetting.get_settings()
+    if not settings.smtp_enabled or not settings.smtp_host:
+        return 0
+
+    watchers = TicketWatcher.objects.filter(ticket=ticket).exclude(user=actor).select_related('user')
+    recipients = [w.user.email for w in watchers if w.user.email]
+    if not recipients:
+        return 0
+
+    try:
+        from vault.encryption import decrypt
+        smtp_password = decrypt(settings.smtp_password) if settings.smtp_password else ''
+    except Exception:
+        smtp_password = settings.smtp_password or ''
+
+    try:
+        connection = get_connection(
+            backend='django.core.mail.backends.smtp.EmailBackend',
+            host=settings.smtp_host, port=settings.smtp_port,
+            username=settings.smtp_username, password=smtp_password,
+            use_tls=settings.smtp_use_tls, use_ssl=settings.smtp_use_ssl,
+            timeout=15,
+        )
+    except Exception:
+        return 0
+
+    from_email = (
+        f'{settings.smtp_from_name} <{settings.smtp_from_email}>'
+        if settings.smtp_from_email else settings.smtp_username
+    )
+    site_url = (settings.site_url or '').rstrip('/')
+    brand = settings.custom_company_name or settings.site_name or 'Client St0r'
+    detail_url = f'{site_url}/psa/t/{ticket.ticket_number}/'
+    flag = ' [INTERNAL NOTE]' if comment.is_internal else ''
+    subject = f'[{brand}] {ticket.ticket_number}: {ticket.subject}{flag}'
+    body = (
+        f'{actor.username} added a {"internal note" if comment.is_internal else "reply"} '
+        f'to {ticket.ticket_number} ({ticket.organization.name}):\n\n'
+        f'{comment.body[:2000]}\n\n'
+        f'View ticket: {detail_url}\n'
+    )
+
+    sent = 0
+    for email in recipients:
+        try:
+            send_mail(subject=subject, message=body, from_email=from_email,
+                      recipient_list=[email], connection=connection, fail_silently=False)
+            sent += 1
+        except Exception:
+            continue
+    return sent
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def ticket_watch_toggle(request, ticket_number):
+    """Subscribe / unsubscribe the current user from ticket activity."""
+    ticket = _scoped_ticket_for_write(request, ticket_number)
+    existing = TicketWatcher.objects.filter(ticket=ticket, user=request.user).first()
+    if existing:
+        existing.delete()
+        messages.success(request, 'Unwatched. You will no longer receive emails for activity on this ticket.')
+        action_label = 'unwatch'
+    else:
+        TicketWatcher.objects.create(ticket=ticket, user=request.user)
+        messages.success(request, 'Watching. You will receive emails for new activity on this ticket.')
+        action_label = 'watch'
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=ticket.organization,
+        object_type='psa.TicketWatcher',
+        object_id=ticket.pk, object_repr=ticket.ticket_number,
+        description=f'{request.user.username} {action_label}ed {ticket.ticket_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+
+@login_required
+@require_psa_enabled
+def canned_reply_list(request):
+    """List available canned replies. Staff/superuser see global + every
+    org. Org-bound users see global + their member orgs only."""
+    if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+        qs = CannedReply.objects.select_related('organization')
+    else:
+        org_ids = list(
+            request.user.memberships.filter(is_active=True).values_list('organization_id', flat=True)
+        ) if hasattr(request.user, 'memberships') else []
+        qs = CannedReply.objects.select_related('organization').filter(
+            models.Q(organization__isnull=True) | models.Q(organization_id__in=org_ids)
+        )
+    return render(request, 'psa/canned_reply_list.html', {
+        'replies': qs.order_by('organization__name', 'sort_order', 'name'),
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def canned_reply_create(request):
+    """Create a canned reply. Org dropdown filtered by user's eligible
+    clients (no external PSA, no opt-out). Empty value = global."""
+    from psa.feature_flags import clients_eligible_for_native_psa
+    eligible_clients = clients_eligible_for_native_psa(request.user)
+    can_create_global = request.user.is_superuser or getattr(request, 'is_staff_user', False)
+
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        body = (request.POST.get('body') or '').strip()
+        org_id = request.POST.get('organization') or ''
+        if not name or not body:
+            messages.error(request, 'Name and body are required.')
+            return redirect(reverse('psa:canned_reply_create'))
+        org = None
+        if org_id:
+            try:
+                org = eligible_clients.get(pk=org_id)
+            except Exception:
+                messages.error(request, 'That client is not eligible.')
+                return redirect(reverse('psa:canned_reply_create'))
+        elif not can_create_global:
+            messages.error(request, 'Only staff/superusers can create global canned replies. Pick a client.')
+            return redirect(reverse('psa:canned_reply_create'))
+        reply = CannedReply.objects.create(
+            name=name, body=body, organization=org, created_by=request.user,
+            is_active=True,
+        )
+        AuditLog.log(
+            user=request.user, action='create',
+            organization=org,
+            object_type='psa.CannedReply', object_id=reply.pk,
+            object_repr=reply.name,
+            description=f'Created canned reply "{name}" ({"global" if not org else org.name})',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Canned reply "{name}" created.')
+        return redirect(reverse('psa:canned_reply_list'))
+
+    return render(request, 'psa/canned_reply_form.html', {
+        'reply': None,
+        'eligible_clients': eligible_clients,
+        'can_create_global': can_create_global,
+    })
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def canned_reply_edit(request, pk):
+    from psa.feature_flags import clients_eligible_for_native_psa
+    reply = get_object_or_404(CannedReply, pk=pk)
+    # Visibility check: org-bound users can edit only their org or global
+    # replies they created.
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        if reply.organization_id is None and reply.created_by_id != request.user.id:
+            raise Http404()
+        if reply.organization_id is not None:
+            if not request.user.memberships.filter(
+                organization_id=reply.organization_id, is_active=True
+            ).exists():
+                raise Http404()
+
+    eligible_clients = clients_eligible_for_native_psa(request.user)
+    can_create_global = request.user.is_superuser or getattr(request, 'is_staff_user', False)
+
+    if request.method == 'POST':
+        if request.POST.get('delete') == '1':
+            org = reply.organization
+            name = reply.name
+            pk_ = reply.pk
+            reply.delete()
+            AuditLog.log(
+                user=request.user, action='delete',
+                organization=org,
+                object_type='psa.CannedReply', object_id=pk_,
+                object_repr=name,
+                description=f'Deleted canned reply "{name}"',
+                ip_address=_client_ip(request), path=request.path,
+            )
+            messages.success(request, f'Deleted "{name}".')
+            return redirect(reverse('psa:canned_reply_list'))
+
+        reply.name = (request.POST.get('name') or '').strip() or reply.name
+        reply.body = (request.POST.get('body') or '').strip() or reply.body
+        reply.is_active = request.POST.get('is_active') == 'on'
+        org_id = request.POST.get('organization') or ''
+        if org_id:
+            try:
+                reply.organization = eligible_clients.get(pk=org_id)
+            except Exception:
+                messages.error(request, 'That client is not eligible.')
+                return redirect(reverse('psa:canned_reply_edit', kwargs={'pk': reply.pk}))
+        elif can_create_global:
+            reply.organization = None
+        reply.save()
+        AuditLog.log(
+            user=request.user, action='update',
+            organization=reply.organization,
+            object_type='psa.CannedReply', object_id=reply.pk,
+            object_repr=reply.name,
+            description=f'Updated canned reply "{reply.name}"',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, 'Saved.')
+        return redirect(reverse('psa:canned_reply_list'))
+
+    return render(request, 'psa/canned_reply_form.html', {
+        'reply': reply,
+        'eligible_clients': eligible_clients,
+        'can_create_global': can_create_global,
+    })

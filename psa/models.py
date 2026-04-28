@@ -428,3 +428,90 @@ class TicketAttachment(models.Model):
 
     def __str__(self):
         return self.filename or f'attachment {self.pk}'
+
+
+# ---------------------------------------------------------------------------
+# Phase 2b — watchers + canned replies
+# ---------------------------------------------------------------------------
+
+class TicketWatcher(models.Model):
+    """
+    A user who has subscribed to receive email notifications about activity
+    on a specific ticket. Watching is per-user, per-ticket, idempotent.
+    """
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='watchers')
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='psa_watching',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_ticket_watchers'
+        unique_together = [('ticket', 'user')]
+        indexes = [
+            models.Index(fields=['ticket']),
+            models.Index(fields=['user']),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} watches {self.ticket_id}'
+
+
+class CannedReply(models.Model):
+    """
+    Reusable comment template. Variable substitution at insert time:
+      {{ticket.number}}, {{ticket.subject}}, {{ticket.client}},
+      {{user.first_name}}, {{user.last_name}}, {{user.username}}
+
+    `organization=None` means global (visible on every client's tickets).
+    `organization=<Org>` scopes the reply to that client only.
+    """
+    name = models.CharField(max_length=120, help_text='Short label shown in the dropdown')
+    body = models.TextField(help_text='Use {{ticket.number}}, {{ticket.subject}}, {{ticket.client}}, {{user.first_name}}, {{user.last_name}}, {{user.username}}')
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='psa_canned_replies',
+        help_text='Leave blank for a global reply (every client).',
+    )
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='psa_canned_replies',
+    )
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_canned_replies'
+        ordering = ['sort_order', 'name']
+        indexes = [
+            models.Index(fields=['organization', 'is_active']),
+        ]
+
+    def __str__(self):
+        scope = self.organization.name if self.organization_id else 'global'
+        return f'{self.name} ({scope})'
+
+    def render(self, ticket=None, user=None):
+        """
+        Substitute {{ticket.*}} and {{user.*}} placeholders in `body`.
+        Unknown placeholders are left as-is. No HTML escaping — the result
+        lands in a <textarea> the staff member can edit before posting.
+        """
+        out = self.body
+        if ticket is not None:
+            out = out.replace('{{ticket.number}}', ticket.ticket_number or '')
+            out = out.replace('{{ticket.subject}}', ticket.subject or '')
+            out = out.replace('{{ticket.client}}', ticket.organization.name if ticket.organization_id else '')
+        if user is not None:
+            out = out.replace('{{user.first_name}}', user.first_name or '')
+            out = out.replace('{{user.last_name}}', user.last_name or '')
+            out = out.replace('{{user.username}}', user.username or '')
+        return out

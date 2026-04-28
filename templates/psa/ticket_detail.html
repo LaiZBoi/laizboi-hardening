@@ -26,6 +26,17 @@
         <span class="badge bg-info text-dark">{{ ticket.status.name }}</span>
         <span class="badge bg-light text-dark border">{{ ticket.queue.name }}</span>
 
+        {# Watch / Unwatch (Phase 2b) #}
+        <form method="post" action="{% url 'psa:ticket_watch_toggle' ticket.ticket_number %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm {% if is_watcher %}btn-warning{% else %}btn-outline-secondary{% endif %}"
+                    title="{% if is_watcher %}You are watching this ticket — click to unwatch{% else %}Watch to receive emails for new activity{% endif %}">
+                <i class="fas {% if is_watcher %}fa-bell{% else %}fa-bell-slash{% endif %} me-1"></i>
+                {% if is_watcher %}Watching{% else %}Watch{% endif %}
+                {% if watchers_count %}<span class="badge bg-light text-dark ms-1">{{ watchers_count }}</span>{% endif %}
+            </button>
+        </form>
+
         {# Quick actions #}
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
@@ -123,6 +134,42 @@
             <div class="card-body border-top">
                 <form method="post" action="{% url 'psa:ticket_post_comment' ticket.ticket_number %}">
                     {% csrf_token %}
+
+                    {% if canned_replies %}
+                    <div class="mb-2 d-flex align-items-center gap-2">
+                        <small class="text-muted">Canned reply:</small>
+                        <select id="cannedPicker" class="form-select form-select-sm w-auto">
+                            <option value="">— pick one —</option>
+                            {% for c in canned_replies %}
+                            <option value="{{ c.id }}">{{ c.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <a href="{% url 'psa:canned_reply_list' %}" class="small text-muted ms-auto">
+                            <i class="fas fa-cog"></i> manage
+                        </a>
+                    </div>
+                    {# Pre-rendered body for each canned reply, keyed by id, embedded as JSON. #}
+                    {{ canned_replies|json_script:"cannedReplies" }}
+                    <script>
+                    (function() {
+                        var picker = document.getElementById('cannedPicker');
+                        var raw = document.getElementById('cannedReplies');
+                        if (!picker || !raw) return;
+                        var data = JSON.parse(raw.textContent);
+                        var byId = {};
+                        data.forEach(function(r) { byId[r.id] = r.rendered; });
+                        picker.addEventListener('change', function() {
+                            if (!picker.value) return;
+                            var ta = document.querySelector('textarea[name="body"]');
+                            if (!ta) return;
+                            ta.value = byId[picker.value] || '';
+                            ta.focus();
+                            picker.value = '';  // reset selection
+                        });
+                    })();
+                    </script>
+                    {% endif %}
+
                     <textarea name="body" class="form-control mb-2" rows="3" placeholder="Add a reply or internal note…" required></textarea>
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="form-check">
