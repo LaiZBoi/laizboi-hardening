@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}PSA Settings - {{ system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r" }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'core:dashboard' %}">Dashboard</a></li>
+        <li class="breadcrumb-item active">PSA</li>
+    </ol>
+</nav>
+
+<div class="row">
+    <div class="col-md-3">
+        {% include "core/_settings_menu.html" with active_page="psa" %}
+    </div>
+
+    <div class="col-md-9">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-ticket-alt me-2"></i>PSA — Global Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    These flags apply to <strong>every client</strong> using the native PSA. Per-client opt-outs are listed below — they're rare since clients with an active external PSA connection (ConnectWise / Halo / Autotask / etc.) are auto-opted-out without any manual action.
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <h6 class="text-muted mt-2 mb-3">Per-surface flags <small>— all default OFF; turn on only what you intend to use</small></h6>
+
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="psa_portal_enabled" name="psa_portal_enabled" {% if settings.psa_portal_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="psa_portal_enabled">
+                            <strong>Client portal</strong>
+                            <small class="text-muted d-block">Customers sign in to view their tickets, KB, etc.</small>
+                        </label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="psa_anonymous_ticket_form_enabled" name="psa_anonymous_ticket_form_enabled" {% if settings.psa_anonymous_ticket_form_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="psa_anonymous_ticket_form_enabled">
+                            <strong>Anonymous ticket form</strong>
+                            <small class="text-muted d-block">Public — no login required (rate-limited).</small>
+                        </label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="psa_email_to_ticket_enabled" name="psa_email_to_ticket_enabled" {% if settings.psa_email_to_ticket_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="psa_email_to_ticket_enabled">
+                            <strong>Email-to-ticket</strong>
+                            <small class="text-muted d-block">Inbound mailbox parsing creates / appends.</small>
+                        </label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="psa_sms_notifications_enabled" name="psa_sms_notifications_enabled" {% if settings.psa_sms_notifications_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="psa_sms_notifications_enabled">
+                            <strong>SMS notifications to staff</strong>
+                            <small class="text-muted d-block">Never includes secrets in body.</small>
+                        </label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="psa_desktop_alerts_enabled" name="psa_desktop_alerts_enabled" {% if settings.psa_desktop_alerts_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="psa_desktop_alerts_enabled">
+                            <strong>Desktop / browser alerts</strong>
+                            <small class="text-muted d-block">Per-user opt-in via Web Notifications API.</small>
+                        </label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="psa_external_alert_ingest_enabled" name="psa_external_alert_ingest_enabled" {% if settings.psa_external_alert_ingest_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="psa_external_alert_ingest_enabled">
+                            <strong>External alert / RMM ingestion</strong>
+                            <small class="text-muted d-block">Monitoring webhooks → tickets.</small>
+                        </label>
+                    </div>
+
+                    <hr>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Save Settings
+                    </button>
+                </form>
+
+                <hr class="my-4">
+
+                <h6 class="text-muted mb-2">Per-client opt-outs</h6>
+                <p class="small text-muted">
+                    Clients explicitly disabled by an admin. Most clients won't appear here — auto-detect handles the common case.
+                </p>
+                {% if opt_outs %}
+                <table class="table table-sm">
+                    <thead class="table-light">
+                        <tr><th>Client</th><th>Opted out</th><th class="text-end">Action</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for cps in opt_outs %}
+                        <tr>
+                            <td>{{ cps.organization.name }}</td>
+                            <td><small class="text-muted">{{ cps.updated_at }}</small></td>
+                            <td class="text-end">
+                                <form method="post" class="d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="remove_opt_out">
+                                    <input type="hidden" name="organization_id" value="{{ cps.organization.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                            onclick="return confirm('Remove the opt-out for {{ cps.organization.name }}? It will go back to auto-detect.');">
+                                        <i class="fas fa-undo me-1"></i>Remove opt-out
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="alert alert-light border mb-0 small">
+                    <i class="fas fa-check-circle text-success me-1"></i>No per-client opt-outs in effect — all eligible clients are auto-detected.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

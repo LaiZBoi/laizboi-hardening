@@ -589,6 +589,12 @@ class SystemSetting(models.Model):
     inventory_enabled = models.BooleanField(default=True, help_text='Enable Inventory management')
     scheduling_enabled = models.BooleanField(default=True, help_text='Enable Scheduling and Task Management')
     psa_enabled = models.BooleanField(default=False, help_text='Enable native PSA / Service Desk feature (off by default)')
+    psa_portal_enabled = models.BooleanField(default=False, help_text='Allow customer portal access for PSA clients')
+    psa_anonymous_ticket_form_enabled = models.BooleanField(default=False, help_text='Allow public/anonymous ticket submissions')
+    psa_email_to_ticket_enabled = models.BooleanField(default=False, help_text='Convert inbound emails to tickets')
+    psa_sms_notifications_enabled = models.BooleanField(default=False, help_text='Send SMS to staff (no secrets in body)')
+    psa_desktop_alerts_enabled = models.BooleanField(default=False, help_text='Send desktop / browser alerts to staff')
+    psa_external_alert_ingest_enabled = models.BooleanField(default=False, help_text='Accept alerts from external monitoring/RMM webhooks')
 
     # Asset Health Features
     asset_age_warnings_enabled = models.BooleanField(default=False, help_text='Show warnings when assets approach or exceed their age threshold')

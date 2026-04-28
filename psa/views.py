@@ -272,105 +272,88 @@ def ticket_create(request):
 
 @login_required
 @require_psa_enabled
-def client_settings_view(request):
+def psa_global_settings_view(request):
     """
-    Per-client PSA settings page. The native PSA auto-decides per client:
-      * has external PSA connection → auto opt-out (no manual action)
-      * no external PSA            → auto opt-in via the global flag
-
-    This page is the explicit OVERRIDE — admins only need to visit it
-    when the auto-decision is wrong for a particular client.
+    Global PSA settings page. Replaces the previous per-client settings —
+    per-surface flags now live on `core.SystemSetting` and apply to every
+    client. Per-client manual opt-outs (rare; used to override the
+    auto-detect that already excludes external-PSA clients) are listed
+    here too with un-opt-out buttons.
     """
     if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
         raise Http404()
 
-    org = get_request_organization(request)
-    if org is None:
-        messages.error(request, 'Select a client first.')
-        return redirect('core:dashboard')
+    from core.models import SystemSetting
+    settings = SystemSetting.get_settings()
 
-    # Don't materialise a row on GET — the absence of a row IS the
-    # "use auto-detection" signal. Materialise only on POST.
-    cps = ClientPSASettings.objects.filter(organization=org).first()
-
-    from psa.feature_flags import (
-        client_has_external_psa,
-        get_external_psa_summary,
-        is_psa_enabled_for_client,
-    )
-    has_external = client_has_external_psa(org)
-    external_summary = get_external_psa_summary(org)
-    effective_enabled = is_psa_enabled_for_client(org)
+    # All explicit ClientPSASettings rows that are opt-OUTs (the only useful
+    # use of the row in the global model — admin-disabled native PSA for
+    # a specific client even though they have no external PSA).
+    opt_outs = ClientPSASettings.objects.filter(enabled=False).select_related('organization')
 
     if request.method == 'POST':
-        if cps is None:
-            cps = ClientPSASettings(organization=org)
-        previous = {
-            'enabled': cps.enabled,
-            'portal_enabled': cps.portal_enabled,
-            'anonymous_ticket_form_enabled': cps.anonymous_ticket_form_enabled,
-            'email_to_ticket_enabled': cps.email_to_ticket_enabled,
-            'sms_notifications_enabled': cps.sms_notifications_enabled,
-            'desktop_alerts_enabled': cps.desktop_alerts_enabled,
-            'external_alert_ingest_enabled': cps.external_alert_ingest_enabled,
-        }
-        # Special handling: a "Reset to auto-detect" submission deletes the
-        # explicit row instead of saving any value.
-        if request.POST.get('reset_to_auto') == '1':
-            if cps.pk:
+        action = request.POST.get('action') or 'save_globals'
+
+        if action == 'remove_opt_out':
+            org_id = request.POST.get('organization_id') or ''
+            cps = ClientPSASettings.objects.filter(organization_id=org_id, enabled=False).first()
+            if cps is not None:
                 cps_pk = cps.pk
+                org_repr = str(cps.organization)
                 cps.delete()
                 AuditLog.log(
-                    user=request.user,
-                    action='delete',
-                    organization=org,
-                    object_type='psa.ClientPSASettings',
-                    object_id=cps_pk,
-                    object_repr=f'PSA settings reset to auto-detect for {org}',
-                    description='Reset PSA client settings to auto-detect (row removed)',
-                    ip_address=_client_ip(request),
-                    path=request.path,
+                    user=request.user, action='delete',
+                    organization_id=int(org_id),
+                    object_type='psa.ClientPSASettings', object_id=cps_pk,
+                    object_repr=f'PSA opt-out removed for {org_repr}',
+                    description='Removed PSA opt-out — client returns to auto-detect',
+                    ip_address=_client_ip(request), path=request.path,
                 )
-                messages.success(request, 'PSA settings reset — this client now follows the global auto-detect rule.')
-            else:
-                messages.info(request, 'No explicit settings to reset — auto-detect was already in use.')
-            return redirect('psa:client_settings')
+                messages.success(request, f'Removed opt-out for {org_repr}.')
+            return redirect('psa:settings')
 
-        cps.enabled = request.POST.get('enabled') == 'on'
-        cps.portal_enabled = request.POST.get('portal_enabled') == 'on'
-        cps.anonymous_ticket_form_enabled = request.POST.get('anonymous_ticket_form_enabled') == 'on'
-        cps.email_to_ticket_enabled = request.POST.get('email_to_ticket_enabled') == 'on'
-        cps.sms_notifications_enabled = request.POST.get('sms_notifications_enabled') == 'on'
-        cps.desktop_alerts_enabled = request.POST.get('desktop_alerts_enabled') == 'on'
-        cps.external_alert_ingest_enabled = request.POST.get('external_alert_ingest_enabled') == 'on'
-        cps.save()
+        # Default: save global per-surface flags
+        previous = {
+            'psa_portal_enabled': settings.psa_portal_enabled,
+            'psa_anonymous_ticket_form_enabled': settings.psa_anonymous_ticket_form_enabled,
+            'psa_email_to_ticket_enabled': settings.psa_email_to_ticket_enabled,
+            'psa_sms_notifications_enabled': settings.psa_sms_notifications_enabled,
+            'psa_desktop_alerts_enabled': settings.psa_desktop_alerts_enabled,
+            'psa_external_alert_ingest_enabled': settings.psa_external_alert_ingest_enabled,
+        }
+        settings.psa_portal_enabled = request.POST.get('psa_portal_enabled') == 'on'
+        settings.psa_anonymous_ticket_form_enabled = request.POST.get('psa_anonymous_ticket_form_enabled') == 'on'
+        settings.psa_email_to_ticket_enabled = request.POST.get('psa_email_to_ticket_enabled') == 'on'
+        settings.psa_sms_notifications_enabled = request.POST.get('psa_sms_notifications_enabled') == 'on'
+        settings.psa_desktop_alerts_enabled = request.POST.get('psa_desktop_alerts_enabled') == 'on'
+        settings.psa_external_alert_ingest_enabled = request.POST.get('psa_external_alert_ingest_enabled') == 'on'
+        settings.updated_by = request.user
+        settings.save()
 
-        # Build a diff for the audit record
-        changed = {k: (previous[k], getattr(cps, k)) for k in previous if previous[k] != getattr(cps, k)}
+        changed = {k: (previous[k], getattr(settings, k)) for k in previous if previous[k] != getattr(settings, k)}
         AuditLog.log(
-            user=request.user,
-            action='update',
-            organization=org,
-            object_type='psa.ClientPSASettings',
-            object_id=cps.pk,
-            object_repr=str(cps),
-            description=f'Updated PSA client settings ({len(changed)} change(s))',
-            ip_address=_client_ip(request),
-            path=request.path,
+            user=request.user, action='update',
+            object_type='core.SystemSetting',
+            object_id=settings.pk, object_repr='Global PSA settings',
+            description=f'Updated global PSA settings ({len(changed)} change(s))',
+            ip_address=_client_ip(request), path=request.path,
             extra_data={'changed_fields': {k: {'from': v[0], 'to': v[1]} for k, v in changed.items()}},
         )
+        messages.success(request, 'PSA global settings saved.')
+        return redirect('psa:settings')
 
-        messages.success(request, 'PSA client settings updated.')
-        return redirect('psa:client_settings')
-
-    return render(request, 'psa/client_settings.html', {
-        'cps': cps,
-        'has_external_psa': has_external,
-        'external_psa_summary': external_summary,
-        'effective_enabled': effective_enabled,
-        'using_auto_detect': cps is None,
-        'current_organization': org,
+    return render(request, 'psa/global_settings.html', {
+        'settings': settings,
+        'opt_outs': opt_outs,
     })
+
+
+# Backwards-compat shim: the old per-client URL still resolves but
+# redirects to the new global page so any bookmarks keep working.
+@login_required
+@require_psa_enabled
+def client_settings_view(request):
+    return redirect('psa:settings')
 
 
 @login_required
