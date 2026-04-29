@@ -208,12 +208,8 @@
                         </a>
                     </li>
                     <li class="nav-item"><a class="nav-link px-2" href="{% url 'core:favorite_list' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{% trans 'Favorites' %}"><i class="fas fa-star text-warning"></i></a></li>
-                    <!-- Global KB Link -->
-                    {% if global_kb_enabled %}
-                        {% if is_staff_user or user.is_superuser %}
-                        <li class="nav-item"><a class="nav-link" href="{% url 'docs:global_kb_list' %}" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{% trans 'Staff-only knowledge base shared across all organizations' %}"><i class="fas fa-book"></i> {% trans "Global KB" %}</a></li>
-                        {% endif %}
-                    {% endif %}
+                    <!-- Global KB lives under PSA → KB now; removed from primary navbar -->
+
                     <!-- Search Form -->
                     <li class="nav-item">
                         <form class="d-flex mx-2" action="{% url 'core:search' %}" method="get">

@@ -829,3 +829,55 @@ tr.low-stock-row > td {
     background-color: rgba(255, 120, 40, 0.30) !important;
     color: #fff !important;
 }
+
+/* ========================================
+   Dark-mode table header / footer override
+   ========================================
+   Many PSA / portal templates use Bootstrap's `<thead class="table-light">`
+   which hard-pins a white background regardless of theme — that produces
+   white-on-white text in dark mode. Re-bind the Bootstrap table vars so
+   `.table-light` becomes a darker surface with light text in dark themes. */
+[data-bs-theme="dark"] .table-light,
+[data-bs-theme="dark"] .table-light > th,
+[data-bs-theme="dark"] .table-light > td,
+[data-bs-theme="dark"] .table > thead.table-light,
+[data-bs-theme="dark"] .table > tfoot.table-light,
+[data-bs-theme="dark"] .table > thead.table-light > tr > th,
+[data-bs-theme="dark"] .table > tfoot.table-light > tr > th,
+[data-bs-theme="dark"] .table > thead.table-light > tr > td,
+[data-bs-theme="dark"] .table > tfoot.table-light > tr > td {
+    --bs-table-color: #f1f3f5;
+    --bs-table-bg: #2b2b2b;
+    --bs-table-border-color: #444;
+    --bs-table-striped-bg: #2f2f2f;
+    --bs-table-striped-color: #f1f3f5;
+    --bs-table-active-bg: #353535;
+    --bs-table-active-color: #f1f3f5;
+    --bs-table-hover-bg: #353535;
+    --bs-table-hover-color: #f1f3f5;
+    color: var(--bs-table-color) !important;
+    background-color: var(--bs-table-bg) !important;
+    border-color: var(--bs-table-border-color) !important;
+}
+
+/* Generic .bg-light is also light-pinned; soften it in dark themes.
+   Also handle the .bg-light.text-dark badge combo so the dark text doesn't
+   stay locked against the (now-dark) background. */
+[data-bs-theme="dark"] .bg-light {
+    background-color: #2b2b2b !important;
+    color: #f1f3f5 !important;
+}
+[data-bs-theme="dark"] .bg-light.text-dark,
+[data-bs-theme="dark"] .badge.bg-light,
+[data-bs-theme="dark"] .badge.bg-light.text-dark {
+    background-color: #3a3a3a !important;
+    color: #f1f3f5 !important;
+}
+
+/* `pre.bg-light` (AI suggestion boxes) — keep monospace readable on dark */
+[data-bs-theme="dark"] pre.bg-light,
+[data-bs-theme="dark"] .bg-light.rounded {
+    background-color: #2b2b2b !important;
+    color: #f1f3f5 !important;
+    border: 1px solid #444 !important;
+}

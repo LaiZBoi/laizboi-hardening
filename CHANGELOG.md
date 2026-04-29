@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.113] - 2026-04-29
+
+### Fixed — Dark-mode contrast across PSA + portal pages
+22 PSA / portal templates use Bootstrap's `<thead class="table-light">` which hard-pins a white background regardless of theme — so in dark mode (or any of the dracula / monokai theme variants) every list page rendered white-on-white headers (Aging report, Recurring tickets, Tickets, Quotes, Invoices, Contracts, Approvals, Workflow Rules, Email configs, Canned replies, Service catalog, KB browse, Project list / detail, Vault context, Portal vault list / item, Portal KB list, Portal ticket list).
+
+Single fix in `static/css/themes.css`: when `data-bs-theme="dark"` is set on the `<html>` element, re-bind the Bootstrap table CSS variables (`--bs-table-color` / `--bs-table-bg` / `--bs-table-border-color` / striped / hover / active) on `.table-light` to the dark surface palette. Also softens generic `.bg-light` (used on AI-suggestion blocks and badges) and the `.bg-light.text-dark` badge combo so dark text doesn't lock against the (now-dark) surface.
+
+### Removed — "Global KB" link from primary navbar
+The Global KB now lives under **PSA → KB** (`/psa/kb/`) and the duplicate top-level link was redundant noise. Staff users still reach it via the PSA menu; the underlying URL `docs:global_kb_list` is unchanged.
+
 ## [3.17.112] - 2026-04-28
 
 ### Added — Per-org client portal branding
