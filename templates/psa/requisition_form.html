@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}{% if item %}Edit{% else %}New{% endif %} Requisition — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:requisition_list' %}">Requisitions</a></li>
+        <li class="breadcrumb-item active">{% if item %}{{ item.pr_number }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h4 class="mb-2">{% if item %}Edit Requisition {{ item.pr_number }}{% else %}New Purchase Requisition{% endif %}</h4>
+
+<form method="post" class="card pr-form">
+    {% csrf_token %}
+    <div class="card-body py-2">
+        <div class="row g-2 small">
+            <div class="col-md-6">
+                <label class="form-label">MSP organization</label>
+                <select name="organization_id" class="form-select form-select-sm" {% if not item %}required{% endif %}>
+                    <option value="">-- Select --</option>
+                    {% for o in client_orgs %}
+                    <option value="{{ o.pk }}"
+                            {% if item and item.organization_id == o.pk %}selected{% elif selected_org_id == o.pk %}selected{% endif %}>
+                        {{ o.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Client (optional, for drop-ship / billing)</label>
+                <select name="client_org" class="form-select form-select-sm">
+                    <option value="">-- None --</option>
+                    {% for o in client_orgs %}
+                    <option value="{{ o.pk }}" {% if item.client_org_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">Title</label>
+                <input type="text" name="title" class="form-control form-control-sm" required value="{{ item.title|default:'' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tax rate (%)</label>
+                <input type="number" step="0.01" name="tax_rate" class="form-control form-control-sm" value="{{ item.tax_rate|default:0 }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Currency</label>
+                <input type="text" name="currency" class="form-control form-control-sm" maxlength="8" value="{{ item.currency|default:'USD' }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Description</label>
+                <textarea name="description" rows="2" class="form-control form-control-sm">{{ item.description|default:'' }}</textarea>
+            </div>
+
+            <div class="col-12 mt-2 d-flex justify-content-between align-items-baseline">
+                <h6 class="mb-0">Line items</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="add-line">
+                    <i class="fas fa-plus"></i> Add line
+                </button>
+            </div>
+            <div class="col-12">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Description</th>
+                            <th style="width:120px;">SKU</th>
+                            <th style="width:110px;">Distributor</th>
+                            <th style="width:90px;">Qty</th>
+                            <th style="width:120px;">Unit price</th>
+                            <th style="width:110px;" class="text-end">Total</th>
+                            <th style="width:32px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="line-items-tbody">
+                        {% for li in line_items %}
+                        <tr class="li-row">
+                            <td><input type="text" name="li_description" class="form-control form-control-sm" value="{{ li.description }}"></td>
+                            <td><input type="text" name="li_sku" class="form-control form-control-sm" value="{{ li.sku }}"></td>
+                            <td>
+                                <select name="li_provider" class="form-select form-select-sm">
+                                    <option value="" {% if not li.distributor_provider %}selected{% endif %}>—</option>
+                                    <option value="ingram" {% if li.distributor_provider == 'ingram' %}selected{% endif %}>Ingram</option>
+                                    <option value="pax8" {% if li.distributor_provider == 'pax8' %}selected{% endif %}>Pax8</option>
+                                    <option value="synnex" {% if li.distributor_provider == 'synnex' %}selected{% endif %}>Synnex</option>
+                                </select>
+                            </td>
+                            <td><input type="number" step="0.01" name="li_quantity" class="form-control form-control-sm li-qty" value="{{ li.quantity }}"></td>
+                            <td><input type="number" step="0.01" name="li_unit_price" class="form-control form-control-sm li-price" value="{{ li.unit_price }}"></td>
+                            <td class="li-total text-end small">{{ li.line_total }}</td>
+                            <td><button type="button" class="btn btn-sm btn-link text-danger li-remove" tabindex="-1" title="Remove"><i class="fas fa-times"></i></button></td>
+                        </tr>
+                        {% empty %}
+                        <tr class="li-row">
+                            <td><input type="text" name="li_description" class="form-control form-control-sm"></td>
+                            <td><input type="text" name="li_sku" class="form-control form-control-sm"></td>
+                            <td>
+                                <select name="li_provider" class="form-select form-select-sm">
+                                    <option value="" selected>—</option>
+                                    <option value="ingram">Ingram</option>
+                                    <option value="pax8">Pax8</option>
+                                    <option value="synnex">Synnex</option>
+                                </select>
+                            </td>
+                            <td><input type="number" step="0.01" name="li_quantity" class="form-control form-control-sm li-qty" value="1"></td>
+                            <td><input type="number" step="0.01" name="li_unit_price" class="form-control form-control-sm li-price" value="0"></td>
+                            <td class="li-total text-end small">0.00</td>
+                            <td><button type="button" class="btn btn-sm btn-link text-danger li-remove" tabindex="-1" title="Remove"><i class="fas fa-times"></i></button></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr><td colspan="5" class="text-end small text-muted">Subtotal</td><td class="text-end" id="pr-subtotal">{{ item.subtotal|default:'0.00' }}</td><td></td></tr>
+                        <tr><td colspan="5" class="text-end small text-muted">Tax</td><td class="text-end" id="pr-tax">{{ item.tax_amount|default:'0.00' }}</td><td></td></tr>
+                        <tr><td colspan="5" class="text-end"><strong>Total</strong></td><td class="text-end"><strong id="pr-total">{{ item.total|default:'0.00' }}</strong></td><td></td></tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Notes</label>
+                <textarea name="notes" rows="2" class="form-control form-control-sm">{{ item.notes|default:'' }}</textarea>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer py-2">
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        <a href="{% url 'psa:requisition_list' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+    </div>
+</form>
+
+<template id="line-row-template">
+    <tr class="li-row">
+        <td><input type="text" name="li_description" class="form-control form-control-sm"></td>
+        <td><input type="text" name="li_sku" class="form-control form-control-sm"></td>
+        <td>
+            <select name="li_provider" class="form-select form-select-sm">
+                <option value="" selected>—</option>
+                <option value="ingram">Ingram</option>
+                <option value="pax8">Pax8</option>
+                <option value="synnex">Synnex</option>
+            </select>
+        </td>
+        <td><input type="number" step="0.01" name="li_quantity" class="form-control form-control-sm li-qty" value="1"></td>
+        <td><input type="number" step="0.01" name="li_unit_price" class="form-control form-control-sm li-price" value="0"></td>
+        <td class="li-total text-end small">0.00</td>
+        <td><button type="button" class="btn btn-sm btn-link text-danger li-remove" tabindex="-1" title="Remove"><i class="fas fa-times"></i></button></td>
+    </tr>
+</template>
+
+<script>
+(function() {
+    const tbody = document.getElementById('line-items-tbody');
+    const tpl = document.getElementById('line-row-template');
+    const taxInput = document.querySelector('input[name="tax_rate"]');
+    const subEl = document.getElementById('pr-subtotal');
+    const taxEl = document.getElementById('pr-tax');
+    const totEl = document.getElementById('pr-total');
+
+    function recomputeRow(row) {
+        const q = parseFloat(row.querySelector('.li-qty')?.value || 0);
+        const p = parseFloat(row.querySelector('.li-price')?.value || 0);
+        const t = q * p;
+        const cell = row.querySelector('.li-total');
+        if (cell) cell.textContent = t.toFixed(2);
+        return t;
+    }
+    function recomputeAll() {
+        let sub = 0;
+        tbody.querySelectorAll('tr.li-row').forEach(row => { sub += recomputeRow(row); });
+        const rate = parseFloat(taxInput?.value || 0) / 100;
+        const tax = sub * rate;
+        subEl.textContent = sub.toFixed(2);
+        taxEl.textContent = tax.toFixed(2);
+        totEl.textContent = (sub + tax).toFixed(2);
+    }
+    function wireRow(row) {
+        row.querySelector('.li-qty')?.addEventListener('input', recomputeAll);
+        row.querySelector('.li-price')?.addEventListener('input', recomputeAll);
+        row.querySelector('.li-remove')?.addEventListener('click', () => {
+            if (tbody.querySelectorAll('tr.li-row').length <= 1) {
+                row.querySelectorAll('input').forEach(i => {
+                    i.value = i.classList.contains('li-qty') ? 1
+                            : i.classList.contains('li-price') ? 0 : '';
+                });
+            } else {
+                row.remove();
+            }
+            recomputeAll();
+        });
+    }
+    tbody.querySelectorAll('tr.li-row').forEach(wireRow);
+    taxInput?.addEventListener('input', recomputeAll);
+    document.getElementById('add-line').addEventListener('click', () => {
+        const frag = tpl.content.cloneNode(true);
+        const row = frag.querySelector('tr');
+        wireRow(row);
+        tbody.appendChild(frag);
+        row.querySelector('input[name="li_description"]').focus();
+        recomputeAll();
+    });
+    recomputeAll();
+})();
+</script>
+
+<style>
+.pr-form .form-label { margin-bottom: .15rem; font-size: .8rem; color: var(--bs-secondary-color); }
+.pr-form .table { font-size: .85rem; }
+</style>
+{% endblock %}

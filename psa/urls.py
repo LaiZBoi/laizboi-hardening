@@ -95,4 +95,21 @@ urlpatterns = [
     path('clients/<int:org_id>/charge/invoice/', views.charge_invoice, name='charge_invoice'),
     path('clients/<int:org_id>/invite-portal/', views.portal_invite, name='portal_invite'),
     path('aging/', views.aging_report, name='aging_report'),
+
+    # Procurement (Phase 4.1) — Purchase Requisitions
+    path('requisitions/', views.requisition_list, name='requisition_list'),
+    path('requisitions/new/', views.requisition_form, name='requisition_create'),
+    path('requisitions/<int:pk>/', views.requisition_detail, name='requisition_detail'),
+    path('requisitions/<int:pk>/edit/', views.requisition_form, name='requisition_edit'),
+    path('requisitions/<int:pk>/submit/', views.requisition_submit, name='requisition_submit'),
+    path('requisitions/<int:pk>/decide/', views.requisition_decide, name='requisition_decide'),
+    path('requisitions/<int:pk>/convert/', views.requisition_to_po, name='requisition_to_po'),
+
+    # Procurement (Phase 4.1) — Purchase Orders
+    path('purchase-orders/', views.po_list, name='po_list'),
+    path('purchase-orders/new/', views.po_form, name='po_create'),
+    path('purchase-orders/<int:pk>/', views.po_detail, name='po_detail'),
+    path('purchase-orders/<int:pk>/edit/', views.po_form, name='po_edit'),
+    path('purchase-orders/<int:pk>/pdf/', views.po_pdf, name='po_pdf'),
+    path('purchase-orders/<int:pk>/send/', views.po_send, name='po_send'),
 ]

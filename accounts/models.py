@@ -108,6 +108,10 @@ class Membership(BaseModel):
                 resourcing_approve_leave=True, resourcing_manage_holidays=True,
                 billing_view_invoices=True, billing_send_invoices=True,
                 billing_record_payments=True, billing_view_aging=True,
+                # Procurement (Phase 4) — Owner: all True
+                procurement_view=True, procurement_create_pr=True,
+                procurement_approve_pr=True, procurement_create_po=True,
+                procurement_send_po=True,
             )
         elif self.role == Role.ADMIN:
             return SimpleNamespace(
@@ -135,6 +139,10 @@ class Membership(BaseModel):
                 resourcing_approve_leave=True, resourcing_manage_holidays=True,
                 billing_view_invoices=True, billing_send_invoices=True,
                 billing_record_payments=True, billing_view_aging=True,
+                # Procurement (Phase 4) — Admin: all True
+                procurement_view=True, procurement_create_pr=True,
+                procurement_approve_pr=True, procurement_create_po=True,
+                procurement_send_po=True,
             )
         elif self.role == Role.EDITOR:
             return SimpleNamespace(
@@ -162,6 +170,11 @@ class Membership(BaseModel):
                 resourcing_approve_leave=False, resourcing_manage_holidays=False,
                 billing_view_invoices=False, billing_send_invoices=False,
                 billing_record_payments=False, billing_view_aging=False,
+                # Procurement (Phase 4) — Editor (techs):
+                # can view + file PRs; cannot approve PRs or create/send POs.
+                procurement_view=True, procurement_create_pr=True,
+                procurement_approve_pr=False, procurement_create_po=False,
+                procurement_send_po=False,
             )
         else:  # READONLY
             return SimpleNamespace(
@@ -189,6 +202,10 @@ class Membership(BaseModel):
                 resourcing_approve_leave=False, resourcing_manage_holidays=False,
                 billing_view_invoices=False, billing_send_invoices=False,
                 billing_record_payments=False, billing_view_aging=False,
+                # Procurement (Phase 4) — Read-Only: only view.
+                procurement_view=True, procurement_create_pr=False,
+                procurement_approve_pr=False, procurement_create_po=False,
+                procurement_send_po=False,
             )
 
     def can_read(self):
@@ -663,6 +680,18 @@ class RoleTemplate(BaseModel):
     billing_view_aging = models.BooleanField(default=False,
         help_text='See the cross-client aging report.')
 
+    # --- Procurement (Phase 4) — v3.17.148 ---
+    procurement_view = models.BooleanField(default=True,
+        help_text='View Purchase Requisitions and Purchase Orders.')
+    procurement_create_pr = models.BooleanField(default=True,
+        help_text='Create / edit Purchase Requisitions (techs file these).')
+    procurement_approve_pr = models.BooleanField(default=False,
+        help_text='Approve / reject submitted Purchase Requisitions.')
+    procurement_create_po = models.BooleanField(default=False,
+        help_text='Create / edit Purchase Orders and convert PR to PO.')
+    procurement_send_po = models.BooleanField(default=False,
+        help_text='Email PO PDF to vendor and mark as sent.')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -747,6 +776,12 @@ class RoleTemplate(BaseModel):
                 'billing_send_invoices': True,
                 'billing_record_payments': True,
                 'billing_view_aging': True,
+                # Procurement (Phase 4) — Owner: all True
+                'procurement_view': True,
+                'procurement_create_pr': True,
+                'procurement_approve_pr': True,
+                'procurement_create_po': True,
+                'procurement_send_po': True,
             },
             {
                 'name': 'Administrator',
@@ -819,6 +854,12 @@ class RoleTemplate(BaseModel):
                 'billing_send_invoices': True,
                 'billing_record_payments': True,
                 'billing_view_aging': True,
+                # Procurement (Phase 4) — Administrator: all True
+                'procurement_view': True,
+                'procurement_create_pr': True,
+                'procurement_approve_pr': True,
+                'procurement_create_po': True,
+                'procurement_send_po': True,
             },
             {
                 'name': 'Editor',
@@ -891,6 +932,13 @@ class RoleTemplate(BaseModel):
                 'billing_send_invoices': False,
                 'billing_record_payments': False,
                 'billing_view_aging': False,
+                # Procurement (Phase 4) — Editor (techs): can file PRs,
+                # cannot approve PRs / create / send POs.
+                'procurement_view': True,
+                'procurement_create_pr': True,
+                'procurement_approve_pr': False,
+                'procurement_create_po': False,
+                'procurement_send_po': False,
             },
             {
                 'name': 'Help Desk',
@@ -963,6 +1011,12 @@ class RoleTemplate(BaseModel):
                 'billing_send_invoices': False,
                 'billing_record_payments': False,
                 'billing_view_aging': False,
+                # Procurement (Phase 4) — Help Desk: view + file PRs.
+                'procurement_view': True,
+                'procurement_create_pr': True,
+                'procurement_approve_pr': False,
+                'procurement_create_po': False,
+                'procurement_send_po': False,
             },
             {
                 'name': 'IT Manager',
@@ -1036,6 +1090,12 @@ class RoleTemplate(BaseModel):
                 'billing_send_invoices': False,
                 'billing_record_payments': False,
                 'billing_view_aging': True,
+                # Procurement (Phase 4) — IT Manager: full procurement.
+                'procurement_view': True,
+                'procurement_create_pr': True,
+                'procurement_approve_pr': True,
+                'procurement_create_po': True,
+                'procurement_send_po': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -1108,6 +1168,12 @@ class RoleTemplate(BaseModel):
                 'billing_send_invoices': False,
                 'billing_record_payments': False,
                 'billing_view_aging': False,
+                # Procurement (Phase 4) — Documentation Writer: view only.
+                'procurement_view': True,
+                'procurement_create_pr': False,
+                'procurement_approve_pr': False,
+                'procurement_create_po': False,
+                'procurement_send_po': False,
             },
             {
                 'name': 'Read-Only',
@@ -1180,6 +1246,12 @@ class RoleTemplate(BaseModel):
                 'billing_send_invoices': False,
                 'billing_record_payments': False,
                 'billing_view_aging': False,
+                # Procurement (Phase 4) — Read-Only: view only.
+                'procurement_view': True,
+                'procurement_create_pr': False,
+                'procurement_approve_pr': False,
+                'procurement_create_po': False,
+                'procurement_send_po': False,
             },
         ]
 

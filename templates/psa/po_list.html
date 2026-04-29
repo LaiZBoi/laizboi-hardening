@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}PSA — Purchase Orders{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Purchase Orders</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="fas fa-file-invoice me-2"></i>Purchase Orders</h2>
+    {% if perms %}{% endif %}
+    <a href="{% url 'psa:po_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New PO</a>
+</div>
+
+<form method="get" class="mb-3">
+    <select name="status" class="form-select form-select-sm d-inline-block" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="sent" {% if status_filter == 'sent' %}selected{% endif %}>Sent</option>
+        <option value="acknowledged" {% if status_filter == 'acknowledged' %}selected{% endif %}>Acknowledged</option>
+        <option value="partial" {% if status_filter == 'partial' %}selected{% endif %}>Partial</option>
+        <option value="received" {% if status_filter == 'received' %}selected{% endif %}>Received</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+        <option value="void" {% if status_filter == 'void' %}selected{% endif %}>Void</option>
+    </select>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light"><tr><th>Number</th><th>Vendor</th><th>Title</th><th>Client</th><th>Status</th><th>Total</th><th>Issued</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for po in pos %}
+                <tr>
+                    <td><a href="{% url 'psa:po_detail' po.pk %}"><strong>{{ po.po_number }}</strong></a></td>
+                    <td>{{ po.vendor_name }}</td>
+                    <td>{{ po.title|truncatechars:50 }}</td>
+                    <td>{{ po.client_org.name|default:'—' }}</td>
+                    <td>
+                        {% if po.status == 'draft' %}<span class="badge text-bg-secondary">Draft</span>
+                        {% elif po.status == 'sent' %}<span class="badge text-bg-primary">Sent</span>
+                        {% elif po.status == 'acknowledged' %}<span class="badge text-bg-info">Acknowledged</span>
+                        {% elif po.status == 'partial' %}<span class="badge text-bg-warning">Partial</span>
+                        {% elif po.status == 'received' %}<span class="badge text-bg-success">Received</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ po.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td>{{ po.total }} {{ po.currency }}</td>
+                    <td>{{ po.issue_date|default:'—' }}</td>
+                    <td class="text-nowrap">
+                        <a href="{% url 'psa:po_detail' po.pk %}" class="btn btn-sm btn-outline-secondary" title="View"><i class="fas fa-eye"></i></a>
+                        <a href="{% url 'psa:po_pdf' po.pk %}" target="_blank" class="btn btn-sm btn-outline-primary" title="View PDF"><i class="fas fa-file-pdf"></i></a>
+                        <a href="{% url 'psa:po_pdf' po.pk %}?download=1" class="btn btn-sm btn-outline-primary" title="Download"><i class="fas fa-download"></i></a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-4">No purchase orders yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

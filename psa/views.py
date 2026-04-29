@@ -3989,3 +3989,514 @@ def dispatch_assign(request):
         'assigned_to': ticket.assigned_to.username if ticket.assigned_to else '',
         'assigned_to_id': ticket.assigned_to_id or 0,
     })
+
+
+# ---------------------------------------------------------------------------
+# Procurement (Phase 4.1) — Purchase Requisitions + Purchase Orders
+# ---------------------------------------------------------------------------
+
+from accounts.permission_utils import require_perm  # noqa: E402
+
+
+def _procurement_save_lines(item, line_model, request):
+    """Replace line_items on a PR/PO from POSTed lists, returning total."""
+    descs = request.POST.getlist('li_description')
+    skus = request.POST.getlist('li_sku')
+    providers = request.POST.getlist('li_provider')
+    qtys = request.POST.getlist('li_quantity')
+    prices = request.POST.getlist('li_unit_price')
+    if descs:
+        item.line_items.all().delete()
+        for i, d in enumerate(descs):
+            if not (d or '').strip():
+                continue
+            try:
+                qf = float(qtys[i] if i < len(qtys) and qtys[i] else 1)
+                pf = float(prices[i] if i < len(prices) and prices[i] else 0)
+            except (ValueError, IndexError):
+                qf, pf = 1, 0
+            kwargs = dict(
+                sort_order=i,
+                description=d.strip()[:300],
+                sku=(skus[i] if i < len(skus) else '')[:80],
+                distributor_provider=(providers[i] if i < len(providers) else '')[:40],
+                quantity=qf, unit_price=pf,
+            )
+            if line_model.__name__ == 'PurchaseOrderLineItem':
+                kwargs['po'] = item
+            else:
+                kwargs['requisition'] = item
+            line_model.objects.create(**kwargs)
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+def requisition_list(request):
+    from .models import PurchaseRequisition
+    org = get_request_organization(request)
+    qs = PurchaseRequisition.objects.select_related('client_org', 'requested_by', 'approver')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    status = request.GET.get('status')
+    if status in {c[0] for c in PurchaseRequisition.STATUS_CHOICES}:
+        qs = qs.filter(status=status)
+    return render(request, 'psa/requisition_list.html', {
+        'requisitions': qs.order_by('-requested_at')[:200],
+        'status_filter': status or '',
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+def requisition_detail(request, pk):
+    from .models import PurchaseRequisition
+    from accounts.permission_utils import user_has_perm
+    org = get_request_organization(request)
+    qs = PurchaseRequisition.objects.select_related(
+        'client_org', 'organization', 'requested_by', 'approver',
+        'source_ticket', 'source_project',
+    )
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    return render(request, 'psa/requisition_detail.html', {
+        'item': item,
+        'line_items': item.line_items.all(),
+        'can_approve': user_has_perm(request.user, 'procurement_approve_pr'),
+        'can_create_po': user_has_perm(request.user, 'procurement_create_po'),
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_create_pr')
+@require_http_methods(['GET', 'POST'])
+def requisition_form(request, pk=None):
+    from .models import PurchaseRequisition, PurchaseRequisitionLineItem
+    from core.models import Organization
+    if pk:
+        item = get_object_or_404(PurchaseRequisition, pk=pk)
+        org = item.organization
+    else:
+        item = None
+        org = get_request_organization(request)
+
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
+    def _render():
+        return render(request, 'psa/requisition_form.html', {
+            'item': item,
+            'client_orgs': client_orgs,
+            'status_choices': PurchaseRequisition.STATUS_CHOICES,
+            'line_items': item.line_items.all() if item else [],
+            'selected_org_id': item.organization_id if item else (org.pk if org else None),
+        })
+
+    if request.method == 'POST':
+        posted_org_id = (request.POST.get('organization_id') or '').strip()
+        if posted_org_id:
+            try:
+                item_org = Organization.objects.get(pk=int(posted_org_id), is_active=True)
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid organization.')
+                return _render()
+        else:
+            item_org = org
+
+        if item_org is None:
+            messages.error(request, 'Please choose an MSP organization for this requisition.')
+            return _render()
+
+        title = (request.POST.get('title') or '').strip()
+        if not title:
+            messages.error(request, 'Title is required.')
+            return _render()
+
+        client_org = None
+        client_org_id = (request.POST.get('client_org') or '').strip()
+        if client_org_id:
+            try:
+                client_org = Organization.objects.get(pk=int(client_org_id))
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                client_org = None
+
+        if item is None:
+            item = PurchaseRequisition(
+                organization=item_org,
+                title=title,
+                requested_by=request.user,
+            )
+        item.organization = item_org
+        item.client_org = client_org
+        item.title = title
+        item.description = (request.POST.get('description') or '').strip()
+        item.notes = (request.POST.get('notes') or '').strip()
+        # status only changeable if approve/reject — drafts stay draft from form
+        if not pk:
+            item.status = 'draft'
+        try:
+            item.tax_rate = request.POST.get('tax_rate') or 0
+        except (TypeError, ValueError):
+            item.tax_rate = 0
+        item.currency = (request.POST.get('currency') or 'USD')[:8]
+        item.save()
+
+        _procurement_save_lines(item, PurchaseRequisitionLineItem, request)
+        item.recompute_totals()
+        item.save(update_fields=['subtotal', 'tax_amount', 'total', 'updated_at'])
+
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            organization=item_org,
+            object_type='psa.PurchaseRequisition', object_id=item.pk,
+            object_repr=item.pr_number,
+            description=f'{"Updated" if pk else "Created"} requisition {item.pr_number}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Saved {item.pr_number}.')
+        return redirect('psa:requisition_detail', pk=item.pk)
+
+    return _render()
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_create_pr')
+@require_http_methods(['POST'])
+def requisition_submit(request, pk):
+    from .models import PurchaseRequisition
+    org = get_request_organization(request)
+    qs = PurchaseRequisition.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    if item.status != 'draft':
+        messages.error(request, f'Cannot submit — already {item.get_status_display()}.')
+        return redirect('psa:requisition_detail', pk=item.pk)
+    item.status = 'submitted'
+    item.save(update_fields=['status', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=item.organization,
+        object_type='psa.PurchaseRequisition', object_id=item.pk,
+        object_repr=item.pr_number,
+        description=f'Submitted requisition {item.pr_number} for approval',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Requisition {item.pr_number} submitted for approval.')
+    return redirect('psa:requisition_detail', pk=item.pk)
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_approve_pr')
+@require_http_methods(['POST'])
+def requisition_decide(request, pk):
+    from .models import PurchaseRequisition
+    org = get_request_organization(request)
+    qs = PurchaseRequisition.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    if item.status != 'submitted':
+        messages.error(request, f'Cannot decide — requisition is {item.get_status_display()}.')
+        return redirect('psa:requisition_detail', pk=item.pk)
+
+    decision = (request.POST.get('decision') or '').strip()
+    note = (request.POST.get('decision_note') or '').strip()
+    if decision == 'approve':
+        item.status = 'approved'
+    elif decision == 'reject':
+        item.status = 'rejected'
+    else:
+        messages.error(request, 'Decision must be approve or reject.')
+        return redirect('psa:requisition_detail', pk=item.pk)
+
+    item.approver = request.user
+    item.decided_at = timezone.now()
+    item.decision_note = note
+    item.save(update_fields=['status', 'approver', 'decided_at',
+                             'decision_note', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=item.organization,
+        object_type='psa.PurchaseRequisition', object_id=item.pk,
+        object_repr=item.pr_number,
+        description=f'{decision.capitalize()}d requisition {item.pr_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Requisition {item.pr_number} {item.get_status_display().lower()}.')
+    return redirect('psa:requisition_detail', pk=item.pk)
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_create_po')
+@require_http_methods(['POST'])
+def requisition_to_po(request, pk):
+    """Convert an approved PR into a draft PO with the same line items."""
+    from .models import (
+        PurchaseRequisition, PurchaseOrder, PurchaseOrderLineItem,
+    )
+    org = get_request_organization(request)
+    qs = PurchaseRequisition.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    pr = get_object_or_404(qs, pk=pk)
+    if pr.status != 'approved':
+        messages.error(request, f'Cannot convert — requisition is {pr.get_status_display()}.')
+        return redirect('psa:requisition_detail', pk=pr.pk)
+
+    vendor_name = (request.POST.get('vendor_name') or '').strip() or 'Vendor TBD'
+    vendor_email = (request.POST.get('vendor_email') or '').strip()
+
+    po = PurchaseOrder.objects.create(
+        organization=pr.organization,
+        client_org=pr.client_org,
+        requisition=pr,
+        vendor_name=vendor_name[:200],
+        vendor_email=vendor_email[:254],
+        title=pr.title[:200],
+        notes=pr.notes,
+        tax_rate=pr.tax_rate,
+        currency=pr.currency,
+        created_by=request.user,
+    )
+    for li in pr.line_items.all():
+        PurchaseOrderLineItem.objects.create(
+            po=po,
+            description=li.description,
+            sku=li.sku,
+            distributor_provider=li.distributor_provider,
+            quantity=li.quantity,
+            unit_price=li.unit_price,
+            sort_order=li.sort_order,
+        )
+    po.recompute_totals()
+    po.save(update_fields=['subtotal', 'tax_amount', 'total', 'updated_at'])
+
+    pr.status = 'converted'
+    pr.save(update_fields=['status', 'updated_at'])
+
+    AuditLog.log(
+        user=request.user, action='create',
+        organization=po.organization,
+        object_type='psa.PurchaseOrder', object_id=po.pk,
+        object_repr=po.po_number,
+        description=f'Converted {pr.pr_number} to PO {po.po_number}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Created {po.po_number} from {pr.pr_number}.')
+    return redirect('psa:po_detail', pk=po.pk)
+
+
+# --- Purchase Orders ---
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+def po_list(request):
+    from .models import PurchaseOrder
+    org = get_request_organization(request)
+    qs = PurchaseOrder.objects.select_related('client_org', 'created_by')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    status = request.GET.get('status')
+    if status in {c[0] for c in PurchaseOrder.STATUS_CHOICES}:
+        qs = qs.filter(status=status)
+    return render(request, 'psa/po_list.html', {
+        'pos': qs.order_by('-created_at')[:200],
+        'status_filter': status or '',
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+def po_detail(request, pk):
+    from .models import PurchaseOrder
+    from accounts.permission_utils import user_has_perm
+    org = get_request_organization(request)
+    qs = PurchaseOrder.objects.select_related(
+        'client_org', 'organization', 'requisition', 'created_by',
+    )
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    return render(request, 'psa/po_detail.html', {
+        'item': item,
+        'line_items': item.line_items.all(),
+        'can_edit_po': user_has_perm(request.user, 'procurement_create_po'),
+        'can_send_po': user_has_perm(request.user, 'procurement_send_po'),
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_create_po')
+@require_http_methods(['GET', 'POST'])
+def po_form(request, pk=None):
+    from .models import PurchaseOrder, PurchaseOrderLineItem
+    from core.models import Organization
+    if pk:
+        item = get_object_or_404(PurchaseOrder, pk=pk)
+        org = item.organization
+    else:
+        item = None
+        org = get_request_organization(request)
+
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
+    def _render():
+        return render(request, 'psa/po_form.html', {
+            'item': item,
+            'client_orgs': client_orgs,
+            'status_choices': PurchaseOrder.STATUS_CHOICES,
+            'line_items': item.line_items.all() if item else [],
+            'selected_org_id': item.organization_id if item else (org.pk if org else None),
+        })
+
+    if request.method == 'POST':
+        posted_org_id = (request.POST.get('organization_id') or '').strip()
+        if posted_org_id:
+            try:
+                item_org = Organization.objects.get(pk=int(posted_org_id), is_active=True)
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid organization.')
+                return _render()
+        else:
+            item_org = org
+        if item_org is None:
+            messages.error(request, 'Please choose an MSP organization for this PO.')
+            return _render()
+
+        title = (request.POST.get('title') or '').strip()
+        vendor_name = (request.POST.get('vendor_name') or '').strip()
+        if not title or not vendor_name:
+            messages.error(request, 'Title and vendor name are required.')
+            return _render()
+
+        client_org = None
+        client_org_id = (request.POST.get('client_org') or '').strip()
+        if client_org_id:
+            try:
+                client_org = Organization.objects.get(pk=int(client_org_id))
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                client_org = None
+
+        if item is None:
+            item = PurchaseOrder(
+                organization=item_org,
+                created_by=request.user,
+            )
+        item.organization = item_org
+        item.client_org = client_org
+        item.title = title[:200]
+        item.vendor_name = vendor_name[:200]
+        item.vendor_email = (request.POST.get('vendor_email') or '').strip()[:254]
+        item.vendor_phone = (request.POST.get('vendor_phone') or '').strip()[:40]
+        item.vendor_address = (request.POST.get('vendor_address') or '').strip()
+        item.notes = (request.POST.get('notes') or '').strip()
+        item.status = request.POST.get('status') or 'draft'
+        item.issue_date = request.POST.get('issue_date') or None
+        item.expected_delivery_date = request.POST.get('expected_delivery_date') or None
+        item.is_drop_ship = request.POST.get('is_drop_ship') == 'on'
+        item.ship_to_name = (request.POST.get('ship_to_name') or '').strip()[:200]
+        item.ship_to_address = (request.POST.get('ship_to_address') or '').strip()
+        try:
+            item.tax_rate = request.POST.get('tax_rate') or 0
+        except (TypeError, ValueError):
+            item.tax_rate = 0
+        try:
+            item.shipping_cost = request.POST.get('shipping_cost') or 0
+        except (TypeError, ValueError):
+            item.shipping_cost = 0
+        item.currency = (request.POST.get('currency') or 'USD')[:8]
+        item.save()
+
+        _procurement_save_lines(item, PurchaseOrderLineItem, request)
+        item.recompute_totals()
+        item.save(update_fields=['subtotal', 'tax_amount', 'total', 'updated_at'])
+
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            organization=item_org,
+            object_type='psa.PurchaseOrder', object_id=item.pk,
+            object_repr=item.po_number,
+            description=f'{"Updated" if pk else "Created"} purchase order {item.po_number}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Saved {item.po_number}.')
+        return redirect('psa:po_detail', pk=item.pk)
+
+    return _render()
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+def po_pdf(request, pk):
+    from django.http import HttpResponse
+    from .po_pdf import render_po_pdf
+    from .models import PurchaseOrder
+    org = get_request_organization(request)
+    qs = PurchaseOrder.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    po = get_object_or_404(
+        qs.select_related('client_org', 'organization'), pk=pk,
+    )
+    pdf_bytes = render_po_pdf(po)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    disposition = 'attachment' if request.GET.get('download') else 'inline'
+    resp['Content-Disposition'] = f'{disposition}; filename="{po.po_number}.pdf"'
+    return resp
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_send_po')
+@require_http_methods(['POST'])
+def po_send(request, pk):
+    from .po_pdf import email_po
+    from .models import PurchaseOrder
+    org = get_request_organization(request)
+    qs = PurchaseOrder.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    po = get_object_or_404(qs.select_related('client_org', 'organization'), pk=pk)
+    recipient = (request.POST.get('recipient') or po.vendor_email or '').strip()
+    subject = (request.POST.get('subject') or '').strip()
+    body = (request.POST.get('body') or '').strip()
+    if not recipient or '@' not in recipient:
+        messages.error(request, 'Provide a valid vendor recipient email.')
+        return redirect('psa:po_detail', pk=po.pk)
+    try:
+        ok = email_po(po, recipient=recipient, subject=subject, body=body)
+    except Exception as exc:
+        messages.error(request, f'Email failed: {exc}')
+        return redirect('psa:po_detail', pk=po.pk)
+    if ok:
+        if po.status == 'draft':
+            po.status = 'sent'
+            po.sent_at = timezone.now()
+            po.save(update_fields=['status', 'sent_at', 'updated_at'])
+        AuditLog.log(
+            user=request.user, action='update',
+            organization=po.organization,
+            object_type='psa.PurchaseOrder', object_id=po.pk,
+            object_repr=po.po_number,
+            description=f'Emailed PO {po.po_number} to {recipient}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Sent PO {po.po_number} to {recipient}.')
+    else:
+        messages.error(request, 'Email send returned 0 recipients.')
+    return redirect('psa:po_detail', pk=po.pk)

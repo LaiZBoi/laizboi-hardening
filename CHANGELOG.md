@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.148] - 2026-04-29
+
+### Added — Phase 4.1: Procurement foundation (PR → PO + branded PDF + email)
+- New `psa.PurchaseRequisition` (auto-numbered PR-YYYY-NNNNN) — internal request a tech files. Statuses: draft / submitted / approved / rejected / converted / cancelled. Optional `source_ticket` / `source_project` provenance.
+- New `psa.PurchaseOrder` (auto-numbered PO-YYYY-NNNNN) — issued to a vendor. Statuses: draft / sent / acknowledged / partial / received / cancelled / void. Drop-ship flag with override ship-to.
+- Both models have line items (`PurchaseRequisitionLineItem` / `PurchaseOrderLineItem`) with SKU + distributor hint (links to the existing Ingram/Pax8/Synnex catalog).
+- PO branded PDF (mirrors Quote/Invoice ReportLab generator) + email-to-vendor sets `status=sent`, `sent_at=now`, audit-logged.
+- Approval workflow: PR submit → approver approve/reject → PR-to-PO conversion endpoint copies line items.
+- 5 new RoleTemplate booleans (Phase 3.6 pattern): `procurement_view` / `procurement_create_pr` / `procurement_approve_pr` / `procurement_create_po` / `procurement_send_po`. Editors can create PRs but not approve or send POs.
+- 7 new tests covering numbering, totals, approval workflow, conversion.
+- "Procurement" sub-section under the PSA navbar dropdown.
+
+Phase 4 sub-phases left: 4.2 Receiving + serial capture + back-orders; 4.3 Vendor relationship model + stock minimums + auto-replenish; 4.4 One-click PO from accepted quote.
+
+### Migrations
+`psa.0019_purchaseorder_purchaseorderlineitem_and_more` for PR/PO models, `accounts.0021_roletemplate_procurement_approve_pr_and_more` for the 5 RoleTemplate booleans.
+
 ## [3.17.147] - 2026-04-29
 
 ### Added — Phase 3.6 wave B: Scheduled reports runner + Client-health score (closes Phase 3)

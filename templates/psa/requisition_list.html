@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}PSA — Purchase Requisitions{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Purchase Requisitions</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Purchase Requisitions</h2>
+    <a href="{% url 'psa:requisition_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New Requisition</a>
+</div>
+
+<form method="get" class="mb-3">
+    <select name="status" class="form-select form-select-sm d-inline-block" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="submitted" {% if status_filter == 'submitted' %}selected{% endif %}>Submitted</option>
+        <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+        <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
+        <option value="converted" {% if status_filter == 'converted' %}selected{% endif %}>Converted</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light"><tr><th>Number</th><th>Title</th><th>Client</th><th>Status</th><th>Total</th><th>Requested</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for pr in requisitions %}
+                <tr>
+                    <td><a href="{% url 'psa:requisition_detail' pr.pk %}"><strong>{{ pr.pr_number }}</strong></a></td>
+                    <td>{{ pr.title|truncatechars:60 }}</td>
+                    <td>{{ pr.client_org.name|default:'—' }}</td>
+                    <td>
+                        {% if pr.status == 'draft' %}<span class="badge text-bg-secondary">Draft</span>
+                        {% elif pr.status == 'submitted' %}<span class="badge text-bg-info">Submitted</span>
+                        {% elif pr.status == 'approved' %}<span class="badge text-bg-success">Approved</span>
+                        {% elif pr.status == 'rejected' %}<span class="badge text-bg-danger">Rejected</span>
+                        {% elif pr.status == 'converted' %}<span class="badge text-bg-primary">Converted</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ pr.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td>{{ pr.total }} {{ pr.currency }}</td>
+                    <td>{{ pr.requested_at|date:'Y-m-d' }}</td>
+                    <td class="text-nowrap">
+                        <a href="{% url 'psa:requisition_detail' pr.pk %}" class="btn btn-sm btn-outline-secondary" title="View"><i class="fas fa-eye"></i></a>
+                        {% if pr.status == 'draft' %}
+                        <a href="{% url 'psa:requisition_edit' pr.pk %}" class="btn btn-sm btn-outline-secondary" title="Edit"><i class="fas fa-pen"></i></a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">No requisitions yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

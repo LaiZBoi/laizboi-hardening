@@ -2038,3 +2038,262 @@ def get_psa_balance(client_org, *, msp_org=None):
         'net_balance': net,
         'aging': aging,
     }
+
+
+# ---------------------------------------------------------------------------
+# Procurement — Phase 4.1
+# ---------------------------------------------------------------------------
+
+class PurchaseRequisition(models.Model):
+    """
+    Internal request a tech files to buy something. Goes through an
+    approval gate before becoming a PurchaseOrder. Lives next to
+    Quote/Invoice in feature texture: auto-numbered, line items,
+    optional client_org link.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('submitted', 'Submitted for approval'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('converted', 'Converted to PO'),
+        ('cancelled', 'Cancelled'),
+    ]
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_pr_msp',
+        help_text='MSP tenant that owns the requisition.',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.SET_NULL,
+        related_name='psa_pr_client', null=True, blank=True,
+        help_text='Optional - bill to / drop-ship to this client.',
+    )
+    pr_number = models.CharField(max_length=30, unique=True)  # PR-YYYY-NNNNN
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    requested_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+
+    # Approval trail
+    approver = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.TextField(blank=True)
+
+    # Optional ticket / project link (provenance)
+    source_ticket = models.ForeignKey(
+        'psa.Ticket', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='requisitions',
+    )
+    source_project = models.ForeignKey(
+        'psa.Project', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='requisitions',
+    )
+
+    # Money totals (computed from line items)
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=8, default='USD')
+
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_purchase_requisitions'
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['organization', 'status', '-requested_at']),
+            models.Index(fields=['client_org']),
+        ]
+
+    def __str__(self):
+        return f'{self.pr_number} - {self.title}'
+
+    def save(self, *args, **kwargs):
+        if not self.pr_number:
+            self.pr_number = self.next_number()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def next_number(cls):
+        """PR-YYYY-NNNNN, monotonic per year."""
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefix = f'PR-{year}-'
+        last = cls.objects.filter(pr_number__startswith=prefix).aggregate(Max('pr_number'))['pr_number__max']
+        if not last:
+            return f'{prefix}00001'
+        try:
+            n = int(last.split('-')[-1])
+        except (ValueError, IndexError):
+            n = 0
+        return f'{prefix}{n + 1:05d}'
+
+    def recompute_totals(self):
+        from decimal import Decimal
+        subtotal = Decimal('0')
+        for li in self.line_items.all():
+            subtotal += (li.quantity or Decimal('0')) * (li.unit_price or Decimal('0'))
+        self.subtotal = subtotal
+        self.tax_amount = (subtotal * (self.tax_rate or Decimal('0'))) / Decimal('100')
+        self.total = self.subtotal + self.tax_amount
+        return self.total
+
+
+class PurchaseRequisitionLineItem(models.Model):
+    requisition = models.ForeignKey(PurchaseRequisition, on_delete=models.CASCADE,
+                                     related_name='line_items')
+    description = models.CharField(max_length=300)
+    sku = models.CharField(max_length=80, blank=True,
+        help_text='Vendor SKU or part number - pre-fills from distributor catalog.')
+    distributor_provider = models.CharField(max_length=40, blank=True,
+        help_text='Hint: which distributor (ingram/pax8/synnex) carries this SKU.')
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'psa_purchase_requisition_lines'
+        ordering = ['sort_order', 'pk']
+
+    @property
+    def line_total(self):
+        from decimal import Decimal
+        return (self.quantity or Decimal('0')) * (self.unit_price or Decimal('0'))
+
+
+class PurchaseOrder(models.Model):
+    """
+    Approved PR converts to a PurchaseOrder issued to a vendor.
+    Auto-numbered. Branded PDF + email-to-vendor (mirrors Invoice pattern).
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent to vendor'),
+        ('acknowledged', 'Vendor acknowledged'),
+        ('partial', 'Partially received'),
+        ('received', 'Fully received'),
+        ('cancelled', 'Cancelled'),
+        ('void', 'Void'),
+    ]
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_po_msp',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.SET_NULL,
+        related_name='psa_po_client', null=True, blank=True,
+    )
+    requisition = models.ForeignKey(
+        PurchaseRequisition, on_delete=models.SET_NULL,
+        related_name='purchase_orders', null=True, blank=True,
+    )
+    po_number = models.CharField(max_length=30, unique=True)  # PO-YYYY-NNNNN
+    vendor_name = models.CharField(max_length=200)
+    vendor_email = models.EmailField(blank=True)
+    vendor_phone = models.CharField(max_length=40, blank=True)
+    vendor_address = models.TextField(blank=True)
+
+    title = models.CharField(max_length=200)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    # Issue / due dates
+    issue_date = models.DateField(null=True, blank=True)
+    expected_delivery_date = models.DateField(null=True, blank=True)
+
+    # Drop-ship?
+    is_drop_ship = models.BooleanField(default=False,
+        help_text='If true, ship-to overrides MSP address with client address.')
+    ship_to_name = models.CharField(max_length=200, blank=True)
+    ship_to_address = models.TextField(blank=True)
+
+    # Money
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    shipping_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=8, default='USD')
+
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'psa_purchase_orders'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'status', '-created_at']),
+            models.Index(fields=['vendor_name']),
+        ]
+
+    def __str__(self):
+        return f'{self.po_number} - {self.vendor_name}'
+
+    def save(self, *args, **kwargs):
+        if not self.po_number:
+            self.po_number = self.next_number()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def next_number(cls):
+        from django.utils import timezone
+        from django.db.models import Max
+        year = timezone.now().year
+        prefix = f'PO-{year}-'
+        last = cls.objects.filter(po_number__startswith=prefix).aggregate(Max('po_number'))['po_number__max']
+        if not last:
+            return f'{prefix}00001'
+        try:
+            n = int(last.split('-')[-1])
+        except (ValueError, IndexError):
+            n = 0
+        return f'{prefix}{n + 1:05d}'
+
+    def recompute_totals(self):
+        from decimal import Decimal
+        subtotal = Decimal('0')
+        for li in self.line_items.all():
+            subtotal += (li.quantity or Decimal('0')) * (li.unit_price or Decimal('0'))
+        self.subtotal = subtotal
+        self.tax_amount = (subtotal * (self.tax_rate or Decimal('0'))) / Decimal('100')
+        self.total = self.subtotal + self.tax_amount + (self.shipping_cost or Decimal('0'))
+        return self.total
+
+
+class PurchaseOrderLineItem(models.Model):
+    po = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='line_items')
+    description = models.CharField(max_length=300)
+    sku = models.CharField(max_length=80, blank=True)
+    distributor_provider = models.CharField(max_length=40, blank=True)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    received_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+        help_text='Phase 4.2 fills this from Receiving.')
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'psa_purchase_order_lines'
+        ordering = ['sort_order', 'pk']
+
+    @property
+    def line_total(self):
+        from decimal import Decimal
+        return (self.quantity or Decimal('0')) * (self.unit_price or Decimal('0'))

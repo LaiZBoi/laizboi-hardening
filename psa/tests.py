@@ -2814,3 +2814,175 @@ class ServiceCatalogViewModeTests(TestCase):
         self.client.force_login(self.user)
         r = self.client.get('/psa/catalog/?view=garbage')
         self.assertEqual(r.status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# Procurement (Phase 4.1)
+# ---------------------------------------------------------------------------
+
+class ProcurementModelTests(TestCase):
+    """Numbering + totals math for PR/PO."""
+
+    def setUp(self):
+        from psa.models import (
+            PurchaseRequisition, PurchaseRequisitionLineItem,
+            PurchaseOrder, PurchaseOrderLineItem,
+        )
+        self.PR = PurchaseRequisition
+        self.PRLI = PurchaseRequisitionLineItem
+        self.PO = PurchaseOrder
+        self.POLI = PurchaseOrderLineItem
+        self.org = Organization.objects.create(name='ProcOrg', slug='proc-org')
+
+    def test_pr_next_number(self):
+        from django.utils import timezone
+        year = timezone.now().year
+        pr1 = self.PR.objects.create(organization=self.org, title='First')
+        pr2 = self.PR.objects.create(organization=self.org, title='Second')
+        self.assertEqual(pr1.pr_number, f'PR-{year}-00001')
+        self.assertEqual(pr2.pr_number, f'PR-{year}-00002')
+
+    def test_pr_recompute_totals(self):
+        from decimal import Decimal
+        pr = self.PR.objects.create(
+            organization=self.org, title='Totals', tax_rate=Decimal('10'),
+        )
+        self.PRLI.objects.create(requisition=pr, description='Switch',
+                                  quantity=Decimal('2'), unit_price=Decimal('100'))
+        self.PRLI.objects.create(requisition=pr, description='Cable',
+                                  quantity=Decimal('5'), unit_price=Decimal('20'))
+        pr.recompute_totals()
+        # subtotal: 2*100 + 5*20 = 300; tax 10% = 30; total 330
+        self.assertEqual(pr.subtotal, Decimal('300'))
+        self.assertEqual(pr.tax_amount, Decimal('30'))
+        self.assertEqual(pr.total, Decimal('330'))
+
+    def test_po_next_number(self):
+        from django.utils import timezone
+        year = timezone.now().year
+        po1 = self.PO.objects.create(
+            organization=self.org, vendor_name='V1', title='T1')
+        po2 = self.PO.objects.create(
+            organization=self.org, vendor_name='V2', title='T2')
+        self.assertEqual(po1.po_number, f'PO-{year}-00001')
+        self.assertEqual(po2.po_number, f'PO-{year}-00002')
+
+    def test_po_total_includes_shipping(self):
+        from decimal import Decimal
+        po = self.PO.objects.create(
+            organization=self.org, vendor_name='Acme',
+            title='Ship test', tax_rate=Decimal('10'),
+            shipping_cost=Decimal('25'),
+        )
+        self.POLI.objects.create(po=po, description='Item',
+                                  quantity=Decimal('1'), unit_price=Decimal('100'))
+        po.recompute_totals()
+        # subtotal 100; tax 10; shipping 25; total 135
+        self.assertEqual(po.subtotal, Decimal('100'))
+        self.assertEqual(po.tax_amount, Decimal('10'))
+        self.assertEqual(po.total, Decimal('135'))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProcurementWorkflowTests(TestCase):
+    """Approval gate + PR-to-PO conversion via HTTP."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        from psa.models import PurchaseRequisition, PurchaseRequisitionLineItem
+        from decimal import Decimal
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='ProcCo', slug='proc-co')
+
+        # Approver: full procurement perms
+        self.approver_role = RoleTemplate.objects.create(
+            name='ProcApprover', is_system_template=False,
+            procurement_view=True, procurement_create_pr=True,
+            procurement_approve_pr=True, procurement_create_po=True,
+            procurement_send_po=True,
+        )
+        self.approver = User.objects.create_user(
+            username='approver', password='pw', email='a@x.com')
+        Membership.objects.create(
+            user=self.approver, organization=self.org,
+            role=Role.ADMIN, role_template=self.approver_role,
+            is_active=True,
+        )
+
+        # Tech: can create PR, cannot approve
+        self.tech_role = RoleTemplate.objects.create(
+            name='ProcTech', is_system_template=False,
+            procurement_view=True, procurement_create_pr=True,
+            procurement_approve_pr=False, procurement_create_po=False,
+            procurement_send_po=False,
+        )
+        self.tech = User.objects.create_user(
+            username='tech', password='pw', email='t@x.com')
+        Membership.objects.create(
+            user=self.tech, organization=self.org,
+            role=Role.EDITOR, role_template=self.tech_role,
+            is_active=True,
+        )
+
+        # Submitted PR with one line item
+        self.pr = PurchaseRequisition.objects.create(
+            organization=self.org, title='Need switch',
+            requested_by=self.tech, status='submitted',
+            tax_rate=Decimal('0'),
+        )
+        PurchaseRequisitionLineItem.objects.create(
+            requisition=self.pr, description='Cisco switch',
+            quantity=Decimal('1'), unit_price=Decimal('500'),
+            sku='WS-C2960X', distributor_provider='ingram',
+        )
+        self.pr.recompute_totals()
+        self.pr.save()
+
+    def test_approver_can_approve(self):
+        c = Client()
+        c.force_login(self.approver)
+        resp = c.post(f'/psa/requisitions/{self.pr.pk}/decide/', {
+            'decision': 'approve',
+            'decision_note': 'looks good',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.status, 'approved')
+        self.assertEqual(self.pr.approver_id, self.approver.pk)
+        self.assertIsNotNone(self.pr.decided_at)
+
+    def test_non_approver_blocked(self):
+        c = Client()
+        c.force_login(self.tech)
+        resp = c.post(f'/psa/requisitions/{self.pr.pk}/decide/', {
+            'decision': 'approve',
+        })
+        self.assertEqual(resp.status_code, 403)
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.status, 'submitted')
+
+    def test_pr_to_po_conversion(self):
+        from psa.models import PurchaseOrder
+        # Approve first
+        self.pr.status = 'approved'
+        self.pr.save(update_fields=['status'])
+
+        c = Client()
+        c.force_login(self.approver)
+        resp = c.post(f'/psa/requisitions/{self.pr.pk}/convert/', {
+            'vendor_name': 'Ingram Micro',
+            'vendor_email': 'orders@ingrammicro.com',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.status, 'converted')
+
+        po = PurchaseOrder.objects.filter(requisition=self.pr).first()
+        self.assertIsNotNone(po)
+        self.assertEqual(po.vendor_name, 'Ingram Micro')
+        # Line items copied
+        self.assertEqual(po.line_items.count(), 1)
+        line = po.line_items.first()
+        self.assertEqual(line.description, 'Cisco switch')
+        self.assertEqual(line.sku, 'WS-C2960X')
