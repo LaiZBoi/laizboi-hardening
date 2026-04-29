@@ -280,6 +280,10 @@ def ticket_detail(request, ticket_number):
     except Exception:
         pass
 
+    # v3.17.129 — admin-only "Assign to tech" sub-menu in the Actions dropdown.
+    can_assign = _can_assign(request, ticket.organization)
+    eligible_assignees = _eligible_assignees(ticket.organization) if can_assign else []
+
     return render(request, 'psa/ticket_detail.html', {
         'ticket': ticket,
         'workflow_executions': workflow_executions,
@@ -309,6 +313,8 @@ def ticket_detail(request, ticket_number):
         'expenses': expenses,
         'total_expense_billable': total_expense,
         'expense_categories': TicketExpense.CATEGORY_CHOICES,
+        'can_assign': can_assign,
+        'eligible_assignees': eligible_assignees,
     })
 
 
@@ -394,6 +400,22 @@ def ticket_create(request):
             messages.error(request, 'Invalid queue/status/priority/type selection.')
             return redirect(reverse('psa:ticket_create'))
 
+        # v3.17.129 — admin-only "Assign to" picker on ticket creation.
+        # The form may post `assigned_to`; only honour it when the requester
+        # has permission to assign work in this org AND the target is
+        # eligible (org member, or staff/superuser).
+        initial_assignee = None
+        posted_assignee = (request.POST.get('assigned_to') or '').strip()
+        if posted_assignee and _can_assign(request, org):
+            from django.contrib.auth.models import User
+            try:
+                cand = User.objects.get(pk=int(posted_assignee), is_active=True)
+                eligible_ids = set(_eligible_assignees(org).values_list('id', flat=True))
+                if cand.id in eligible_ids:
+                    initial_assignee = cand
+            except (User.DoesNotExist, ValueError, TypeError):
+                pass
+
         ticket = Ticket.objects.create(
             organization=org,
             subject=subject,
@@ -405,6 +427,7 @@ def ticket_create(request):
             source='manual',
             created_by=request.user,
             updated_by=request.user,
+            assigned_to=initial_assignee,
         )
         # Compute SLA due-dates from the priority's targets
         apply_due_dates(ticket)
@@ -492,6 +515,30 @@ def ticket_create(request):
     except Exception:
         pass
 
+    # v3.17.129 — show the optional "Assign to" picker to org admins +
+    # staff/superusers. At GET time we don't know which client the user will
+    # pick, so we offer the union of eligible techs across every eligible
+    # client. The save path re-validates against the chosen org.
+    can_assign = (
+        request.user.is_superuser
+        or getattr(request, 'is_staff_user', False)
+        or any(_can_assign(request, c) for c in eligible_clients)
+    )
+    eligible_assignees = []
+    if can_assign:
+        from django.contrib.auth.models import User
+        client_ids = list(eligible_clients.values_list('id', flat=True))
+        eligible_assignees = list(
+            User.objects.filter(is_active=True)
+            .filter(
+                models.Q(is_staff=True) | models.Q(is_superuser=True)
+                | models.Q(memberships__organization_id__in=client_ids,
+                           memberships__is_active=True)
+            )
+            .distinct()
+            .order_by('username')
+        )
+
     return render(request, 'psa/ticket_create.html', {
         'queues': queues,
         'statuses': statuses,
@@ -502,6 +549,8 @@ def ticket_create(request):
         'no_eligible_clients': False,
         'catalog_item': catalog_item,
         'available_workflows': available_workflows,
+        'can_assign': can_assign,
+        'eligible_assignees': eligible_assignees,
     })
 
 
@@ -779,6 +828,59 @@ def _user_is_org_member(user, org_id):
     return user.memberships.filter(organization_id=org_id, is_active=True).exists()
 
 
+def _can_assign(request, org):
+    """
+    True if `request.user` is allowed to assign work in `org`.
+
+    Admin = any of:
+      * Django superuser
+      * Django staff
+      * Membership with role in {'admin', 'owner'} for `org`
+      * Membership whose RoleTemplate grants `org_manage_members`
+    `org=None` means MSP-wide context (staff/superuser only).
+    """
+    u = request.user
+    if not u.is_authenticated:
+        return False
+    if u.is_superuser or u.is_staff or getattr(request, 'is_staff_user', False):
+        return True
+    if org is None:
+        return False
+    from accounts.models import Membership, Role
+    org_id = getattr(org, 'id', None) or getattr(org, 'pk', None) or org
+    qs = Membership.objects.filter(
+        user=u, organization_id=org_id, is_active=True,
+    ).select_related('role_template')
+    for m in qs:
+        if m.role in (Role.ADMIN, Role.OWNER):
+            return True
+        # Granular RBAC permission grants admin-equivalent assignment power.
+        if m.role_template and getattr(m.role_template, 'org_manage_members', False):
+            return True
+    return False
+
+
+def _eligible_assignees(org):
+    """
+    Users who can be assigned work in `org`:
+      * any user with active Membership in this org
+      * plus all staff / superusers (they can be assigned anywhere)
+    Returns a queryset ordered by username.
+    `org=None` returns staff/superusers only.
+    """
+    from django.contrib.auth.models import User
+    org_id = getattr(org, 'id', None) or getattr(org, 'pk', None) or org if org else None
+    q = models.Q(is_staff=True) | models.Q(is_superuser=True)
+    if org_id:
+        q = q | models.Q(memberships__organization_id=org_id, memberships__is_active=True)
+    return (
+        User.objects.filter(is_active=True)
+        .filter(q)
+        .distinct()
+        .order_by('username')
+    )
+
+
 def _send_mention_email(ticket, comment, actor, recipient):
     try:
         from core.models import SystemSetting
@@ -975,6 +1077,46 @@ def ticket_quick_action(request, ticket_number):
         )
         description = f'Assigned {ticket.ticket_number} to {request.user.username}'
         audit_extra['previous_assignee_id'] = prev
+
+    elif action == 'set_assignee':
+        # Admin-only: assign the ticket to any eligible tech (or unassign).
+        if not _can_assign(request, ticket.organization):
+            messages.error(request, "You don't have permission to reassign this ticket.")
+            return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+        from django.contrib.auth.models import User
+        prev = ticket.assigned_to
+        prev_id = ticket.assigned_to_id
+        target_id = (request.POST.get('assignee_id') or '').strip()
+        if target_id in ('', '0', 'unassigned'):
+            ticket.assigned_to = None
+            new_label = 'unassigned'
+        else:
+            try:
+                target = User.objects.get(pk=int(target_id), is_active=True)
+            except (User.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid assignee.')
+                return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+            # Defence-in-depth: the target must be staff/superuser OR a member
+            # of the ticket's org. Prevents arbitrary user IDs from being
+            # injected via the form.
+            eligible_ids = set(_eligible_assignees(ticket.organization).values_list('id', flat=True))
+            if target.id not in eligible_ids:
+                messages.error(request, 'That user cannot be assigned to this ticket.')
+                return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+            ticket.assigned_to = target
+            new_label = target.username
+        ticket.updated_by = request.user
+        ticket.save(update_fields=['assigned_to', 'updated_by', 'updated_at'])
+        TicketComment.objects.create(
+            ticket=ticket, author=request.user,
+            body=f'Reassigned: {prev.username if prev else "unassigned"} → {new_label}.',
+            is_internal=True, is_system=True,
+        )
+        description = (
+            f'Reassigned {ticket.ticket_number}: '
+            f'{prev.username if prev else "unassigned"} → {new_label}'
+        )
+        audit_extra['previous_assignee_id'] = prev_id
 
     elif action == 'set_status':
         try:
@@ -1576,12 +1718,25 @@ def project_form(request, pk=None):
     client_orgs = Organization.objects.filter(is_active=True).order_by('name')
 
     def _render(selected_org_id=None):
+        # v3.17.129 — admin-only Owner picker. Show eligible techs for
+        # whichever org is currently picked (falls back to current org or
+        # the project's saved org).
+        scope_org_id = (selected_org_id if selected_org_id is not None
+                        else (item.organization_id if item else (org.pk if org else None)))
+        scope_org = None
+        if scope_org_id:
+            scope_org = Organization.objects.filter(pk=scope_org_id).first()
+        can_assign = _can_assign(request, scope_org) if scope_org else (
+            request.user.is_superuser or getattr(request, 'is_staff_user', False)
+        )
+        eligible_assignees = _eligible_assignees(scope_org) if can_assign else []
         return render(request, 'psa/project_form.html', {
             'item': item,
             'client_orgs': client_orgs,
             'status_choices': Project.STATUS_CHOICES,
-            'selected_client_org_id': selected_org_id if selected_org_id is not None
-                                       else (item.organization_id if item else (org.pk if org else None)),
+            'selected_client_org_id': scope_org_id,
+            'can_assign': can_assign,
+            'eligible_assignees': eligible_assignees,
         })
 
     if request.method == 'POST':
@@ -1622,6 +1777,17 @@ def project_form(request, pk=None):
             item.client_org = Organization.objects.filter(pk=client_org_id).first()
         else:
             item.client_org = None
+        # v3.17.129 — admins can choose an owner; otherwise default to creator.
+        owner_id = (request.POST.get('owner_id') or '').strip()
+        if owner_id and _can_assign(request, item_org):
+            from django.contrib.auth.models import User
+            try:
+                cand = User.objects.get(pk=int(owner_id), is_active=True)
+                eligible_ids = set(_eligible_assignees(item_org).values_list('id', flat=True))
+                if cand.id in eligible_ids:
+                    item.owner = cand
+            except (User.DoesNotExist, ValueError, TypeError):
+                pass
         if not item.owner_id:
             item.owner = request.user
         item.save()
@@ -1651,11 +1817,17 @@ def project_detail(request, pk):
     tickets = item.tickets.select_related('status', 'priority').order_by('-created_at')[:100]
     tasks = item.tasks.select_related('assigned_to').order_by('sort_order', 'created_at')
     from .models import ProjectTask
+    # v3.17.129 — surface assignee picker on tasks for admins of the
+    # project's org.
+    can_assign = _can_assign(request, item.organization)
+    eligible_assignees = _eligible_assignees(item.organization) if can_assign else []
     return render(request, 'psa/project_detail.html', {
         'item': item,
         'tickets': tickets,
         'tasks': tasks,
         'task_status_choices': ProjectTask.STATUS_CHOICES,
+        'can_assign': can_assign,
+        'eligible_assignees': eligible_assignees,
     })
 
 
@@ -1693,13 +1865,24 @@ def recurring_form(request, pk=None):
     client_orgs = Organization.objects.filter(is_active=True).order_by('name')
 
     def _render(selected_org_id=None):
+        # v3.17.129 — admins can pre-pick a default assignee for the schedule.
+        scope_org_id = (selected_org_id if selected_org_id is not None
+                        else (item.organization_id if item else (org.pk if org else None)))
+        scope_org = None
+        if scope_org_id:
+            scope_org = Organization.objects.filter(pk=scope_org_id).first()
+        can_assign = _can_assign(request, scope_org) if scope_org else (
+            request.user.is_superuser or getattr(request, 'is_staff_user', False)
+        )
+        eligible_assignees = _eligible_assignees(scope_org) if can_assign else []
         return render(request, 'psa/recurring_form.html', {
             'item': item,
             'queues': queues, 'priorities': priorities, 'types': types,
             'frequency_choices': RecurringTicketSchedule.FREQUENCY_CHOICES,
             'client_orgs': client_orgs,
-            'selected_client_org_id': selected_org_id if selected_org_id is not None
-                                       else (item.organization_id if item else (org.pk if org else None)),
+            'selected_client_org_id': scope_org_id,
+            'can_assign': can_assign,
+            'eligible_assignees': eligible_assignees,
         })
 
     if request.method == 'POST':
@@ -1768,6 +1951,23 @@ def recurring_form(request, pk=None):
             item.client_org = Organization.objects.filter(pk=client_org_id).first()
         else:
             item.client_org = None
+
+        # v3.17.129 — admins can set the default assignee for generated tickets.
+        if 'assigned_to' in request.POST and _can_assign(request, item_org):
+            from django.contrib.auth.models import User
+            posted = (request.POST.get('assigned_to') or '').strip()
+            if posted in ('', '0', 'unassigned'):
+                item.assigned_to = None
+            else:
+                try:
+                    cand = User.objects.get(pk=int(posted), is_active=True)
+                    eligible_ids = set(
+                        _eligible_assignees(item_org).values_list('id', flat=True)
+                    )
+                    if cand.id in eligible_ids:
+                        item.assigned_to = cand
+                except (User.DoesNotExist, ValueError, TypeError):
+                    pass
 
         item.save()
         messages.success(request, f'Saved schedule "{item.name}".')
@@ -2096,6 +2296,69 @@ def contract_form(request, pk=None):
         item.sla_matrix = matrix
         item.save()
 
+        # Bundle items — JSON payload from the dynamic editor on the form.
+        # Reconcile by pk: update existing rows, create new ones, delete
+        # those no longer in the submitted list.
+        import json
+        bundle_json = request.POST.get('bundle_items_json') or '[]'
+        try:
+            bundle_rows = json.loads(bundle_json)
+        except (ValueError, TypeError):
+            bundle_rows = []
+
+        if isinstance(bundle_rows, list):
+            from psa.models import ContractBundleItem
+            from decimal import Decimal, InvalidOperation
+
+            seen_pks = set()
+            for i, row in enumerate(bundle_rows):
+                if not isinstance(row, dict):
+                    continue
+                row_name = (row.get('name') or '').strip()
+                if not row_name:
+                    continue
+                try:
+                    qty = Decimal(str(row.get('quantity') or '1'))
+                    price = Decimal(str(row.get('unit_price') or '0'))
+                except InvalidOperation:
+                    qty, price = Decimal('1'), Decimal('0')
+                period = row.get('recurring_period') or 'monthly'
+                if period not in ('one_time', 'monthly', 'quarterly', 'yearly'):
+                    period = 'monthly'
+
+                row_pk = row.get('pk') or ''
+                existing = None
+                if row_pk:
+                    try:
+                        existing = ContractBundleItem.objects.filter(
+                            pk=int(row_pk), contract=item
+                        ).first()
+                    except (ValueError, TypeError):
+                        existing = None
+                if existing:
+                    existing.name = row_name[:200]
+                    existing.quantity = qty
+                    existing.unit_label = (row.get('unit_label') or '')[:40]
+                    existing.unit_price = price
+                    existing.recurring_period = period
+                    existing.sort_order = i
+                    existing.save()
+                    seen_pks.add(existing.pk)
+                else:
+                    new_b = ContractBundleItem.objects.create(
+                        contract=item,
+                        name=row_name[:200],
+                        quantity=qty,
+                        unit_label=(row.get('unit_label') or '')[:40],
+                        unit_price=price,
+                        recurring_period=period,
+                        sort_order=i,
+                    )
+                    seen_pks.add(new_b.pk)
+
+            # Delete rows the user removed (pks in DB but not in submitted JSON)
+            item.bundle_items.exclude(pk__in=seen_pks).delete()
+
         AuditLog.log(
             user=request.user, action='update' if pk else 'create',
             organization=item_org,
@@ -2105,9 +2368,41 @@ def contract_form(request, pk=None):
             ip_address=_client_ip(request), path=request.path,
         )
         messages.success(request, f'Saved "{item.name}".')
-        return redirect('psa:contract_list')
+        return redirect('psa:contract_detail', pk=item.pk)
 
     return _render()
+
+
+@login_required
+@require_psa_enabled
+def contract_detail(request, pk):
+    """Read-only contract detail with bundle items + profitability snapshot.
+
+    v3.17.130 — Phase 1.2 of the contract engine.
+    """
+    org = get_request_organization(request)
+    qs = Contract.objects.select_related('client_org', 'organization', 'parent_contract')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    item = get_object_or_404(qs, pk=pk)
+
+    bundle_items = item.bundle_items.all()
+    snapshot = item.profitability_snapshot()
+
+    # Pull priority list so we can render the SLA-matrix preview with
+    # human labels alongside any per-priority overrides.
+    priorities = list(TicketPriority.objects.all().order_by('sort_order'))
+
+    return render(request, 'psa/contract_detail.html', {
+        'item': item,
+        'bundle_items': bundle_items,
+        'snapshot': snapshot,
+        'priorities': priorities,
+        'effective_hours_remaining': item.effective_hours_remaining(),
+        'renewal_history': item.renewals.all().order_by('-start_date') if hasattr(item, 'renewals') else [],
+    })
 
 
 @login_required
@@ -2432,6 +2727,22 @@ def project_task_add(request, pk):
         messages.error(request, 'Task title is required.')
         return redirect('psa:project_detail', pk=project.pk)
 
+    # v3.17.129 — admins can pick the task's assignee from any eligible tech
+    # in the project's org (falls back to creator-assignment if not allowed).
+    initial_assignee = None
+    posted_assignee = (request.POST.get('assigned_to') or '').strip()
+    if posted_assignee and _can_assign(request, project.organization):
+        from django.contrib.auth.models import User
+        try:
+            cand = User.objects.get(pk=int(posted_assignee), is_active=True)
+            eligible_ids = set(
+                _eligible_assignees(project.organization).values_list('id', flat=True)
+            )
+            if cand.id in eligible_ids:
+                initial_assignee = cand
+        except (User.DoesNotExist, ValueError, TypeError):
+            pass
+
     from .models import ProjectTask
     ProjectTask.objects.create(
         project=project,
@@ -2440,6 +2751,7 @@ def project_task_add(request, pk):
         is_milestone=request.POST.get('is_milestone') == 'on',
         due_date=request.POST.get('due_date') or None,
         created_by=request.user,
+        assigned_to=initial_assignee,
         sort_order=project.tasks.count(),
     )
     messages.success(request, f'Added task "{title}".')
@@ -2459,8 +2771,30 @@ def project_task_update(request, task_pk):
     task = get_object_or_404(qs, pk=task_pk)
 
     new_status = request.POST.get('status')
+    changed = False
     if new_status in {'todo', 'in_progress', 'blocked', 'done', 'cancelled'}:
         task.status = new_status
+        changed = True
+    # v3.17.129 — admins can reassign a project task. Posting `assigned_to`
+    # with empty value clears the assignee.
+    if 'assigned_to' in request.POST and _can_assign(request, task.project.organization):
+        from django.contrib.auth.models import User
+        posted = (request.POST.get('assigned_to') or '').strip()
+        if posted in ('', '0', 'unassigned'):
+            task.assigned_to = None
+            changed = True
+        else:
+            try:
+                cand = User.objects.get(pk=int(posted), is_active=True)
+                eligible_ids = set(
+                    _eligible_assignees(task.project.organization).values_list('id', flat=True)
+                )
+                if cand.id in eligible_ids:
+                    task.assigned_to = cand
+                    changed = True
+            except (User.DoesNotExist, ValueError, TypeError):
+                pass
+    if changed:
         task.save()
         messages.success(request, f'Updated "{task.title}".')
     return redirect('psa:project_detail', pk=task.project.pk)
@@ -2650,6 +2984,14 @@ def dispatch_board(request):
         else:
             unassigned_by_day[bucket].append(t)
 
+    # Admins see ALL eligible techs (org members + staff/superusers) as rows
+    # so they can drag a card to a tech who currently has zero tickets.
+    # Non-admins still only see techs who have tickets in the visible scope.
+    can_assign = _can_assign(request, org)
+    if can_assign:
+        for u in _eligible_assignees(org):
+            techs.setdefault(u.id, u)
+
     techs_sorted = sorted(techs.values(), key=lambda u: (u.username or '').lower())
     rows = []
     for u in techs_sorted:
@@ -2665,6 +3007,7 @@ def dispatch_board(request):
         'unassigned_by_day': [unassigned_by_day[d] for d in days],
         'unassigned_other': unassigned_by_day[OTHER],
         'overdue': overdue,
+        'can_assign': can_assign,
     })
 
 
@@ -3463,14 +3806,25 @@ def dispatch_assign(request):
         ticket = qs.get(ticket_number=tn)
     except Ticket.DoesNotExist:
         return JsonResponse({'error': 'ticket not found'}, status=404)
+    # Admin-level assignment check — staff/superuser, or org admin/owner of
+    # the TICKET's org (not just the requester's currently-selected org).
+    if not _can_assign(request, ticket.organization):
+        return JsonResponse({'error': 'forbidden'}, status=403)
     old_assignee = ticket.assigned_to
     if assignee in ('', 'unassigned'):
         ticket.assigned_to = None
     else:
         try:
-            ticket.assigned_to = User.objects.get(pk=int(assignee))
+            target = User.objects.get(pk=int(assignee), is_active=True)
         except (User.DoesNotExist, ValueError):
             return JsonResponse({'error': 'invalid assignee'}, status=400)
+        # Target must be staff/superuser or a member of the ticket's org.
+        eligible_ids = set(
+            _eligible_assignees(ticket.organization).values_list('id', flat=True)
+        )
+        if target.id not in eligible_ids:
+            return JsonResponse({'error': 'assignee not eligible for this org'}, status=400)
+        ticket.assigned_to = target
     ticket.save(update_fields=['assigned_to', 'updated_at'])
     AuditLog.log(
         user=request.user, action='update',

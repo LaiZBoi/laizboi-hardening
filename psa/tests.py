@@ -2353,3 +2353,240 @@ class KBCategoryBrowseTests(TestCase):
         # Both parent and leaf should appear in breadcrumb
         self.assertIn('Networking', body)
         self.assertIn('Wireless', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class AdminCanAssignTests(TestCase):
+    """v3.17.129: org admins + staff can assign tickets to other techs.
+
+    Covers the audit fix that wired up the admin "Assign to tech" sub-menu
+    on ticket detail and the matching `set_assignee` quick-action.
+    """
+
+    def setUp(self):
+        _enable_psa_global()
+        _setup_seed()
+        self.org_a = Organization.objects.create(name='OrgA', slug='org-a-asg')
+        self.org_b = Organization.objects.create(name='OrgB', slug='org-b-asg')
+        _enable_psa_for(self.org_a)
+        _enable_psa_for(self.org_b)
+
+        # Org A: admin + a regular tech (Editor) + a non-member.
+        self.admin_a = User.objects.create_user(username='admin_a', password='pw', email='aa@x.com')
+        Membership.objects.update_or_create(
+            user=self.admin_a, organization=self.org_a,
+            defaults={'role': Role.ADMIN, 'is_active': True},
+        )
+        self.tech_a = User.objects.create_user(username='tech_a', password='pw', email='ta@x.com')
+        Membership.objects.update_or_create(
+            user=self.tech_a, organization=self.org_a,
+            defaults={'role': Role.EDITOR, 'is_active': True},
+        )
+        # Editor in org A — NOT an admin; should be forbidden from reassigning.
+        self.editor_a = User.objects.create_user(username='editor_a', password='pw', email='ea@x.com')
+        Membership.objects.update_or_create(
+            user=self.editor_a, organization=self.org_a,
+            defaults={'role': Role.EDITOR, 'is_active': True},
+        )
+
+        # Org B tech — has no membership in org A.
+        self.tech_b = User.objects.create_user(username='tech_b', password='pw', email='tb@x.com')
+        Membership.objects.update_or_create(
+            user=self.tech_b, organization=self.org_b,
+            defaults={'role': Role.EDITOR, 'is_active': True},
+        )
+
+        # MSP staff user — assignable to anything, regardless of org.
+        self.staff_user = User.objects.create_user(
+            username='staff_u', password='pw', email='su@x.com', is_staff=True,
+        )
+
+        kw = dict(
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+        self.ticket_a = Ticket.objects.create(
+            organization=self.org_a, subject='Assign me', **kw
+        )
+
+    def _login(self, user, org=None):
+        c = Client()
+        c.force_login(user)
+        if org is not None:
+            s = c.session
+            s['current_organization_id'] = org.id
+            s.save()
+        return c
+
+    def test_admin_can_assign_to_org_member(self):
+        c = self._login(self.admin_a, self.org_a)
+        resp = c.post(
+            f'/psa/t/{self.ticket_a.ticket_number}/action/',
+            {'action': 'set_assignee', 'assignee_id': str(self.tech_a.id)},
+        )
+        self.assertEqual(resp.status_code, 302, resp.content[:200])
+        self.ticket_a.refresh_from_db()
+        self.assertEqual(self.ticket_a.assigned_to_id, self.tech_a.id)
+
+    def test_admin_can_assign_to_staff_user(self):
+        c = self._login(self.admin_a, self.org_a)
+        resp = c.post(
+            f'/psa/t/{self.ticket_a.ticket_number}/action/',
+            {'action': 'set_assignee', 'assignee_id': str(self.staff_user.id)},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.ticket_a.refresh_from_db()
+        self.assertEqual(self.ticket_a.assigned_to_id, self.staff_user.id)
+
+    def test_admin_cannot_assign_to_non_member(self):
+        """tech_b is in org B only, not staff/superuser — must be rejected."""
+        c = self._login(self.admin_a, self.org_a)
+        resp = c.post(
+            f'/psa/t/{self.ticket_a.ticket_number}/action/',
+            {'action': 'set_assignee', 'assignee_id': str(self.tech_b.id)},
+        )
+        # Server returns 302 with an error message, leaves assignee unchanged.
+        self.assertEqual(resp.status_code, 302)
+        self.ticket_a.refresh_from_db()
+        self.assertIsNone(self.ticket_a.assigned_to_id)
+
+    def test_editor_cannot_reassign(self):
+        """Editor (non-admin) in org A may not use set_assignee."""
+        c = self._login(self.editor_a, self.org_a)
+        resp = c.post(
+            f'/psa/t/{self.ticket_a.ticket_number}/action/',
+            {'action': 'set_assignee', 'assignee_id': str(self.tech_a.id)},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.ticket_a.refresh_from_db()
+        self.assertIsNone(self.ticket_a.assigned_to_id)
+
+    def test_admin_can_unassign(self):
+        self.ticket_a.assigned_to = self.tech_a
+        self.ticket_a.save()
+        c = self._login(self.admin_a, self.org_a)
+        resp = c.post(
+            f'/psa/t/{self.ticket_a.ticket_number}/action/',
+            {'action': 'set_assignee', 'assignee_id': ''},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.ticket_a.refresh_from_db()
+        self.assertIsNone(self.ticket_a.assigned_to_id)
+
+    def test_dispatch_assign_admin_only(self):
+        """Editor in the ticket's org cannot use the dispatch DnD endpoint."""
+        c = self._login(self.editor_a, self.org_a)
+        resp = c.post(
+            '/psa/dispatch/assign/',
+            {'ticket_number': self.ticket_a.ticket_number,
+             'assignee': str(self.tech_a.id)},
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_dispatch_assign_admin_succeeds(self):
+        c = self._login(self.admin_a, self.org_a)
+        resp = c.post(
+            '/psa/dispatch/assign/',
+            {'ticket_number': self.ticket_a.ticket_number,
+             'assignee': str(self.tech_a.id)},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.ticket_a.refresh_from_db()
+        self.assertEqual(self.ticket_a.assigned_to_id, self.tech_a.id)
+
+    def test_dispatch_assign_rejects_non_member(self):
+        c = self._login(self.admin_a, self.org_a)
+        resp = c.post(
+            '/psa/dispatch/assign/',
+            {'ticket_number': self.ticket_a.ticket_number,
+             'assignee': str(self.tech_b.id)},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.ticket_a.refresh_from_db()
+        self.assertIsNone(self.ticket_a.assigned_to_id)
+
+    def test_ticket_detail_passes_eligible_assignees_to_admin(self):
+        c = self._login(self.admin_a, self.org_a)
+        resp = c.get(f'/psa/t/{self.ticket_a.ticket_number}/')
+        self.assertEqual(resp.status_code, 200)
+        # The admin's name + the org-A tech should both appear in the
+        # rendered Actions sub-menu.
+        body = resp.content.decode()
+        self.assertIn('Assign to tech', body)
+        self.assertIn('tech_a', body)
+        # The non-member from org B must NOT appear.
+        self.assertNotIn('tech_b', body)
+
+    def test_ticket_detail_hides_assign_submenu_for_editor(self):
+        c = self._login(self.editor_a, self.org_a)
+        resp = c.get(f'/psa/t/{self.ticket_a.ticket_number}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn('Assign to tech', resp.content.decode())
+
+
+class ContractAutoRenewalTests(TestCase):
+    """v3.17.130: nightly auto-renewal cron rolls forward expired contracts."""
+
+    def setUp(self):
+        from core.models import Organization
+        self.msp = Organization.objects.create(name='MSP', slug='cr-msp')
+        self.client_org = Organization.objects.create(name='Client', slug='cr-client')
+
+    def _make_contract(self, **overrides):
+        from datetime import date, timedelta
+        from psa.models import Contract
+        defaults = dict(
+            organization=self.msp,
+            client_org=self.client_org,
+            name='Block 40',
+            contract_type='block_hours',
+            status='active',
+            start_date=date.today() - timedelta(days=365),
+            end_date=date.today() - timedelta(days=1),  # expired yesterday
+            total_hours=40,
+            hourly_rate=150,
+            auto_renew=True,
+            auto_renew_period_months=12,
+        )
+        defaults.update(overrides)
+        return Contract.objects.create(**defaults)
+
+    def test_autorenew_creates_child_contract(self):
+        from django.core.management import call_command
+        from psa.models import Contract
+        old = self._make_contract()
+        call_command('psa_auto_renew_contracts')
+        old.refresh_from_db()
+        self.assertEqual(old.status, 'expired')
+        self.assertEqual(Contract.objects.filter(parent_contract=old).count(), 1)
+
+    def test_rollover_carries_unused_hours(self):
+        from django.core.management import call_command
+        from psa.models import Contract
+        old = self._make_contract(
+            total_hours=40, hours_used_minutes=20 * 60,  # 20h used
+            rollover_percent=50, rollover_expiry_days=30,
+        )
+        call_command('psa_auto_renew_contracts')
+        new = Contract.objects.filter(parent_contract=old).first()
+        # 20h unused × 50% = 10h = 600 min
+        self.assertEqual(new.rolled_over_minutes, 600)
+        self.assertIsNotNone(new.rollover_expires_at)
+
+    def test_dry_run_does_not_create(self):
+        from django.core.management import call_command
+        from psa.models import Contract
+        old = self._make_contract()
+        call_command('psa_auto_renew_contracts', '--dry-run')
+        old.refresh_from_db()
+        self.assertEqual(old.status, 'active')  # still active
+        self.assertEqual(Contract.objects.filter(parent_contract=old).count(), 0)
+
+    def test_auto_renew_off_skips(self):
+        from django.core.management import call_command
+        from psa.models import Contract
+        old = self._make_contract(auto_renew=False)
+        call_command('psa_auto_renew_contracts')
+        self.assertEqual(Contract.objects.filter(parent_contract=old).count(), 0)

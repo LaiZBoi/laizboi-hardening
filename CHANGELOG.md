@@ -5,6 +5,35 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.130] - 2026-04-29
+
+### Added — Phase 1.2 Contract engine: bundle editor + auto-renewal + profitability
+- **Bundled services line-item editor** on the contract form — dynamic add/delete rows with live recompute (mirrors the quote/invoice pattern). Submitted as JSON; the view reconciles existing rows by pk and deletes removed ones.
+- **Contract detail page** at `/psa/contracts/<id>/` shows: hours used / effective remaining, rollover state, auto-renewal indicator, bundled services table, **profitability snapshot card** (revenue / cost / margin / margin %), and SLA matrix preview.
+- **Auto-renewal cron** — `psa_auto_renew_contracts` management command runs nightly. For each expired contract with `auto_renew=True`, creates a child contract with: same name/type, new period dates from `auto_renew_period_months`, fresh `hours_used_minutes=0`, applied rollover (unused × `rollover_percent`), copied bundle items, `parent_contract` linked. Old contract flips to `expired`. Idempotent — won't double-renew thanks to `renewals__isnull=True` filter.
+- Cron auto-installed at 02:30 daily by `deploy/update_instructions.sh`.
+- `--dry-run` flag for safe inspection.
+- 4 unit tests cover renewal, rollover, dry-run, and auto_renew=False skip.
+
+## [3.17.129] - 2026-04-29
+
+### Fixed — Admins can now actually assign tickets / tasks / projects / workflows / recurring schedules
+- **Tickets**: the **Actions** dropdown on `/psa/tickets/<n>/` now shows an "Assign to tech" sub-menu for org admins, owners, staff, and superusers (anyone with `Membership.can_admin()` on the ticket's org). Each tech with an active membership in the ticket's org plus all staff/superusers appears as a one-click reassign target. New `set_assignee` action on `ticket_quick_action` enforces the same admin gate server-side and re-validates the target is eligible.
+- **Ticket creation** (`/psa/new/`): admins now see an optional "Assign to" picker. Defaults to unassigned; ignored silently for non-admins so regular users can still file tickets.
+- **Dispatch board** (`/psa/dispatch/`): the drag-and-drop endpoint (`POST /psa/dispatch/assign/`) was previously gated only by the generic `@require_write` decorator, which let any Editor reassign tickets. It now requires admin-level access on the **ticket's** org (not just the requester's currently-selected org) and re-validates that the dropped-on tech is staff or a member of that org. The board also now lists every eligible tech as a row, even if they have zero current tickets — so admins can drag a card to a brand-new tech.
+- **Project owner**: `/psa/projects/<pk>/edit/` adds an "Owner" picker for admins. Members of the project's client org plus staff/superusers are eligible.
+- **Project tasks**: the inline add-task form on the project detail page exposes an "Assignee" dropdown for admins, and each existing task gets a per-row reassign select. `project_task_add` and `project_task_update` now persist the picked assignee with the same admin gate and eligibility validation.
+- **Recurring ticket schedules** (`/psa/recurring/`): the schedule form now has a "Default assignee" picker for admins. The cron runner already used `sched.assigned_to` to set each generated ticket's owner — until now there was no way to set it from the UI.
+- **Workflow executions** (`/processes/<slug>/launch/`): the launch form now offers an admin-only "Assign to" picker so an admin can spin up a workflow on behalf of another tech. Defaults to the launcher.
+
+### Helpers
+- New `_can_assign(request, org)` and `_eligible_assignees(org)` helpers in `psa/views.py`. `_can_assign` returns true for superusers, Django staff, `Membership.role in ('admin', 'owner')`, and granular RBAC `org_manage_members`. `_eligible_assignees` returns all active org members plus all staff/superusers, ordered by username.
+
+### Audit
+- New `AdminCanAssignTests` smoke tests (`psa/tests.py`) — admin in org A can assign a ticket to a non-admin tech in org A; admin in org A cannot inject a tech who isn't a member of org A (unless that tech is staff/superuser); regular Editor in org A is forbidden from reassigning.
+
+### No new schema
+
 ## [3.17.128] - 2026-04-29
 
 ### Added — KB categories + sub-categories on the PSA browse page

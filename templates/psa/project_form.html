@@ -71,6 +71,18 @@
                        {% if not item or item.is_billable %}checked{% endif %}>
                 <label class="form-check-label" for="is_billable">Billable</label>
             </div>
+            {% if can_assign and eligible_assignees %}
+            <div class="col-md-6">
+                <label class="form-label"><i class="fas fa-user me-1 text-muted"></i>Owner</label>
+                <select name="owner_id" class="form-select">
+                    <option value="">— No owner (defaults to creator) —</option>
+                    {% for u in eligible_assignees %}
+                    <option value="{{ u.id }}" {% if item and item.owner_id == u.id %}selected{% endif %}>{{ u.username }}{% if u.is_superuser or u.is_staff %} (staff){% endif %}</option>
+                    {% endfor %}
+                </select>
+                <small class="form-text text-muted">Admins only. Members of the project's client + staff/superusers.</small>
+            </div>
+            {% endif %}
         </div>
     </div>
     <div class="card-footer">

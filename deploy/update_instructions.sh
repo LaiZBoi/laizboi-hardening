@@ -199,6 +199,14 @@ if ! crontab -l 2>/dev/null | grep -q "psa_poll_email"; then
         || log "[WARN] PSA email-poll cron setup failed (non-critical)"
 fi
 
+# Contract auto-renewal — daily at 02:30
+PSA_RENEW="30 2 * * * $VENV_DIR/bin/python $BASE_DIR/manage.py psa_auto_renew_contracts >/dev/null 2>&1"
+if ! crontab -l 2>/dev/null | grep -q "psa_auto_renew_contracts"; then
+    ( (crontab -l 2>/dev/null; echo "$PSA_RENEW") | crontab - \
+        && log "Cron job configured for PSA contract auto-renewal" ) \
+        || log "[WARN] PSA contract auto-renewal cron setup failed (non-critical)"
+fi
+
 # Distributors health probe — hourly
 PSA_DIST="0 * * * * $VENV_DIR/bin/python $BASE_DIR/manage.py sync_distributors >/dev/null 2>&1"
 if ! crontab -l 2>/dev/null | grep -q "sync_distributors"; then

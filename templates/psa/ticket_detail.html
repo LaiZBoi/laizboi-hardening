@@ -63,6 +63,32 @@
                         <button class="btn btn-link dropdown-item m-0" type="submit"><i class="fas fa-user-check me-1"></i>Assign to me</button>
                     </form>
                 </li>
+                {% if can_assign and eligible_assignees %}
+                <li><hr class="dropdown-divider"></li>
+                <li class="px-3 small text-muted">Assign to tech</li>
+                {% for u in eligible_assignees %}
+                {% if u.id != ticket.assigned_to_id %}
+                <li>
+                    <form method="post" action="{% url 'psa:ticket_quick_action' ticket.ticket_number %}" class="dropdown-item p-0">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="set_assignee">
+                        <input type="hidden" name="assignee_id" value="{{ u.id }}">
+                        <button class="btn btn-link dropdown-item m-0" type="submit">→ {{ u.username }}{% if u.is_superuser or u.is_staff %} <small class="text-muted">(staff)</small>{% endif %}</button>
+                    </form>
+                </li>
+                {% endif %}
+                {% endfor %}
+                {% if ticket.assigned_to_id %}
+                <li>
+                    <form method="post" action="{% url 'psa:ticket_quick_action' ticket.ticket_number %}" class="dropdown-item p-0">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="set_assignee">
+                        <input type="hidden" name="assignee_id" value="">
+                        <button class="btn btn-link dropdown-item m-0 text-warning" type="submit">→ Unassign</button>
+                    </form>
+                </li>
+                {% endif %}
+                {% endif %}
                 <li><hr class="dropdown-divider"></li>
                 <li class="px-3 small text-muted">Change status</li>
                 {% for s in available_statuses %}

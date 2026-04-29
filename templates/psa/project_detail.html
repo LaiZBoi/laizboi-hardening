@@ -46,8 +46,18 @@
             <div class="card-body">
                 <form method="post" action="{% url 'psa:project_task_add' item.pk %}" class="row g-2 small mb-3">
                     {% csrf_token %}
-                    <div class="col-md-6"><input type="text" name="title" class="form-control form-control-sm" required placeholder="Task title"></div>
-                    <div class="col-md-3"><input type="date" name="due_date" class="form-control form-control-sm"></div>
+                    <div class="col-md-{% if can_assign and eligible_assignees %}4{% else %}6{% endif %}"><input type="text" name="title" class="form-control form-control-sm" required placeholder="Task title"></div>
+                    {% if can_assign and eligible_assignees %}
+                    <div class="col-md-3">
+                        <select name="assigned_to" class="form-select form-select-sm">
+                            <option value="">— Assignee —</option>
+                            {% for u in eligible_assignees %}
+                            <option value="{{ u.id }}">{{ u.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="col-md-2"><input type="date" name="due_date" class="form-control form-control-sm"></div>
                     <div class="col-md-2 form-check ms-2 mt-2">
                         <input type="checkbox" id="is_milestone" name="is_milestone" class="form-check-input">
                         <label class="form-check-label small" for="is_milestone">Milestone</label>
@@ -66,6 +76,17 @@
                             {% if t.assigned_to %}<small class="text-muted ms-1">— {{ t.assigned_to.username }}</small>{% endif %}
                         </span>
                         <span class="d-flex gap-1">
+                            {% if can_assign and eligible_assignees %}
+                            <form method="post" action="{% url 'psa:project_task_update' t.pk %}" class="d-inline">
+                                {% csrf_token %}
+                                <select name="assigned_to" class="form-select form-select-sm" onchange="this.form.submit()" style="width:auto;" title="Reassign task">
+                                    <option value="">— Unassigned —</option>
+                                    {% for u in eligible_assignees %}
+                                    <option value="{{ u.id }}" {% if t.assigned_to_id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                                    {% endfor %}
+                                </select>
+                            </form>
+                            {% endif %}
                             <form method="post" action="{% url 'psa:project_task_update' t.pk %}" class="d-inline">
                                 {% csrf_token %}
                                 <select name="status" class="form-select form-select-sm" onchange="this.form.submit()" style="width:auto;">

@@ -99,6 +99,18 @@
                        value="{{ item.next_run_at|date:'Y-m-d\TH:i'|default:'' }}">
                 <small class="text-muted">Leave empty for "now"; subsequent runs roll forward by interval.</small>
             </div>
+            {% if can_assign and eligible_assignees %}
+            <div class="col-md-6">
+                <label class="form-label"><i class="fas fa-user me-1 text-muted"></i>Default assignee</label>
+                <select name="assigned_to" class="form-select">
+                    <option value="">— Unassigned —</option>
+                    {% for u in eligible_assignees %}
+                    <option value="{{ u.id }}" {% if item.assigned_to_id == u.id %}selected{% endif %}>{{ u.username }}{% if u.is_superuser or u.is_staff %} (staff){% endif %}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted">Each generated ticket will be assigned to this tech.</small>
+            </div>
+            {% endif %}
         </div>
     </div>
     <div class="card-footer">

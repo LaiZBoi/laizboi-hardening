@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}{{ item.name }} — Contract — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:contract_list' %}">Contracts</a></li>
+        <li class="breadcrumb-item active">{{ item.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h2 class="mb-1"><i class="fas fa-file-contract me-2"></i>{{ item.name }}</h2>
+        <div class="text-muted small">
+            {{ item.client_org.name }} &middot;
+            <strong>{{ item.get_contract_type_display }}</strong> &middot;
+            {% if item.status == 'active' %}<span class="badge text-bg-success">Active</span>
+            {% elif item.status == 'draft' %}<span class="badge text-bg-secondary">Draft</span>
+            {% elif item.status == 'expired' %}<span class="badge text-bg-warning">Expired</span>
+            {% else %}<span class="badge text-bg-danger">{{ item.get_status_display }}</span>{% endif %}
+            &middot;
+            {{ item.start_date }} &rarr; {{ item.end_date|default:'open' }}
+        </div>
+    </div>
+    <div>
+        <a href="{% url 'psa:contract_edit' item.pk %}" class="btn btn-primary">
+            <i class="fas fa-pen me-1"></i>Edit
+        </a>
+        <a href="{% url 'psa:contract_list' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Back
+        </a>
+    </div>
+</div>
+
+<div class="row g-3">
+    {# Hours used / remaining #}
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong><i class="fas fa-clock me-1"></i>Hours</strong></div>
+            <div class="card-body">
+                <div class="h3 mb-1">
+                    {{ item.hours_used|floatformat:2 }}
+                    {% if item.total_hours %}
+                        <small class="text-muted">/ {{ item.total_hours|floatformat:2 }}</small>
+                    {% else %}
+                        <small class="text-muted">unlimited</small>
+                    {% endif %}
+                </div>
+                {% if effective_hours_remaining is not None %}
+                <div class="text-muted small">
+                    <strong>{{ effective_hours_remaining|floatformat:2 }}h</strong> remaining
+                    (after rollover)
+                </div>
+                {% endif %}
+                {% if item.total_hours %}
+                {% widthratio item.hours_used item.total_hours 100 as pct %}
+                <div class="progress mt-2" style="height: 6px;">
+                    <div class="progress-bar bg-info" role="progressbar" style="width: {{ pct }}%;"></div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# Rollover #}
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong><i class="fas fa-rotate-left me-1"></i>Rollover</strong></div>
+            <div class="card-body">
+                {% if item.rolled_over_minutes %}
+                    <div class="h3 mb-1">{{ item.rolled_over_minutes|floatformat:0 }} <small class="text-muted">min</small></div>
+                    <div class="text-muted small">
+                        rolled in
+                        {% if item.parent_contract %}from
+                            <a href="{% url 'psa:contract_detail' item.parent_contract_id %}">prior period</a>
+                        {% endif %}
+                        {% if item.rollover_expires_at %}<br>expires {{ item.rollover_expires_at }}{% endif %}
+                    </div>
+                {% else %}
+                    <div class="text-muted small">No carried-over hours.</div>
+                {% endif %}
+                <hr class="my-2">
+                <div class="small text-muted">
+                    <div>Policy: <strong>{{ item.rollover_percent|floatformat:0 }}%</strong> of unused hours roll over</div>
+                    {% if item.rollover_expiry_days %}
+                    <div>Expire after <strong>{{ item.rollover_expiry_days }}</strong> days</div>
+                    {% else %}
+                    <div>Rolled-over hours never expire</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Auto-renewal #}
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong><i class="fas fa-rotate me-1"></i>Auto-renewal</strong></div>
+            <div class="card-body">
+                {% if item.auto_renew %}
+                    <div class="h3 mb-1 text-success"><i class="fas fa-check-circle"></i> On</div>
+                    <div class="text-muted small">
+                        Renews every <strong>{{ item.auto_renew_period_months }}</strong> months on end_date.
+                    </div>
+                {% else %}
+                    <div class="h3 mb-1 text-muted"><i class="fas fa-pause-circle"></i> Off</div>
+                    <div class="text-muted small">Manual renewal only.</div>
+                {% endif %}
+                {% if item.proration_enabled %}
+                <hr class="my-2">
+                <div class="small"><i class="fas fa-percent text-muted me-1"></i>Proration enabled for mid-period start/cancel.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Profitability snapshot #}
+<div class="card mt-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <strong><i class="fas fa-chart-line me-1"></i>Profitability snapshot</strong>
+        <small class="text-muted">Coarse — Phase 3 will replace cost with per-tech loaded rates</small>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 text-center">
+            <div class="col-md-3">
+                <div class="text-muted small">Revenue</div>
+                <div class="h4 mb-0">${{ snapshot.revenue|floatformat:2 }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Cost</div>
+                <div class="h4 mb-0">${{ snapshot.cost|floatformat:2 }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Margin</div>
+                <div class="h4 mb-0 {% if snapshot.margin > 0 %}text-success{% elif snapshot.margin < 0 %}text-danger{% endif %}">
+                    ${{ snapshot.margin|floatformat:2 }}
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Margin %</div>
+                <div class="h4 mb-0 {% if snapshot.margin_pct > 0 %}text-success{% elif snapshot.margin_pct < 0 %}text-danger{% endif %}">
+                    {{ snapshot.margin_pct }}%
+                </div>
+            </div>
+        </div>
+        <div class="row g-2 mt-2 small text-muted">
+            <div class="col-md-6">Hours used: <strong>{{ snapshot.hours_used|floatformat:2 }}</strong></div>
+            <div class="col-md-6">Overage hours: <strong>{{ snapshot.overage_hours|floatformat:2 }}</strong></div>
+        </div>
+    </div>
+</div>
+
+{# Bundle items (read-only) #}
+<div class="card mt-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <strong><i class="fas fa-boxes-stacked me-1"></i>Bundled services</strong>
+        <a href="{% url 'psa:contract_edit' item.pk %}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-pen me-1"></i>Edit lines
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Name</th>
+                    <th class="text-end">Quantity</th>
+                    <th>Unit</th>
+                    <th class="text-end">Unit price</th>
+                    <th>Period</th>
+                    <th class="text-end">Line total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in bundle_items %}
+                <tr>
+                    <td>
+                        <strong>{{ b.name }}</strong>
+                        {% if b.description %}<div class="text-muted small">{{ b.description }}</div>{% endif %}
+                    </td>
+                    <td class="text-end">{{ b.quantity|floatformat:2 }}</td>
+                    <td>{{ b.unit_label|default:'-' }}</td>
+                    <td class="text-end">${{ b.unit_price|floatformat:2 }}</td>
+                    <td>{{ b.get_recurring_period_display }}</td>
+                    <td class="text-end">${{ b.line_total|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-muted text-center py-3 small">No bundled services on this contract.</td></tr>
+                {% endfor %}
+            </tbody>
+            {% if bundle_items %}
+            <tfoot class="table-light">
+                <tr>
+                    <td colspan="5" class="text-end small text-muted"><strong>Bundle subtotal</strong></td>
+                    <td class="text-end"><strong>${{ item.bundled_subtotal|floatformat:2 }}</strong></td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
+</div>
+
+{# SLA matrix preview #}
+{% if item.sla_matrix %}
+<div class="card mt-3">
+    <div class="card-header py-2"><strong><i class="fas fa-tachometer-alt me-1"></i>SLA matrix</strong></div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Priority</th>
+                    <th>Response (min)</th>
+                    <th>Resolution (min)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in priorities %}
+                {% with override=item.sla_matrix|default_if_none:'' %}
+                <tr>
+                    <td><strong>{{ p.code }}</strong> {{ p.name }}</td>
+                    <td>
+                        {% if override|stringformat:'s' %}{# Defensive: matrix could be dict #}{% endif %}
+                        {{ p.response_target_minutes }}
+                    </td>
+                    <td>{{ p.resolution_target_minutes }}</td>
+                </tr>
+                {% endwith %}
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="card-footer small text-muted py-2">
+            Per-priority overrides on this contract are applied automatically by the SLA engine.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# Role gates + notes #}
+<div class="row g-3 mt-1">
+    {% if item.billable_role_codes or item.excluded_role_codes %}
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong><i class="fas fa-user-tag me-1"></i>Role gates</strong></div>
+            <div class="card-body small">
+                <div class="mb-2">
+                    Billable:
+                    {% for c in item.billable_role_codes %}<span class="badge text-bg-success me-1">{{ c }}</span>{% empty %}<span class="text-muted">all roles count</span>{% endfor %}
+                </div>
+                <div>
+                    Excluded:
+                    {% for c in item.excluded_role_codes %}<span class="badge text-bg-secondary me-1">{{ c }}</span>{% empty %}<span class="text-muted">none</span>{% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if item.notes %}
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong><i class="fas fa-note-sticky me-1"></i>Notes</strong></div>
+            <div class="card-body small">
+                <pre class="mb-0" style="white-space: pre-wrap; font-family: inherit;">{{ item.notes }}</pre>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{# Renewal history #}
+{% if renewal_history %}
+<div class="card mt-3">
+    <div class="card-header py-2"><strong><i class="fas fa-history me-1"></i>Renewal history</strong></div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr><th>Period</th><th>Status</th><th>Hours used</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for r in renewal_history %}
+                <tr>
+                    <td>{{ r.start_date }} &rarr; {{ r.end_date|default:'open' }}</td>
+                    <td>{{ r.get_status_display }}</td>
+                    <td>{{ r.hours_used }}{% if r.total_hours %} / {{ r.total_hours }}{% endif %}</td>
+                    <td><a href="{% url 'psa:contract_detail' r.pk %}" class="btn btn-sm btn-outline-secondary">View</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

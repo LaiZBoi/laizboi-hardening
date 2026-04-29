@@ -506,6 +506,24 @@ def execution_create(request, slug):
                 ).exists()
                 notes = (form.cleaned_data.get('notes') or '').strip()
 
+                # v3.17.129 — admins can pick a different tech to own the
+                # execution (and the ticket it spawns). Falls back to the
+                # launcher when the user isn't allowed to reassign.
+                from psa.views import _can_assign, _eligible_assignees
+                from django.contrib.auth.models import User as _User
+                assignee = request.user
+                posted = (request.POST.get('assigned_to') or '').strip()
+                if posted and _can_assign(request, client_org):
+                    try:
+                        cand = _User.objects.get(pk=int(posted), is_active=True)
+                        eligible_ids = set(
+                            _eligible_assignees(client_org).values_list('id', flat=True)
+                        )
+                        if cand.id in eligible_ids:
+                            assignee = cand
+                    except (_User.DoesNotExist, ValueError, TypeError):
+                        pass
+
                 ticket = Ticket.objects.create(
                     organization=client_org,
                     subject=f"Workflow: {process.title}",
@@ -517,7 +535,7 @@ def execution_create(request, slug):
                     source='manual',
                     created_by=request.user,
                     updated_by=request.user,
-                    assigned_to=request.user if user_has_membership else None,
+                    assigned_to=assignee if (user_has_membership or assignee != request.user) else None,
                 )
                 if apply_due_dates:
                     try:
@@ -528,7 +546,7 @@ def execution_create(request, slug):
                 execution = form.save(commit=False)
                 execution.process = process
                 execution.organization = client_org
-                execution.assigned_to = request.user
+                execution.assigned_to = assignee
                 execution.started_by = request.user
                 execution.started_at = timezone.now()
                 execution.status = 'in_progress'
@@ -593,12 +611,39 @@ def execution_create(request, slug):
     else:
         form = ProcessExecutionForm(organization=org)
 
+    # v3.17.129 — surface an "Assign to" picker for admins. We don't know
+    # which client they'll pick yet, so offer the union of techs across all
+    # clients they can act on (server re-validates against the chosen org).
+    from psa.views import _can_assign, _eligible_assignees
+    can_assign = (
+        request.user.is_superuser
+        or getattr(request, 'is_staff_user', False)
+        or any(_can_assign(request, c) for c in client_orgs)
+    )
+    eligible_assignees = []
+    if can_assign:
+        from django.contrib.auth.models import User as _User
+        from django.db.models import Q as _Q
+        client_ids = list(client_orgs.values_list('id', flat=True))
+        eligible_assignees = list(
+            _User.objects.filter(is_active=True)
+            .filter(
+                _Q(is_staff=True) | _Q(is_superuser=True)
+                | _Q(memberships__organization_id__in=client_ids,
+                     memberships__is_active=True)
+            )
+            .distinct()
+            .order_by('username')
+        )
+
     return render(request, 'processes/execution_form.html', {
         'form': form,
         'process': process,
         'current_organization': org,
         'psa_enabled': psa_enabled,
         'client_orgs': client_orgs,
+        'can_assign': can_assign,
+        'eligible_assignees': eligible_assignees,
     })
 
 

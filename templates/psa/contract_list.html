@@ -23,7 +23,7 @@
                 {% for c in contracts %}
                 <tr>
                     <td>{{ c.client_org.name }}</td>
-                    <td>{{ c.name }}</td>
+                    <td><a href="{% url 'psa:contract_detail' c.pk %}">{{ c.name }}</a></td>
                     <td>{{ c.get_contract_type_display }}</td>
                     <td>
                         {% if c.status == 'active' %}<span class="badge text-bg-success">Active</span>
@@ -43,7 +43,10 @@
                     <td class="text-center">
                         {% if c.auto_renew %}<i class="fas fa-rotate text-success" title="Auto-renews every {{ c.auto_renew_period_months }} months"></i>{% endif %}
                     </td>
-                    <td><a href="{% url 'psa:contract_edit' c.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+                    <td>
+                        <a href="{% url 'psa:contract_detail' c.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+                        <a href="{% url 'psa:contract_edit' c.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                    </td>
                 </tr>
                 {% empty %}
                 <tr><td colspan="8" class="text-center text-muted py-4">No contracts yet.</td></tr>

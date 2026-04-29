@@ -223,5 +223,154 @@
         <button type="submit" class="btn btn-primary">Save</button>
         <a href="{% url 'psa:contract_list' %}" class="btn btn-outline-secondary">Cancel</a>
     </div>
+
+{% if item %}{# only show on edit; bundle items need a parent contract pk #}
+<div class="card mt-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <strong><i class="fas fa-boxes-stacked me-1"></i>Bundled services</strong>
+        <small class="text-muted">Recurring or one-time line items billed on top of hourly work</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle" id="bundle-table">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 28%">Name</th>
+                        <th style="width: 12%">Quantity</th>
+                        <th style="width: 12%">Unit</th>
+                        <th style="width: 14%">Unit price</th>
+                        <th style="width: 14%">Period</th>
+                        <th style="width: 14%" class="text-end">Line total</th>
+                        <th style="width: 6%"></th>
+                    </tr>
+                </thead>
+                <tbody id="bundle-rows">
+                    {% for b in item.bundle_items.all %}
+                    <tr class="bundle-row" data-bundle-pk="{{ b.pk }}">
+                        <td><input type="text" class="form-control form-control-sm bundle-name" value="{{ b.name }}" required></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm bundle-qty" value="{{ b.quantity }}"></td>
+                        <td><input type="text" class="form-control form-control-sm bundle-unit" value="{{ b.unit_label }}" placeholder="seat / device"></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm bundle-price" value="{{ b.unit_price }}"></td>
+                        <td>
+                            <select class="form-select form-select-sm bundle-period">
+                                <option value="one_time" {% if b.recurring_period == 'one_time' %}selected{% endif %}>One-time</option>
+                                <option value="monthly" {% if b.recurring_period == 'monthly' %}selected{% endif %}>Monthly</option>
+                                <option value="quarterly" {% if b.recurring_period == 'quarterly' %}selected{% endif %}>Quarterly</option>
+                                <option value="yearly" {% if b.recurring_period == 'yearly' %}selected{% endif %}>Yearly</option>
+                            </select>
+                        </td>
+                        <td class="text-end bundle-line-total">{{ b.line_total|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-danger bundle-delete" title="Remove"><i class="fas fa-times"></i></button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <td colspan="5" class="text-end small text-muted"><strong>Bundle subtotal</strong></td>
+                        <td class="text-end" id="bundle-subtotal"><strong>{{ item.bundled_subtotal|floatformat:2 }}</strong></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <button type="button" class="btn btn-sm btn-outline-primary" id="bundle-add">
+            <i class="fas fa-plus me-1"></i>Add line
+        </button>
+    </div>
+</div>
+
+<template id="bundle-row-template">
+    <tr class="bundle-row" data-bundle-pk="">
+        <td><input type="text" class="form-control form-control-sm bundle-name" required></td>
+        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm bundle-qty" value="1"></td>
+        <td><input type="text" class="form-control form-control-sm bundle-unit" placeholder="seat / device"></td>
+        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm bundle-price" value="0"></td>
+        <td>
+            <select class="form-select form-select-sm bundle-period">
+                <option value="one_time">One-time</option>
+                <option value="monthly" selected>Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+            </select>
+        </td>
+        <td class="text-end bundle-line-total">0.00</td>
+        <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-danger bundle-delete"><i class="fas fa-times"></i></button>
+        </td>
+    </tr>
+</template>
+
+{# Hidden input: serialized JSON of all rows. Submitted with the form. #}
+<input type="hidden" name="bundle_items_json" id="bundle-items-json" value="">
+
+<script>
+(function() {
+    const tbody = document.getElementById('bundle-rows');
+    const tpl = document.getElementById('bundle-row-template');
+    const subtotalEl = document.getElementById('bundle-subtotal');
+    const hidden = document.getElementById('bundle-items-json');
+    const addBtn = document.getElementById('bundle-add');
+
+    function recompute() {
+        let subtotal = 0;
+        tbody.querySelectorAll('.bundle-row').forEach(row => {
+            const q = parseFloat(row.querySelector('.bundle-qty').value || '0');
+            const p = parseFloat(row.querySelector('.bundle-price').value || '0');
+            const lineTotal = q * p;
+            row.querySelector('.bundle-line-total').textContent = lineTotal.toFixed(2);
+            subtotal += lineTotal;
+        });
+        subtotalEl.innerHTML = '<strong>' + subtotal.toFixed(2) + '</strong>';
+    }
+
+    function serialize() {
+        const items = [];
+        tbody.querySelectorAll('.bundle-row').forEach(row => {
+            const name = row.querySelector('.bundle-name').value.trim();
+            if (!name) return;  // skip empty rows
+            items.push({
+                pk: row.dataset.bundlePk || '',
+                name: name,
+                quantity: row.querySelector('.bundle-qty').value || '0',
+                unit_label: row.querySelector('.bundle-unit').value.trim(),
+                unit_price: row.querySelector('.bundle-price').value || '0',
+                recurring_period: row.querySelector('.bundle-period').value,
+            });
+        });
+        hidden.value = JSON.stringify(items);
+    }
+
+    tbody.addEventListener('input', recompute);
+    tbody.addEventListener('click', (e) => {
+        const btn = e.target.closest('.bundle-delete');
+        if (!btn) return;
+        btn.closest('.bundle-row').remove();
+        recompute();
+    });
+    addBtn.addEventListener('click', () => {
+        const node = tpl.content.firstElementChild.cloneNode(true);
+        tbody.appendChild(node);
+        recompute();
+    });
+
+    // Serialize on form submit — find the parent contract form
+    const form = document.querySelector('form');
+    if (form) form.addEventListener('submit', serialize);
+
+    // Initial compute
+    recompute();
+})();
+</script>
+{% else %}
+<div class="card mt-3">
+    <div class="card-body small text-muted">
+        <i class="fas fa-info-circle me-1"></i>Save the contract first to add bundled service line items.
+    </div>
+</div>
+{% endif %}
 </form>
 {% endblock %}

@@ -53,6 +53,7 @@ urlpatterns = [
     # Contracts (Workstream 5)
     path('contracts/', views.contract_list, name='contract_list'),
     path('contracts/new/', views.contract_form, name='contract_create'),
+    path('contracts/<int:pk>/', views.contract_detail, name='contract_detail'),
     path('contracts/<int:pk>/edit/', views.contract_form, name='contract_edit'),
     # Email ingestion
     path('email-configs/', views.email_config_list, name='email_config_list'),

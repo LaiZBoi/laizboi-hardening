@@ -22,9 +22,24 @@
                 <form method="post">
                     {% csrf_token %}
 
+                    {% if can_assign and eligible_assignees %}
+                    <div class="mb-3">
+                        <label for="assigned_to" class="form-label"><i class="fas fa-user"></i> Assign to (optional)</label>
+                        <select name="assigned_to" id="assigned_to" class="form-select">
+                            <option value="">— Assign to me ({{ request.user.username }}) —</option>
+                            {% for u in eligible_assignees %}
+                            {% if u.id != request.user.id %}
+                            <option value="{{ u.id }}">{{ u.username }}{% if u.is_superuser or u.is_staff %} (staff){% endif %}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">Admin-only. Defaults to you.</small>
+                    </div>
+                    {% else %}
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i> This workflow will be assigned to you automatically.
                     </div>
+                    {% endif %}
 
                     {% if psa_enabled %}
                     <div class="mb-3">
