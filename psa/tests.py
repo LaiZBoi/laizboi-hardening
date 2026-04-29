@@ -2161,3 +2161,69 @@ class WorkflowRuleMSPWideTests(TestCase):
         t_a.refresh_from_db(); t_b.refresh_from_db()
         self.assertIn('client-a-only', t_a.tags or [])
         self.assertNotIn('client-a-only', t_b.tags or [])
+
+
+class ContractEnginePhase1Tests(TestCase):
+    """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
+
+    def setUp(self):
+        from core.models import Organization
+        from psa.models import Contract
+        self.msp = Organization.objects.create(name='MSP', slug='ce-msp')
+        self.client_org = Organization.objects.create(name='Client', slug='ce-client')
+        self.contract = Contract.objects.create(
+            organization=self.msp,
+            client_org=self.client_org,
+            name='Block 40',
+            contract_type='block_hours',
+            status='active',
+            start_date='2026-01-01',
+            total_hours=40,
+            hourly_rate=150,
+            overage_rate=180,
+            billable_role_codes=['T1', 'T2'],
+            excluded_role_codes=['project'],
+        )
+
+    def test_role_gate_excluded_wins(self):
+        self.contract.billable_role_codes = ['T1', 'project']
+        self.contract.excluded_role_codes = ['project']
+        self.assertFalse(self.contract.is_role_billable('project'))
+        self.assertTrue(self.contract.is_role_billable('T1'))
+
+    def test_role_gate_empty_billable_means_all(self):
+        self.contract.billable_role_codes = []
+        self.contract.excluded_role_codes = []
+        self.assertTrue(self.contract.is_role_billable('any'))
+
+    def test_role_gate_unlisted_role_is_not_billable(self):
+        self.contract.billable_role_codes = ['T1', 'T2']
+        self.contract.excluded_role_codes = []
+        self.assertFalse(self.contract.is_role_billable('T3'))
+
+    def test_effective_total_minutes_includes_rollover(self):
+        from datetime import date, timedelta
+        self.contract.rolled_over_minutes = 600  # 10h
+        self.contract.rollover_expires_at = date.today() + timedelta(days=30)
+        self.contract.save()
+        self.assertEqual(self.contract.effective_total_minutes(), 40 * 60 + 600)
+
+    def test_effective_total_minutes_drops_expired_rollover(self):
+        from datetime import date, timedelta
+        self.contract.rolled_over_minutes = 600
+        self.contract.rollover_expires_at = date.today() - timedelta(days=1)
+        self.contract.save()
+        self.assertEqual(self.contract.effective_total_minutes(), 40 * 60)
+
+    def test_bundled_subtotal(self):
+        from psa.models import ContractBundleItem
+        ContractBundleItem.objects.create(contract=self.contract, name='AV',
+            quantity=10, unit_price=15, recurring_period='monthly')
+        ContractBundleItem.objects.create(contract=self.contract, name='Backup',
+            quantity=5, unit_price=20, recurring_period='monthly')
+        self.assertEqual(int(self.contract.bundled_subtotal()), 250)
+
+    def test_profitability_snapshot_keys(self):
+        snap = self.contract.profitability_snapshot()
+        for k in ('revenue', 'cost', 'margin', 'margin_pct', 'hours_used', 'overage_hours'):
+            self.assertIn(k, snap)

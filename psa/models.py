@@ -999,6 +999,57 @@ class Contract(models.Model):
     overage_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0,
         help_text='Rate for hours beyond total_hours (defaults to hourly_rate when 0)')
 
+    # --- Phase 1: rollover, auto-renew, role gates, parent linkage --------
+    rollover_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='% of unused hours that roll into the next period when this '
+                  'contract auto-renews (0–100). 0 = no rollover.',
+    )
+    rollover_expiry_days = models.PositiveIntegerField(
+        default=0,
+        help_text='Days after the new period start that rolled-over hours '
+                  'expire. 0 = never expire.',
+    )
+    rolled_over_minutes = models.PositiveIntegerField(
+        default=0,
+        help_text='Minutes carried over from the prior period (auto-set by '
+                  'the renewal cron). Consumed before total_hours.',
+    )
+    rollover_expires_at = models.DateField(
+        null=True, blank=True,
+        help_text='Date when carried-over minutes expire (set by renewal '
+                  'cron from rollover_expiry_days).',
+    )
+    auto_renew = models.BooleanField(
+        default=False,
+        help_text='When true, the renewal cron auto-creates the next period '
+                  'on end_date and applies rollover/proration.',
+    )
+    auto_renew_period_months = models.PositiveSmallIntegerField(
+        default=12,
+        help_text='Length of each auto-renewed period in months.',
+    )
+    proration_enabled = models.BooleanField(
+        default=False,
+        help_text='When true, mid-month start/cancel prorates the allowance '
+                  'based on days active in the period.',
+    )
+    billable_role_codes = models.JSONField(
+        default=list, blank=True,
+        help_text='List of role codes whose time entries count against this '
+                  'contract\'s allowance. Empty list = all roles count.',
+    )
+    excluded_role_codes = models.JSONField(
+        default=list, blank=True,
+        help_text='List of role codes whose time entries bypass this contract '
+                  '(e.g. project work). Wins over billable_role_codes.',
+    )
+    parent_contract = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='renewals',
+        help_text='Previous-period contract this one rolled forward from.',
+    )
+
     # Per-priority SLA matrix overrides queue defaults.
     # Schema: {"priority_slug": {"response_minutes": int, "resolution_minutes": int}, ...}
     sla_matrix = models.JSONField(default=dict, blank=True)
@@ -1055,6 +1106,126 @@ class Contract(models.Model):
         ).filter(
             models.Q(end_date__isnull=True) | models.Q(end_date__gte=today)
         ).first()
+
+    # ----- Phase 1 helpers -------------------------------------------------
+
+    def effective_total_minutes(self):
+        """Allowance + un-expired rolled-over minutes (in minutes)."""
+        base = int(float(self.total_hours or 0) * 60)
+        rolled = self.rolled_over_minutes or 0
+        if self.rollover_expires_at and timezone.now().date() > self.rollover_expires_at:
+            rolled = 0
+        return base + rolled
+
+    def effective_hours_remaining(self):
+        """Hours remaining after considering rollover + expiry. None=unlimited."""
+        if not self.total_hours and not self.rolled_over_minutes:
+            return None
+        avail = self.effective_total_minutes() - (self.hours_used_minutes or 0)
+        return round(max(0, avail) / 60.0, 2)
+
+    def is_role_billable(self, role_code: str) -> bool:
+        """
+        Decide whether a time entry from a tech with `role_code` should count
+        against this contract.
+
+        Excluded list wins over included; an empty included list means "all".
+        Role codes are user-supplied tags (e.g. "T1", "T2", "T3", "project")
+        — they're not modelled as a foreign key on purpose, so MSPs can carve
+        their own tiers without schema churn.
+        """
+        if role_code in (self.excluded_role_codes or []):
+            return False
+        included = self.billable_role_codes or []
+        if not included:
+            return True
+        return role_code in included
+
+    def bundled_subtotal(self):
+        """Sum of `quantity * unit_price` across all bundle line items."""
+        from decimal import Decimal
+        total = Decimal('0')
+        for it in self.bundle_items.all():
+            total += (it.quantity or Decimal('0')) * (it.unit_price or Decimal('0'))
+        return total
+
+    def profitability_snapshot(self):
+        """
+        Coarse profitability dict for the active period. Revenue = invoiced
+        amount tied to this client (period-aware). Cost = hours_used × an
+        assumed loaded rate (TODO Phase 3: per-tech cost rate). Margin in %.
+        """
+        from decimal import Decimal
+        # Revenue: bundled subtotal + (hours_used × hourly_rate) +
+        #         (overage_minutes × overage_rate). Approximate.
+        bundled = self.bundled_subtotal()
+        hours_used = Decimal(str(self.hours_used or 0))
+        billed_hours = min(hours_used, self.total_hours or hours_used)
+        overage_hours = max(Decimal('0'), hours_used - (self.total_hours or hours_used))
+        revenue = (
+            bundled
+            + billed_hours * (self.hourly_rate or Decimal('0'))
+            + overage_hours * ((self.overage_rate or self.hourly_rate) or Decimal('0'))
+        )
+        # Cost: placeholder — Phase 3 wires per-tech loaded rates. For now
+        # assume 60% of hourly_rate as cost-of-delivery.
+        assumed_cost_rate = (self.hourly_rate or Decimal('0')) * Decimal('0.60')
+        cost = hours_used * assumed_cost_rate
+        margin = revenue - cost
+        margin_pct = float((margin / revenue) * 100) if revenue else 0.0
+        return {
+            'revenue': float(revenue),
+            'cost': float(cost),
+            'margin': float(margin),
+            'margin_pct': round(margin_pct, 1),
+            'hours_used': float(hours_used),
+            'overage_hours': float(overage_hours),
+        }
+
+
+class ContractBundleItem(models.Model):
+    """
+    A line item bundled into a Contract — e.g. "Managed AV (per seat)" or
+    "M365 backup (per mailbox)". One contract has many bundle items;
+    `bundled_subtotal()` rolls them up for billing + profitability views.
+
+    Recurring period drives forecasting (Phase 3 will use it for monthly
+    revenue projection). For now it's just metadata.
+    """
+    PERIOD_CHOICES = [
+        ('one_time', 'One-time'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('yearly', 'Yearly'),
+    ]
+    contract = models.ForeignKey(
+        Contract, on_delete=models.CASCADE, related_name='bundle_items',
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    unit_label = models.CharField(
+        max_length=40, blank=True,
+        help_text='e.g. "seat", "device", "mailbox" — display only.',
+    )
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    recurring_period = models.CharField(
+        max_length=20, choices=PERIOD_CHOICES, default='monthly',
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_contract_bundle_items'
+        ordering = ['sort_order', 'pk']
+
+    def __str__(self):
+        return f'{self.name} × {self.quantity}'
+
+    @property
+    def line_total(self):
+        return (self.quantity or 0) * (self.unit_price or 0)
 
 
 # ---------------------------------------------------------------------------

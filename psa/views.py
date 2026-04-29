@@ -1991,6 +1991,40 @@ def contract_form(request, pk=None):
             pass
         item.notes = (request.POST.get('notes') or '').strip()
 
+        # Phase 1 contract-engine fields (rollover, auto-renew, role gates).
+        # rolled_over_minutes / rollover_expires_at / parent_contract are
+        # intentionally NOT exposed here — they're set by the renewal cron.
+        from decimal import Decimal, InvalidOperation
+
+        def _decimal(name, default='0'):
+            try:
+                return Decimal(request.POST.get(name) or default)
+            except (InvalidOperation, TypeError):
+                return Decimal(default)
+
+        def _int(name, default=0):
+            try:
+                return int(request.POST.get(name) or default)
+            except (TypeError, ValueError):
+                return default
+
+        def _bool(name):
+            return (request.POST.get(name) or '').lower() in ('1', 'true', 'on', 'yes')
+
+        def _csv_list(name):
+            raw = (request.POST.get(name) or '').strip()
+            if not raw:
+                return []
+            return [s.strip() for s in raw.split(',') if s.strip()]
+
+        item.rollover_percent = _decimal('rollover_percent')
+        item.rollover_expiry_days = _int('rollover_expiry_days')
+        item.auto_renew = _bool('auto_renew')
+        item.auto_renew_period_months = _int('auto_renew_period_months', 12) or 12
+        item.proration_enabled = _bool('proration_enabled')
+        item.billable_role_codes = _csv_list('billable_role_codes')
+        item.excluded_role_codes = _csv_list('excluded_role_codes')
+
         # SLA matrix — POST keys are sla_<code>_response and sla_<code>_resolution.
         # Empty string = "use priority default" (omit from matrix).
         matrix = {}

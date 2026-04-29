@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.126] - 2026-04-29
+
+### Added — Contract engine deepening (Phase 1, part 1 of 2)
+- New Contract fields: `rollover_percent`, `rollover_expiry_days`, `rolled_over_minutes`, `rollover_expires_at`, `auto_renew`, `auto_renew_period_months`, `proration_enabled`, `billable_role_codes`, `excluded_role_codes`, `parent_contract` (FK self for renewal chains).
+- New `ContractBundleItem` model — line items per agreement (e.g. "Managed AV per seat") with `quantity`, `unit_price`, `recurring_period`. Dynamic editor coming in v3.17.127.
+- Helper methods on Contract: `effective_total_minutes()`, `effective_hours_remaining()`, `is_role_billable(code)`, `bundled_subtotal()`, `profitability_snapshot()` (revenue/cost/margin — coarse; per-tech cost rates land in Phase 3).
+- "Advanced contract options" collapsible section on the contract form with all the new gauges + checkboxes + role-code lists.
+- "Renew" column on the contract list shows an auto-renew icon for at-a-glance scanning.
+- 7 new unit tests in `psa.tests.ContractEnginePhase1Tests` cover role gating, rollover with + without expiry, bundled subtotal, profitability snapshot keys.
+
+### Migration
+`psa.0018_contract_auto_renew_and_more`.
+
 ## [3.17.125] - 2026-04-29
 
 ### Added
