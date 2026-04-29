@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ action }} Widget - {{ dashboard.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fa-solid fa-puzzle-piece me-2"></i>
+                        {{ action }} Widget &mdash; <span class="text-muted">{{ dashboard.name }}</span>
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Widget Title</label>
+                            <input type="text" class="form-control" id="title" name="title"
+                                   value="{{ widget.title|default:'' }}"
+                                   placeholder="Leave blank to use the data source name">
+                            <div class="form-text">Display name shown on the widget header.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="data_source" class="form-label">Data Source *</label>
+                            <select class="form-select" id="data_source" name="data_source" required>
+                                <option value="">— select a data source —</option>
+                                {% for key, label, wt in data_source_choices %}
+                                <option value="{{ key }}"
+                                        data-widget-type="{{ wt }}"
+                                        {% if widget and widget.data_source == key %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text" id="data-source-hint">
+                                The widget type (metric / table / chart) is selected automatically based on the data source.
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info small mb-4">
+                            <i class="fa-solid fa-circle-info me-1"></i>
+                            <strong>Available widgets:</strong>
+                            <ul class="mb-0 mt-1">
+                                <li><strong>Metric cards</strong> — single-number KPIs (revenue, ticket counts, avg resolution time, etc.)</li>
+                                <li><strong>Tables</strong> — small ranked or grouped lists (top clients, tickets by priority, my queue)</li>
+                                <li><strong>Charts</strong> — bar/line/pie visualisations of 30-day trends</li>
+                            </ul>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa-solid fa-save me-1"></i>{{ action }} Widget
+                            </button>
+                            <a href="{% url 'reports:dashboard_detail' dashboard.pk %}" class="btn btn-secondary">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

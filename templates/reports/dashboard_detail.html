@@ -10,7 +10,7 @@
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h1 class="h2">
-                        <i class="bi bi-grid-3x3-gap me-2"></i>
+                        <i class="fa-solid fa-grip me-2"></i>
                         {{ dashboard.name }}
                         {% if dashboard.is_default %}
                             <span class="badge bg-primary">Default</span>
@@ -20,17 +20,20 @@
                         {% endif %}
                     </h1>
                     {% if dashboard.description %}
-                        <p class="text-muted">{{ dashboard.description }}</p>
+                        <p class="text-muted mb-0">{{ dashboard.description }}</p>
                     {% endif %}
                 </div>
-                <div>
-                    {% if dashboard.organization == user.organization %}
+                <div class="d-flex gap-2">
+                    {% if can_manage %}
+                    <a href="{% url 'reports:dashboard_widget_add' dashboard.pk %}" class="btn btn-success">
+                        <i class="fa-solid fa-plus me-1"></i>Add Widget
+                    </a>
                     <a href="{% url 'reports:dashboard_edit' dashboard.pk %}" class="btn btn-primary">
-                        <i class="bi bi-pencil me-2"></i>Edit Dashboard
+                        <i class="fa-solid fa-pencil me-1"></i>Edit
                     </a>
                     {% endif %}
                     <a href="{% url 'reports:dashboard_list' %}" class="btn btn-secondary">
-                        <i class="bi bi-arrow-left me-2"></i>Back to List
+                        <i class="fa-solid fa-arrow-left me-1"></i>Back
                     </a>
                 </div>
             </div>
@@ -38,23 +41,86 @@
     </div>
 
     {% if widgets %}
-        <div class="row">
+        <div class="row g-3">
             {% for widget in widgets %}
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h5 class="mb-0">{{ widget.title }}</h5>
+            <div class="{% if widget.widget_type == 'metric' %}col-sm-6 col-md-4 col-lg-3{% elif widget.widget_type == 'chart_pie' %}col-md-6 col-lg-4{% else %}col-md-6 col-lg-6{% endif %}">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center py-2">
+                        <h6 class="mb-0 text-truncate" title="{{ widget.title }}">{{ widget.title }}</h6>
+                        {% if can_manage %}
+                        <div class="btn-group btn-group-sm" role="group">
+                            <a href="{% url 'reports:dashboard_widget_edit' widget.pk %}"
+                               class="btn btn-outline-secondary btn-sm py-0 px-2"
+                               title="Edit widget">
+                                <i class="fa-solid fa-pencil"></i>
+                            </a>
+                            <a href="{% url 'reports:dashboard_widget_delete' widget.pk %}"
+                               class="btn btn-outline-danger btn-sm py-0 px-2"
+                               title="Delete widget">
+                                <i class="fa-solid fa-trash"></i>
+                            </a>
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="card-body">
-                        <div class="text-center text-muted py-5">
-                            <i class="bi bi-{% if widget.widget_type == 'chart_line' %}graph-up{% elif widget.widget_type == 'chart_bar' %}bar-chart{% elif widget.widget_type == 'chart_pie' %}pie-chart{% elif widget.widget_type == 'table' %}table{% elif widget.widget_type == 'list' %}list-ul{% elif widget.widget_type == 'calendar' %}calendar{% elif widget.widget_type == 'map' %}geo-alt{% else %}card-text{% endif %} fs-1 mb-3"></i>
-                            <p>{{ widget.get_widget_type_display }}</p>
-                            <small>Data source: {{ widget.data_source }}</small>
-                        </div>
+                        {% if widget.rendered.error %}
+                            <div class="alert alert-danger small mb-0 py-2">
+                                <i class="fa-solid fa-circle-exclamation me-1"></i>
+                                {{ widget.rendered.error }}
+                            </div>
+                        {% elif widget.widget_type == 'metric' %}
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    <span class="fa-stack fa-2x text-{{ widget.rendered.color|default:'secondary' }}">
+                                        <i class="fa-solid fa-circle fa-stack-2x opacity-25"></i>
+                                        <i class="fa-solid {{ widget.rendered.icon|default:'fa-chart-simple' }} fa-stack-1x"></i>
+                                    </span>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <div class="fs-3 fw-bold text-{{ widget.rendered.color|default:'dark' }}">
+                                        {{ widget.rendered.value|default:'—' }}
+                                    </div>
+                                    <div class="small text-muted">{{ widget.rendered.subtitle|default:widget.data_source }}</div>
+                                </div>
+                            </div>
+                        {% elif widget.widget_type == 'table' or widget.widget_type == 'list' %}
+                            {% if widget.rendered.rows %}
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            {% for col in widget.rendered.columns %}
+                                            <th class="small">{{ col }}</th>
+                                            {% endfor %}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for row in widget.rendered.rows %}
+                                        <tr>
+                                            {% for cell in row %}
+                                            <td class="small">{{ cell }}</td>
+                                            {% endfor %}
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% else %}
+                            <p class="text-muted small mb-0 text-center py-3">No data.</p>
+                            {% endif %}
+                        {% elif widget.widget_type == 'chart_line' or widget.widget_type == 'chart_bar' or widget.widget_type == 'chart_pie' %}
+                            <div style="position:relative; height:240px;">
+                                <canvas id="widget-chart-{{ widget.pk }}"
+                                        data-widget-type="{{ widget.widget_type }}"></canvas>
+                            </div>
+                            <script type="application/json" id="widget-data-{{ widget.pk }}">{{ widget.rendered_json|safe }}</script>
+                        {% else %}
+                            <p class="text-muted small mb-0">Unsupported widget type: {{ widget.widget_type }}</p>
+                        {% endif %}
                     </div>
-                    {% if widget.refresh_interval > 0 %}
-                    <div class="card-footer text-muted small">
-                        <i class="bi bi-arrow-clockwise me-1"></i>Refreshes every {{ widget.refresh_interval }} seconds
+                    {% if widget.refresh_interval > 0 and not widget.rendered.error %}
+                    <div class="card-footer text-muted small py-1">
+                        <i class="fa-solid fa-rotate me-1"></i>Refreshes every {{ widget.refresh_interval }}s
                     </div>
                     {% endif %}
                 </div>
@@ -64,12 +130,89 @@
     {% else %}
         <div class="row">
             <div class="col-12">
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle me-2"></i>
-                    This dashboard doesn't have any widgets yet. Widgets will be added as the feature is enhanced.
+                <div class="alert alert-info d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="fa-solid fa-circle-info me-2"></i>
+                        This dashboard has no widgets yet.
+                    </div>
+                    {% if can_manage %}
+                    <a href="{% url 'reports:dashboard_widget_add' dashboard.pk %}" class="btn btn-sm btn-primary">
+                        <i class="fa-solid fa-plus me-1"></i>Add your first widget
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if has_chart %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    function readJson(id) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        try { return JSON.parse(el.textContent); } catch (e) { return null; }
+    }
+    document.querySelectorAll('canvas[id^="widget-chart-"]').forEach(function(canvas) {
+        var widgetId = canvas.id.replace('widget-chart-', '');
+        var data = readJson('widget-data-' + widgetId);
+        if (!data || data.error) return;
+        var type = canvas.dataset.widgetType;
+        var cfg;
+        if (type === 'chart_pie') {
+            cfg = {
+                type: 'pie',
+                data: {
+                    labels: data.labels || [],
+                    datasets: [{
+                        data: data.data || [],
+                        backgroundColor: [
+                            '#0d6efd', '#198754', '#ffc107', '#dc3545',
+                            '#6f42c1', '#20c997', '#fd7e14', '#0dcaf0',
+                        ],
+                    }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                },
+            };
+        } else {
+            var chartType = (type === 'chart_bar') ? 'bar' : 'line';
+            cfg = {
+                type: chartType,
+                data: {
+                    labels: data.labels || [],
+                    datasets: (data.series || []).map(function(s, i) {
+                        var palette = ['#0d6efd', '#198754', '#dc3545', '#ffc107'];
+                        return {
+                            label: s.name,
+                            data: s.data,
+                            backgroundColor: palette[i % palette.length],
+                            borderColor: palette[i % palette.length],
+                            borderWidth: 2,
+                            tension: 0.25,
+                            fill: false,
+                        };
+                    }),
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: (data.series || []).length > 1 } },
+                    scales: {
+                        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+                        y: { beginAtZero: true },
+                    },
+                },
+            };
+        }
+        new Chart(canvas.getContext('2d'), cfg);
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

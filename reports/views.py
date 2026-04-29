@@ -4,6 +4,7 @@ Views for Reports and Analytics
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, FileResponse, JsonResponse
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -77,7 +78,13 @@ def dashboard_list(request):
 
 @login_required
 def dashboard_detail(request, pk):
-    """View a specific dashboard"""
+    """View a specific dashboard.
+
+    v3.17.142: each widget is rendered server-side via the
+    `reports.widget_sources` registry so the template just emits HTML
+    based on the prepared `widget.rendered` payload.
+    """
+    from .widget_sources import get_widget_data
     orgs = get_user_organizations(request.user)
 
     dashboard = get_object_or_404(
@@ -86,11 +93,37 @@ def dashboard_detail(request, pk):
         pk=pk
     )
 
-    widgets = dashboard.widgets.all().order_by('position')
+    widgets = list(dashboard.widgets.all())
+    # Sort by position {x, y} when present, fall back to pk for stable order.
+    def _pos_key(w):
+        pos = w.position or {}
+        return (pos.get('y', 0), pos.get('x', 0), w.pk)
+    widgets.sort(key=_pos_key)
+
+    # Render data for each widget. Errors are captured per-widget so a
+    # single misbehaving data source can't blow up the whole page.
+    has_chart = False
+    for w in widgets:
+        params = dict(w.query_params or {})
+        params['user_id'] = request.user.id
+        w.rendered = get_widget_data(w.data_source, params)
+        # Pre-serialize chart payload so the template can drop it into a
+        # <script type="application/json"> tag without re-encoding.
+        if w.widget_type in ('chart_line', 'chart_bar', 'chart_pie'):
+            has_chart = True
+            # Escape `</` so the payload can't break out of <script> tags.
+            w.rendered_json = json.dumps(w.rendered).replace('</', '<\\/')
+
+    can_manage = (
+        dashboard.created_by_id == request.user.id
+        or request.user.is_staff
+    )
 
     context = {
         'dashboard': dashboard,
         'widgets': widgets,
+        'has_chart': has_chart,
+        'can_manage': can_manage,
     }
 
     return render(request, 'reports/dashboard_detail.html', context)
@@ -168,6 +201,81 @@ def dashboard_delete(request, pk):
 
     context = {'dashboard': dashboard}
     return render(request, 'reports/dashboard_confirm_delete.html', context)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard widget CRUD (v3.17.142)
+# ---------------------------------------------------------------------------
+
+@login_required
+def dashboard_widget_add(request, dashboard_pk):
+    """Add a widget to a dashboard. Owner or staff only."""
+    dashboard = get_object_or_404(Dashboard, pk=dashboard_pk)
+    if dashboard.created_by_id != request.user.id and not request.user.is_staff:
+        raise PermissionDenied
+    from .widget_sources import DATA_SOURCE_CHOICES
+    if request.method == 'POST':
+        title = (request.POST.get('title') or '').strip()
+        data_source = (request.POST.get('data_source') or '').strip()
+        wt = next(
+            (wt for k, _, wt in DATA_SOURCE_CHOICES if k == data_source),
+            'metric',
+        )
+        DashboardWidget.objects.create(
+            dashboard=dashboard, title=title or data_source,
+            widget_type=wt, data_source=data_source,
+            query_params={}, position={},
+        )
+        messages.success(request, 'Widget added.')
+        return redirect('reports:dashboard_detail', pk=dashboard.pk)
+    return render(request, 'reports/dashboard_widget_form.html', {
+        'dashboard': dashboard,
+        'data_source_choices': DATA_SOURCE_CHOICES,
+        'action': 'Add',
+    })
+
+
+@login_required
+def dashboard_widget_edit(request, pk):
+    """Edit an existing widget. Owner or staff only."""
+    widget = get_object_or_404(DashboardWidget, pk=pk)
+    dashboard = widget.dashboard
+    if dashboard.created_by_id != request.user.id and not request.user.is_staff:
+        raise PermissionDenied
+    from .widget_sources import DATA_SOURCE_CHOICES
+    if request.method == 'POST':
+        widget.title = (request.POST.get('title') or '').strip() or widget.title
+        new_ds = (request.POST.get('data_source') or '').strip()
+        if new_ds:
+            widget.data_source = new_ds
+            widget.widget_type = next(
+                (wt for k, _, wt in DATA_SOURCE_CHOICES if k == new_ds),
+                widget.widget_type,
+            )
+        widget.save()
+        messages.success(request, 'Widget updated.')
+        return redirect('reports:dashboard_detail', pk=dashboard.pk)
+    return render(request, 'reports/dashboard_widget_form.html', {
+        'dashboard': dashboard, 'widget': widget,
+        'data_source_choices': DATA_SOURCE_CHOICES,
+        'action': 'Edit',
+    })
+
+
+@login_required
+def dashboard_widget_delete(request, pk):
+    """Delete a widget. Owner or staff only."""
+    widget = get_object_or_404(DashboardWidget, pk=pk)
+    dashboard = widget.dashboard
+    if dashboard.created_by_id != request.user.id and not request.user.is_staff:
+        raise PermissionDenied
+    if request.method == 'POST':
+        widget.delete()
+        messages.success(request, 'Widget deleted.')
+        return redirect('reports:dashboard_detail', pk=dashboard.pk)
+    return render(request, 'reports/dashboard_widget_confirm_delete.html', {
+        'widget': widget, 'dashboard': dashboard,
+    })
 
 
 @login_required

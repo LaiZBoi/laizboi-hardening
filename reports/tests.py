@@ -658,3 +658,53 @@ class RevenueLeakageViewTests(TestCase):
         self.assertEqual(r['Content-Type'].split(';')[0].strip(), 'text/csv')
         # The single-CSV combined export uses a Section column
         self.assertIn(b'Section', r.content)
+
+
+# ---------------------------------------------------------------------------
+# v3.17.142: dashboard widget registry + CRUD
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WidgetSourceRegistryTests(TestCase):
+    """v3.17.142: every registered data source returns a non-empty dict."""
+
+    def test_all_sources_runnable(self):
+        from reports.widget_sources import REGISTRY
+        for name, fn in REGISTRY.items():
+            result = fn({})
+            self.assertIsInstance(result, dict, f'{name} must return dict')
+            # error key is allowed (empty data); value/columns/labels need at
+            # least one to be present
+            allowed = {'value', 'columns', 'labels', 'error'}
+            self.assertTrue(allowed & set(result.keys()),
+                            f'{name} returned no recognizable shape: {result}')
+
+    def test_unknown_source_returns_error(self):
+        from reports.widget_sources import get_widget_data
+        result = get_widget_data('nonsense_source_xyz', {})
+        self.assertIn('error', result)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class DashboardWidgetCRUDTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from reports.models import Dashboard
+        self.user = User.objects.create_user(
+            'alice', 'a@x.com', 'pw',
+            is_staff=True, is_superuser=True,
+        )
+        self.dash = Dashboard.objects.create(
+            name='Test Dash', is_global=True, created_by=self.user,
+        )
+
+    def test_add_widget_via_post(self):
+        self.client.force_login(self.user)
+        r = self.client.post(
+            f'/reports/dashboards/{self.dash.pk}/widgets/add/',
+            {'title': 'Open Tickets', 'data_source': 'open_tickets_count'},
+        )
+        from reports.models import DashboardWidget
+        self.assertEqual(
+            DashboardWidget.objects.filter(dashboard=self.dash).count(), 1
+        )

@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.142] - 2026-04-29
+
+### Added — Custom Dashboards: actual widgets (closes empty-state placeholder)
+- New `reports/widget_sources.py` registry — 12 starter widgets across metric / table / chart_bar / chart_line / chart_pie types: revenue this period, open ticket count, SLA-overdue count, unbilled-hours-at-risk, active techs, avg time-to-resolve, top clients by revenue, tickets by priority, my assigned tickets, revenue trend bar, tickets-opened line, billable-vs-nonbillable pie.
+- Each widget calls into the canonical `reports/queries.py` so the same numbers appear consistently across reports + dashboards.
+- `dashboard_detail.html` rewritten to render widgets server-side: metric cards with icon + subtitle, tables with `<thead class="table-light">`, Chart.js-rendered bar/line/pie charts. Bad widgets render an inline error chip — never crash the whole page.
+- New widget CRUD: "Add widget" button → form with data-source select + title; per-widget edit + delete (gated to dashboard owner or staff).
+- New management command `seed_default_dashboard` creates a "MSP Overview" global dashboard with all 12 starter widgets pre-installed. Wired into `deploy/update_instructions.sh` so installs land on a populated dashboard. Idempotent.
+- Tests in `reports.tests` cover registry execution + CRUD POST.
+
 ## [3.17.141] - 2026-04-29
 
 ### Added — Phase 3.3: Effective hourly rate + Revenue leakage reports

@@ -161,6 +161,12 @@ fi
     && log "PSA sample workflows installed" ) \
     || log "[WARN] PSA sample workflows install failed (non-critical)"
 
+# Default reporting dashboard — "MSP Overview" with revenue / ticket / tech
+# KPI widgets. Idempotent (skips if dashboard already has widgets).
+( "$VENV_DIR/bin/python" "$BASE_DIR/manage.py" seed_default_dashboard 2>&1 \
+    && log "Default dashboard seeded" ) \
+    || log "[WARN] Default dashboard seed failed (non-critical)"
+
 # fail2ban sudoers (install if fail2ban present and sudoers not yet configured)
 if command -v fail2ban-client >/dev/null 2>&1; then
     FB_SRC="$BASE_DIR/deploy/clientst0r-fail2ban-sudoers"

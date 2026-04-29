@@ -15,6 +15,14 @@ urlpatterns = [
     path('dashboards/<int:pk>/edit/', views.dashboard_edit, name='dashboard_edit'),
     path('dashboards/<int:pk>/delete/', views.dashboard_delete, name='dashboard_delete'),
 
+    # Dashboard widgets (v3.17.142)
+    path('dashboards/<int:dashboard_pk>/widgets/add/',
+         views.dashboard_widget_add, name='dashboard_widget_add'),
+    path('widgets/<int:pk>/edit/',
+         views.dashboard_widget_edit, name='dashboard_widget_edit'),
+    path('widgets/<int:pk>/delete/',
+         views.dashboard_widget_delete, name='dashboard_widget_delete'),
+
     # Report Templates
     path('templates/', views.template_list, name='template_list'),
     path('templates/<int:pk>/', views.template_detail, name='template_detail'),
