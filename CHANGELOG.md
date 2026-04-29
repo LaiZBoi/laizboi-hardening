@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.119] - 2026-04-29
+
+### Fixed
+- Dashboard Quick Action tile **"Run Workflow"** now points to `/processes/` (the workflow templates page, where you click Run on a template and it spawns a ticket) instead of the legacy `/processes/executions/` list. This matches the v3.17.117 redesign where executions live inside tickets, not as a separate top-level list. The same page is reachable from **Operations → Workflows** in the top menu.
+
 ## [3.17.118] - 2026-04-29
 
 ### Added — Inline workflow sign-off history on tickets
