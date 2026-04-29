@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.115] - 2026-04-29
+
+### Fixed — Org "Members" list no longer pollutes with auto-attached users
+The `accounts.create_default_membership` post-save signal silently bound every newly-created non-superuser to the **first active organization** as a Read-Only member. From the org admin's perspective, brand-new staff users (or any user created outside the Add Member flow) showed up under "Members" of an org they were never invited to.
+
+The signal is now **opt-in via a thread-local flag** (`accounts.models._enable_auto_membership` context manager) and is OFF by default. The org-admin Add Member flow already creates Membership rows explicitly, so no code path in the project needs the auto-attach behavior. Existing membership rows in the database are untouched — review them in the admin if any look stale.
+
+The Members section on the org detail page (`accounts/views.py:480-483`) was already filtering correctly to `Membership.objects.filter(organization=org, is_active=True)` — the bug was strictly in the signal creating rows that satisfied that filter.
+
+### Added — Grid / List view toggle on the Organizations index
+The Organizations list page now has a **Grid ⇄ List** toggle in the page header. List mode is a compact Bootstrap table with columns: Name (linked) / Slug / Active members / Asset count / Status / Created / Actions. Built for installs with hundreds or thousands of clients.
+
+- **Pagination** — 50 rows per page in list mode, 24 cards per page in grid mode (Django `Paginator`)
+- **Search box** filters by `name__icontains` or `slug__icontains` and is preserved across pagination + view-toggle
+- **Annotated counts** — `Count('memberships', filter=Q(is_active=True), distinct=True)` and `Count('assets', distinct=True)` done once on the queryset (no N+1)
+- **Persistence** — view choice survives in `localStorage['orgListViewMode']` and via `?view=list` querystring; toggle preserves search + sort + page params
+- **Dark-mode-safe** — the list table uses `<thead class="table-light">` so the v3.17.113 dark-mode override applies cleanly
+
 ## [3.17.114] - 2026-04-29
 
 ### Added — Quick Actions wizard on the dashboard

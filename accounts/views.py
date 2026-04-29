@@ -8,6 +8,8 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.contrib.auth import update_session_auth_hash
+from django.core.paginator import Paginator
+from django.db.models import Count, Q
 from core.models import Organization, SupportRating
 from core.decorators import require_owner
 from audit.models import AuditLog
@@ -358,7 +360,8 @@ def two_factor_setup(request):
 def organization_list(request):
     """
     List all organizations. Shows all orgs for superusers, only owned orgs for others.
-    Supports filtering by organization_type and sorting.
+    Supports filtering by organization_type, sorting, search, view-mode toggle
+    (grid/list), and pagination.
     """
     if request.user.is_superuser:
         organizations = Organization.objects.all()
@@ -370,6 +373,25 @@ def organization_list(request):
             is_active=True
         ).values_list('organization_id', flat=True)
         organizations = Organization.objects.filter(id__in=owned_org_ids)
+
+    # Annotate active member and asset counts once on the queryset (avoids N+1
+    # when the list view iterates).  These attributes are used by both grid
+    # and list templates.
+    organizations = organizations.annotate(
+        active_member_count=Count(
+            'memberships',
+            filter=Q(memberships__is_active=True),
+            distinct=True,
+        ),
+        asset_count=Count('assets', distinct=True),
+    )
+
+    # Search by name or slug
+    search_query = request.GET.get('q', '').strip()
+    if search_query:
+        organizations = organizations.filter(
+            Q(name__icontains=search_query) | Q(slug__icontains=search_query)
+        )
 
     # Filter by organization type
     type_filter = request.GET.get('type', '')
@@ -384,8 +406,38 @@ def organization_list(request):
     else:
         organizations = organizations.order_by('name')
 
+    # View-mode toggle: grid (default) or list
+    view_mode = request.GET.get('view', 'grid')
+    if view_mode not in ('grid', 'list'):
+        view_mode = 'grid'
+
+    # Pagination — 24 cards in grid mode, 50 rows in list mode
+    paginate_by = 50 if view_mode == 'list' else 24
+    paginator = Paginator(organizations, paginate_by)
+    page_number = request.GET.get('page') or 1
+    page_obj = paginator.get_page(page_number)
+
+    # Pre-build a querystring fragment that callers can paste into hrefs to
+    # preserve search/filter/sort/view across pagination links.
+    preserved_params = []
+    if search_query:
+        preserved_params.append(f'q={search_query}')
+    if type_filter:
+        preserved_params.append(f'type={type_filter}')
+    if sort_by and sort_by != 'name':
+        preserved_params.append(f'sort={sort_by}')
+    if view_mode != 'grid':
+        preserved_params.append(f'view={view_mode}')
+    preserved_qs = '&'.join(preserved_params)
+
     return render(request, 'accounts/organization_list.html', {
-        'organizations': organizations,
+        'organizations': page_obj.object_list,
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'is_paginated': page_obj.has_other_pages(),
+        'view_mode': view_mode,
+        'search_query': search_query,
+        'preserved_qs': preserved_qs,
         'org_type_choices': Organization.ORGANIZATION_TYPE_CHOICES[1:],  # Exclude empty choice
     })
 

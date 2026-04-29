@@ -1,11 +1,33 @@
 """
 Accounts models - Memberships and Roles
 """
+import contextlib
+import threading
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from core.models import Organization, BaseModel
+
+
+# Opt-in flag for the create_default_membership signal. By default the signal
+# is OFF — silently auto-attaching every newly-created user to the first
+# active org polluted org Members lists with users that were never invited.
+# Enable it explicitly for code paths that legitimately want it (e.g. the
+# self-signup flow on a single-tenant install) by wrapping the User.create
+# call in `with _enable_auto_membership(): ...`.
+_auto_membership_state = threading.local()
+
+
+@contextlib.contextmanager
+def _enable_auto_membership():
+    prev = getattr(_auto_membership_state, 'enabled', False)
+    _auto_membership_state.enabled = True
+    try:
+        yield
+    finally:
+        _auto_membership_state.enabled = prev
 
 
 class Role(models.TextChoices):
@@ -374,22 +396,34 @@ def save_user_profile(sender, instance, **kwargs):
 @receiver(post_save, sender=User)
 def create_default_membership(sender, instance, created, **kwargs):
     """
-    Automatically create membership in the default organization when user is created.
-    Ensures all users have access to at least one organization.
+    Auto-attach a newly-created user to the default org.
+
+    Disabled by default — the previous behaviour silently bound every
+    non-superuser to the first active org, polluting org "Members" lists with
+    users that were never explicitly invited. The org-admin Add Member flow
+    creates the Membership row itself, so the signal is no longer needed
+    there. To re-enable for a specific code path, set the thread-local flag:
+        from accounts.models import _enable_auto_membership
+        with _enable_auto_membership():
+            User.objects.create(...)
     """
-    if created and not instance.is_superuser:
-        from core.models import Organization
-        # Get the first active organization (typically the default/main org)
-        default_org = Organization.objects.filter(is_active=True).first()
-        if default_org:
-            # Only create if membership doesn't already exist
-            if not Membership.objects.filter(user=instance, organization=default_org).exists():
-                Membership.objects.create(
-                    user=instance,
-                    organization=default_org,
-                    role=Role.READONLY,  # Default to readonly for security
-                    is_active=True
-                )
+    if not created or instance.is_superuser:
+        return
+    if not getattr(_auto_membership_state, 'enabled', False):
+        return
+
+    from core.models import Organization
+    default_org = Organization.objects.filter(is_active=True).first()
+    if not default_org:
+        return
+    if Membership.objects.filter(user=instance, organization=default_org).exists():
+        return
+    Membership.objects.create(
+        user=instance,
+        organization=default_org,
+        role=Role.READONLY,
+        is_active=True,
+    )
 
 
 class RoleTemplate(BaseModel):
