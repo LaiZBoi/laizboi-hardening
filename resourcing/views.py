@@ -15,6 +15,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
+from django.db import models
 from django.db.models import Count, Q
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -584,3 +585,199 @@ def billable_target_edit(request, user_id):
         'can_edit': True,
         'view_only': False,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.3 — Capacity report + skill ranking
+# ---------------------------------------------------------------------------
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def capacity_report(request):
+    """
+    Capacity / utilization report for techs. Default window = current ISO
+    week. Querystring: ?start=YYYY-MM-DD (optional), ?weeks=4 (default 1).
+    """
+    from datetime import date, timedelta
+    from decimal import Decimal
+    from django.db.models import Sum
+
+    # Default: current ISO week (Monday → Sunday)
+    today = date.today()
+    try:
+        weeks = max(1, min(12, int(request.GET.get('weeks') or 1)))
+    except (ValueError, TypeError):
+        weeks = 1
+    start = request.GET.get('start')
+    if start:
+        try:
+            start = date.fromisoformat(start)
+        except ValueError:
+            start = today - timedelta(days=today.weekday())
+    else:
+        start = today - timedelta(days=today.weekday())
+    end = start + timedelta(days=7 * weeks - 1)
+
+    # Roster: every active staff/internal user
+    techs = User.objects.filter(is_active=True).exclude(
+        username__in=['AnonymousUser']
+    ).order_by('username')
+
+    rows = []
+    total_target = Decimal('0')
+    total_scheduled = Decimal('0')
+    total_actual = Decimal('0')
+    for tech in techs:
+        # Target hours = BillableTarget.target_hours_per_week × weeks
+        bt = getattr(tech, 'resourcing_billable_target', None)
+        target_hours = (bt.target_hours_per_week if bt and bt.is_active else Decimal('32')) * Decimal(weeks)
+
+        # Scheduled hours = sum of WorkingHours over working days in period
+        whs = WorkingHours.objects.filter(user=tech, is_active=True)
+        whs_by_weekday = {}
+        for w in whs:
+            secs = (
+                (w.end_time.hour * 3600 + w.end_time.minute * 60)
+                - (w.start_time.hour * 3600 + w.start_time.minute * 60)
+            )
+            whs_by_weekday.setdefault(w.weekday, Decimal('0'))
+            whs_by_weekday[w.weekday] += Decimal(secs) / Decimal(3600)
+
+        scheduled = Decimal('0')
+        cur = start
+        while cur <= end:
+            wd = cur.weekday()
+            if wd in whs_by_weekday:
+                # subtract holiday + leave days
+                if Holiday.is_holiday(cur):
+                    cur += timedelta(days=1); continue
+                if LeaveRequest.is_user_on_leave(tech, cur):
+                    cur += timedelta(days=1); continue
+                scheduled += whs_by_weekday[wd]
+            cur += timedelta(days=1)
+
+        # Actual billable hours from PSA TicketTimeEntry within window.
+        # The model stores `duration_minutes` (not seconds).
+        try:
+            from psa.models import TicketTimeEntry
+            te = TicketTimeEntry.objects.filter(
+                user=tech,
+                started_at__date__gte=start,
+                started_at__date__lte=end,
+            ).aggregate(mins=Sum('duration_minutes'))
+            actual_minutes = te.get('mins') or 0
+        except Exception:
+            actual_minutes = 0
+        actual_hours = Decimal(actual_minutes) / Decimal(60)
+
+        utilization_pct = float((actual_hours / target_hours) * 100) if target_hours else 0.0
+
+        rows.append({
+            'user': tech,
+            'target_hours': float(target_hours),
+            'scheduled_hours': float(scheduled),
+            'actual_hours': float(round(actual_hours, 2)),
+            'utilization_pct': round(utilization_pct, 1),
+            'has_billable_target': bt is not None,
+        })
+        total_target += target_hours
+        total_scheduled += scheduled
+        total_actual += actual_hours
+
+    # Grand totals
+    grand_util = float((total_actual / total_target) * 100) if total_target else 0.0
+
+    return render(request, 'resourcing/capacity_report.html', {
+        'rows': rows,
+        'start': start,
+        'end': end,
+        'weeks': weeks,
+        'total_target': float(total_target),
+        'total_scheduled': float(total_scheduled),
+        'total_actual': float(round(total_actual, 2)),
+        'grand_utilization_pct': round(grand_util, 1),
+    })
+
+
+def rank_techs_for_ticket(ticket):
+    """
+    Rank candidate techs for a ticket. Returns a list of:
+      {'user': User, 'score': int, 'reasons': [str], 'available_now': bool}
+    sorted by score desc.
+
+    Scoring:
+      +30 for each matching UserSkill keyword in ticket subject/description
+      +20 for the ticket's organization being a member org
+      +15 if the tech is currently inside their WorkingHours
+      -50 if the tech has an approved LeaveRequest covering today
+      -30 if the tech already has 5+ open tickets
+    """
+    from datetime import date
+    from accounts.models import Membership
+    from psa.models import Ticket
+
+    if ticket is None:
+        return []
+
+    # Pool: members of the ticket org + staff/superusers
+    pool = User.objects.filter(is_active=True).filter(
+        models.Q(memberships__organization=ticket.organization, memberships__is_active=True)
+        | models.Q(is_staff=True) | models.Q(is_superuser=True)
+    ).distinct()
+
+    text = (
+        (ticket.subject or '') + ' ' + (ticket.description or '')
+    ).lower()
+
+    today = date.today()
+    rows = []
+    for u in pool:
+        score = 0
+        reasons = []
+
+        # Skill keyword match
+        skills = list(UserSkill.objects.filter(user=u))
+        matches = [s.name for s in skills if s.name.lower() in text]
+        if matches:
+            score += 30 * len(matches)
+            reasons.append(f"matches skills: {', '.join(matches[:3])}")
+
+        # Member-of-org bonus
+        if Membership.objects.filter(user=u, organization=ticket.organization, is_active=True).exists():
+            score += 20
+            reasons.append("member of client org")
+
+        # Currently working
+        profile = getattr(u, 'profile', None)
+        try:
+            available_now = bool(profile and profile.is_working_now()) if profile else True
+        except Exception:
+            available_now = True
+        if available_now:
+            score += 15
+            reasons.append("on-shift now")
+
+        # On leave
+        if LeaveRequest.is_user_on_leave(u, today):
+            score -= 50
+            reasons.append("on leave today")
+            available_now = False
+
+        # Open ticket load
+        try:
+            open_count = Ticket.objects.filter(
+                assigned_to=u, status__is_terminal=False,
+            ).count()
+        except Exception:
+            open_count = 0
+        if open_count >= 5:
+            score -= 30
+            reasons.append(f"{open_count} open tickets")
+
+        rows.append({
+            'user': u, 'score': score, 'reasons': reasons,
+            'available_now': available_now,
+        })
+
+    rows.sort(key=lambda r: r['score'], reverse=True)
+    return rows

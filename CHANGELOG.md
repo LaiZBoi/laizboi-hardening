@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.138] - 2026-04-29
+
+### Added — Phase 2.3: Capacity report + skill ranking on dispatch board
+- **Capacity report** at `/resourcing/capacity/` for staff/superusers — table showing per-tech target / scheduled / actual hours + utilization % over 1 / 2 / 4 / 8 / 12-week windows. Color-coded utilization (red <80%, amber 80-95%, green 95-110%, blue >110%). Grand total row.
+- **Scheduled hours** = sum of `WorkingHours` × working days in window (subtracts `Holiday` + approved `LeaveRequest`).
+- **Actual hours** = sum of `psa.TicketTimeEntry` durations within window.
+- **Skill ranking on dispatch board** — new `rank_techs_for_ticket(ticket)` helper scores candidate techs by skill keyword match (+30 per hit), client-org membership (+20), on-shift status (+15), open-ticket load (-30 if 5+), on-leave today (-50). Top 5 surface as a per-ticket "Suggest" popover with one-click Assign.
+
+Phase 2 complete. Next up per roadmap: Phase 3 (Financial reporting + BI keystone).
+
 ## [3.17.137] - 2026-04-29
 
 ### Added — Phase 2.2: Holidays + Leave Requests + Billable Targets

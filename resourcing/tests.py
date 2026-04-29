@@ -227,3 +227,86 @@ class BillableTargetTests(TestCase):
         u = User.objects.create_user('dana', 'd@x.com', 'pw')
         bt = BillableTarget.objects.create(user=u)
         self.assertEqual(float(bt.target_hours_per_week), 32.0)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.3 — Capacity report + skill ranking tests
+# ---------------------------------------------------------------------------
+
+@override_settings(REQUIRE_2FA=False, SECURE_SSL_REDIRECT=False)
+class CapacityReportTests(TestCase):
+    """v3.17.138: capacity report renders with target/scheduled/actual."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from resourcing.models import WorkingHours, BillableTarget
+        from datetime import time
+        self.staff = User.objects.create_user('admin1', 'a@x.com', 'pw', is_staff=True, is_superuser=True)
+        self.tech = User.objects.create_user('alice', 'al@x.com', 'pw')
+        for wd in range(5):
+            WorkingHours.objects.create(user=self.tech, weekday=wd, start_time=time(9), end_time=time(17))
+        BillableTarget.objects.create(user=self.tech, target_hours_per_week=32)
+
+    def test_capacity_renders_for_staff(self):
+        self.client.force_login(self.staff)
+        # Mark 2FA prompt as already shown so the optional-2FA middleware
+        # doesn't bounce the request.
+        session = self.client.session
+        session['2fa_prompted'] = True
+        session.save()
+        r = self.client.get('/resourcing/capacity/')
+        # Either 200 directly, or after following any 2FA-related redirect.
+        if r.status_code != 200:
+            r = self.client.get('/resourcing/capacity/', follow=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'alice', r.content)
+
+    def test_non_staff_denied(self):
+        u = self.tech
+        self.client.force_login(u)
+        session = self.client.session
+        session['2fa_prompted'] = True
+        session.save()
+        r = self.client.get('/resourcing/capacity/')
+        # @user_passes_test redirects unauthorized users
+        self.assertIn(r.status_code, [302, 403])
+
+
+class SkillRankingTests(TestCase):
+    """v3.17.138: rank_techs_for_ticket ranks by skill + availability."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from resourcing.models import UserSkill
+        from psa.models import Queue, TicketStatus, TicketPriority, TicketType, Ticket
+        # Seed PSA defaults if tests need them
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        self.org = Organization.objects.create(name='SkillCo', slug='skill-co')
+        self.tech_a = User.objects.create_user('alice', 'a@x.com', 'pw')
+        Membership.objects.create(user=self.tech_a, organization=self.org, role=Role.OWNER, is_active=True)
+        UserSkill.objects.create(user=self.tech_a, name='Cisco', proficiency='expert')
+        self.tech_b = User.objects.create_user('bob', 'b@x.com', 'pw')
+        Membership.objects.create(user=self.tech_b, organization=self.org, role=Role.OWNER, is_active=True)
+
+        self.ticket = Ticket.objects.create(
+            organization=self.org,
+            subject='Cisco switch port flapping',
+            description='Switch port reset needed',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+
+    def test_skill_holder_ranks_above(self):
+        from resourcing.views import rank_techs_for_ticket
+        ranking = rank_techs_for_ticket(self.ticket)
+        # alice (skill=Cisco) should be ranked at or above bob (no skills)
+        names = [r['user'].username for r in ranking]
+        self.assertIn('alice', names)
+        a_score = next(r['score'] for r in ranking if r['user'].username == 'alice')
+        b_score = next(r['score'] for r in ranking if r['user'].username == 'bob')
+        self.assertGreater(a_score, b_score)

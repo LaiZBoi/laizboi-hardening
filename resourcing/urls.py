@@ -42,4 +42,7 @@ urlpatterns = [
     # Billable target
     path('billable-target/', views.my_billable_target, name='my_billable_target'),
     path('billable-target/<int:user_id>/edit/', views.billable_target_edit, name='billable_target_edit'),
+
+    # Phase 2.3 — Capacity report
+    path('capacity/', views.capacity_report, name='capacity_report'),
 ]

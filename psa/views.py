@@ -3122,6 +3122,32 @@ def dispatch_board(request):
             'other': cells.get((u.id, OTHER), []),
         })
 
+    # Phase 2.3 — skill ranking. For each ticket card, top 5 candidates
+    # by skill+availability score. Only computed for admins who can assign.
+    skill_rankings = {}
+    if can_assign:
+        try:
+            from resourcing.views import rank_techs_for_ticket
+            seen = set()
+            all_tickets_in_view = []
+            for bucket_list in cells.values():
+                for t in bucket_list:
+                    if t.pk not in seen:
+                        seen.add(t.pk); all_tickets_in_view.append(t)
+            for bucket_list in unassigned_by_day.values():
+                for t in bucket_list:
+                    if t.pk not in seen:
+                        seen.add(t.pk); all_tickets_in_view.append(t)
+            for t in overdue:
+                if t.pk not in seen:
+                    seen.add(t.pk); all_tickets_in_view.append(t)
+            skill_rankings = {
+                t.pk: rank_techs_for_ticket(t)[:5]
+                for t in all_tickets_in_view
+            }
+        except Exception:
+            skill_rankings = {}
+
     return render(request, 'psa/dispatch_board.html', {
         'days': days,
         'rows': rows,
@@ -3129,6 +3155,7 @@ def dispatch_board(request):
         'unassigned_other': unassigned_by_day[OTHER],
         'overdue': overdue,
         'can_assign': can_assign,
+        'skill_rankings': skill_rankings,
     })
 
 

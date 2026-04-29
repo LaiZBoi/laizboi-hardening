@@ -1,0 +1,15 @@
+{# Phase 2.3 — per-card "Suggest" popover with skill+availability ranking. #}
+{% if ranking %}
+<button type="button"
+        class="btn btn-link btn-sm p-0 ms-1 dispatch-suggest-btn"
+        data-bs-toggle="popover"
+        data-bs-trigger="focus"
+        data-bs-html="true"
+        data-bs-placement="bottom"
+        data-bs-title="Suggested techs"
+        title="Suggested techs"
+        data-suggest-ticket="{{ t.ticket_number }}"
+        data-bs-content='<div class="suggested-techs">{% for r in ranking %}<div class="d-flex justify-content-between align-items-center small mb-1"><span>{{ r.user.username }}{% if not r.available_now %} <i class="fas fa-clock text-muted small" title="Not on-shift"></i>{% endif %}</span><span><span class="badge bg-secondary me-1">{{ r.score }}</span><button type="button" class="btn btn-sm btn-outline-primary py-0 dispatch-suggest-assign" data-ticket="{{ t.ticket_number }}" data-user-id="{{ r.user.pk }}">Assign</button></span></div><div class="small text-muted mb-2">{{ r.reasons|join:" · " }}</div>{% endfor %}</div>'>
+    <i class="fas fa-lightbulb text-warning" style="font-size:.75rem;"></i>
+</button>
+{% endif %}

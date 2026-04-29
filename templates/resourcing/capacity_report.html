@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Capacity Report{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-1"><i class="fas fa-chart-bar"></i> Capacity Report</h1>
+        <p class="text-muted mb-0">
+            Forecast vs scheduled vs actual hours per tech.
+            Window: <strong>{{ start|date:"Y-m-d" }}</strong> &rarr; <strong>{{ end|date:"Y-m-d" }}</strong>
+            ({{ weeks }} week{{ weeks|pluralize }}).
+        </p>
+    </div>
+    <a href="{% url 'resourcing:tech_roster' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-users"></i> Tech Roster
+    </a>
+</div>
+
+<form method="get" class="card card-body mb-3 py-2">
+    <div class="row g-2 align-items-end">
+        <div class="col-auto">
+            <label class="form-label small mb-0">Start date</label>
+            <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0">Weeks</label>
+            <select name="weeks" class="form-select form-select-sm">
+                <option value="1"{% if weeks == 1 %} selected{% endif %}>1</option>
+                <option value="2"{% if weeks == 2 %} selected{% endif %}>2</option>
+                <option value="4"{% if weeks == 4 %} selected{% endif %}>4</option>
+                <option value="8"{% if weeks == 8 %} selected{% endif %}>8</option>
+                <option value="12"{% if weeks == 12 %} selected{% endif %}>12</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fas fa-sync"></i> Update
+            </button>
+        </div>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if rows %}
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Tech</th>
+                    <th class="text-end">Target (h)</th>
+                    <th class="text-end">Scheduled (h)</th>
+                    <th class="text-end">Actual (h)</th>
+                    <th class="text-end" style="width: 140px;">Utilization</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>
+                        <strong>{{ row.user.get_full_name|default:row.user.username }}</strong><br>
+                        <small class="text-muted">@{{ row.user.username }}</small>
+                        {% if not row.has_billable_target %}
+                        <span class="badge bg-light text-muted border ms-1" title="Using default 32h/week target">default</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">{{ row.target_hours|floatformat:1 }}</td>
+                    <td class="text-end">{{ row.scheduled_hours|floatformat:1 }}</td>
+                    <td class="text-end">{{ row.actual_hours|floatformat:1 }}</td>
+                    <td class="text-end">
+                        {% if row.utilization_pct < 80 %}
+                            <span class="badge bg-danger">{{ row.utilization_pct|floatformat:1 }}%</span>
+                        {% elif row.utilization_pct < 95 %}
+                            <span class="badge bg-warning text-dark">{{ row.utilization_pct|floatformat:1 }}%</span>
+                        {% elif row.utilization_pct <= 110 %}
+                            <span class="badge bg-success">{{ row.utilization_pct|floatformat:1 }}%</span>
+                        {% else %}
+                            <span class="badge bg-primary">{{ row.utilization_pct|floatformat:1 }}%</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="table-secondary fw-bold">
+                    <td>All techs</td>
+                    <td class="text-end">{{ total_target|floatformat:1 }}</td>
+                    <td class="text-end">{{ total_scheduled|floatformat:1 }}</td>
+                    <td class="text-end">{{ total_actual|floatformat:1 }}</td>
+                    <td class="text-end">
+                        {% if grand_utilization_pct < 80 %}
+                            <span class="badge bg-danger">{{ grand_utilization_pct|floatformat:1 }}%</span>
+                        {% elif grand_utilization_pct < 95 %}
+                            <span class="badge bg-warning text-dark">{{ grand_utilization_pct|floatformat:1 }}%</span>
+                        {% elif grand_utilization_pct <= 110 %}
+                            <span class="badge bg-success">{{ grand_utilization_pct|floatformat:1 }}%</span>
+                        {% else %}
+                            <span class="badge bg-primary">{{ grand_utilization_pct|floatformat:1 }}%</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-chart-bar fa-2x mb-2"></i>
+            <p class="mb-0">No active users found.</p>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-footer small text-muted">
+        <strong>Color key:</strong>
+        <span class="badge bg-danger">&lt;80%</span>
+        <span class="badge bg-warning text-dark">80&ndash;95%</span>
+        <span class="badge bg-success">95&ndash;110%</span>
+        <span class="badge bg-primary">&gt;110%</span>
+        &middot; Scheduled = WorkingHours minus holidays/leave.
+        Actual = sum of <code>TicketTimeEntry</code> in window.
+    </div>
+</div>
+{% endblock %}
