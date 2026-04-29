@@ -233,6 +233,14 @@ def ticket_detail(request, ticket_number):
     except Exception:
         ai_enabled = False
 
+    # The most recent triage suggestion is rendered expanded with the
+    # full warning banner; older triages collapse into <details> blocks.
+    ai_latest_triage_id = None
+    for _s in ai_suggestions:
+        if getattr(_s, 'kind', '') == 'triage':
+            ai_latest_triage_id = _s.id
+            break
+
     # Workflow executions tied to this ticket (Operations → Workflows)
     # Eager-load stage completions so the ticket detail page can render the
     # full inline stage checklist without N+1 queries.
@@ -289,6 +297,7 @@ def ticket_detail(request, ticket_number):
         'ai_enabled': ai_enabled,
         'ai_suggestions': ai_suggestions,
         'ai_suggestions_json': ai_suggestions_json,
+        'ai_latest_triage_id': ai_latest_triage_id,
         'sla': sla,
         'hygiene': hygiene,
         'time_entries': time_entries,

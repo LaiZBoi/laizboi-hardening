@@ -728,3 +728,48 @@ class RoleTemplateAIPermissionTests(TestCase):
         self.assertFalse(readonly.psa_ai_send_low_risk)
         self.assertFalse(readonly.psa_ai_apply_low_risk)
         self.assertFalse(readonly.psa_ai_admin)
+
+
+# ---------------------------------------------------------------------------
+# Triage suggestion (kind='triage') — read-only advisory output
+# ---------------------------------------------------------------------------
+
+class TriageKindChoiceTests(TestCase):
+    def test_triage_kind_choice_exists(self):
+        """The new kind option must be in choices."""
+        from psa_ai.models import KIND_CHOICES
+        kinds = [c[0] for c in KIND_CHOICES]
+        self.assertIn('triage', kinds)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class TriageTenantIsolationTests(TestCase):
+    """Cross-tenant triage requests must be rejected."""
+
+    def setUp(self):
+        _seed()
+        _enable_ai()
+        self.org_a = Organization.objects.create(name='AlphaOrg', slug='alpha')
+        self.org_b = Organization.objects.create(name='BetaOrg', slug='beta')
+        self.user_a = User.objects.create_user('a', password='pw', email='a@x.com')
+        Membership.objects.update_or_create(
+            user=self.user_a, organization=self.org_a,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        # user_a is NOT a member of org_b
+        self.ticket_b = Ticket.objects.create(
+            organization=self.org_b, subject='Cross-tenant target',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+
+    def test_cross_tenant_triage_rejected(self):
+        from psa_ai.services.triage_generator import (
+            generate_triage_for_ticket, SafetyFailure,
+        )
+        with self.assertRaises(SafetyFailure):
+            generate_triage_for_ticket(
+                self.ticket_b, requested_by=self.user_a, request=None,
+            )

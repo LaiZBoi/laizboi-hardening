@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.125] - 2026-04-29
+
+### Added
+- **AI triage suggestions on PSA tickets** — every PSA ticket detail page now has an *AI Suggestions* button next to the existing *Suggest reply* / *Suggest actions* buttons. Clicking it asks Claude (Haiku, low temperature) for read-only triage guidance: likely causes, investigation steps, suggested actions to consider (the AI does NOT execute anything), questions to ask the customer, risk flags, and references to check.
+- **Full guardrail reuse** — triage runs through the same context-builder (vault data is excluded), subject-keyword blocklist, output content filter, prompt-injection envelope, and per-org/per-user daily token quota as replies and actions. Triage adds two extra rate limits: 10 triage requests per user per hour and 50 per organization per day. Cross-tenant requests are rejected at the service layer.
+- **Prominent advisory warnings** — every rendered triage suggestion shows an amber alert banner reminding techs that the output is advisory, must be verified against vendor docs and the customer's actual environment, and that the model can hallucinate or miss context. Each suggestion has *Mark helpful* / *Not useful* feedback buttons (write to `AIActionLog` for prompt-tuning) plus a *Generate fresh* button. Older triage suggestions on the same ticket collapse into `<details>` blocks.
+- **New role-template flag** `psa_ai_request_triage` (defaults to True for any tech) — gated at the service layer; read-only members can request triage without elevating to write access.
+- **New `kind='triage'` choice** on `AISuggestion` (model migration `psa_ai/0002_alter_aisuggestion_kind.py`); new system prompt at `psa_ai/prompts/system_triage.md`; new service `psa_ai/services/triage_generator.py`; new view `generate_triage` plus `triage_feedback` for the helpful/reject verdict; new URL `path('triage/<ticket_number>/', …)`; accounts migration `0017_roletemplate_psa_ai_request_triage.py` adds the role-template flag.
+
 ## [3.17.124] - 2026-04-29
 
 ### Docs

@@ -523,6 +523,8 @@ class RoleTemplate(BaseModel):
         help_text='Modify financial fields (invoiced amount, contract usage) via AI')
     psa_ai_admin = models.BooleanField(default=False,
         help_text='Configure AI (model, threshold, allow/blocklist, voice)')
+    psa_ai_request_triage = models.BooleanField(default=True,
+        help_text='Request read-only AI triage guidance for a ticket (advisory output only)')
 
     class Meta:
         db_table = 'role_templates'

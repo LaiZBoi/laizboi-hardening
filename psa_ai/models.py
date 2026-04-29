@@ -14,7 +14,11 @@ from django.conf import settings as django_settings
 from django.db import models
 
 
-KIND_CHOICES = [('reply', 'Reply'), ('action', 'Action')]
+KIND_CHOICES = [
+    ('reply', 'Reply'),
+    ('action', 'Action'),
+    ('triage', 'Triage Guidance'),
+]
 REVIEW_STATES = [
     ('draft', 'Drafted by AI — awaiting tech review'),
     ('pending_review', 'Awaiting senior approval'),

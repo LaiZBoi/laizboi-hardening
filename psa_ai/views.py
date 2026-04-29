@@ -28,6 +28,7 @@ from .permissions import (
 from .services.action_applier import apply_suggestion as apply_suggestion_dispatch
 from .services.action_generator import generate_actions_for_ticket
 from .services.reply_generator import SafetyFailure, generate_reply_for_ticket
+from .services.triage_generator import generate_triage_for_ticket
 
 
 def _client_ip(request):
@@ -76,6 +77,50 @@ def generate_reply(request, ticket_number):
         messages.success(
             request,
             f'AI reply drafted (confidence {suggestion.confidence:.0%}, risk: {suggestion.risk_level}). Review it before sending.'
+        )
+    return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+
+@login_required
+@require_psa_enabled
+@require_http_methods(['POST'])
+def generate_triage(request, ticket_number):
+    """
+    Generate read-only AI triage guidance for the ticket.
+
+    Triage is advisory only (the AI does NOT act on the ticket), so
+    we deliberately do NOT require @require_write — read-only techs
+    can still request investigation hints. Permission is gated at the
+    service layer via `can_request_triage`.
+    """
+    if not _ai_on(request):
+        raise Http404('AI Assist is not enabled.')
+
+    qs = _scoped_ticket_qs(request)
+    ticket = get_object_or_404(qs, ticket_number=ticket_number)
+
+    try:
+        suggestion = generate_triage_for_ticket(
+            ticket, requested_by=request.user, request=request,
+        )
+    except SafetyFailure as exc:
+        messages.warning(request, f'AI triage skipped: {exc}')
+        return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+    if suggestion.review_state == 'blocked':
+        messages.warning(
+            request,
+            'AI triage was blocked by the safety filter — see the suggestion log for details.',
+        )
+    elif suggestion.review_state == 'failed':
+        messages.error(
+            request,
+            'AI triage generation failed (see audit log). Try again in a moment.',
+        )
+    else:
+        messages.success(
+            request,
+            'AI triage suggestion generated. Review below — verify against vendor docs before acting.',
         )
     return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
 
@@ -137,6 +182,73 @@ def suggestion_reject(request, pk):
         extra_data={'note_length': len(note)},
     )
     messages.success(request, 'Rejected. The feedback is logged for prompt tuning.')
+    return _back(request, suggestion)
+
+
+@login_required
+@require_psa_enabled
+@require_http_methods(['POST'])
+def triage_feedback(request, pk):
+    """
+    Tech feedback on an AI triage suggestion. Triage is advisory-only,
+    so the "verdict" just records whether the tech found it useful:
+      verdict=helpful  → review_state='approved' + AIActionLog(success=True)
+      verdict=reject   → review_state='rejected' + AIActionLog(success=False)
+
+    Read-only techs CAN submit triage feedback (no @require_write) —
+    triage is read-only output, so giving feedback on it doesn't grant
+    write capability anywhere.
+    """
+    if not _ai_on(request):
+        raise Http404()
+    suggestion = get_object_or_404(AISuggestion, pk=pk)
+    if not _user_can_view_suggestion(request.user, suggestion, request=request):
+        raise Http404()
+    if suggestion.kind != 'triage':
+        messages.info(request, 'This action is for triage suggestions only.')
+        return _back(request, suggestion)
+    if suggestion.review_state in ('approved', 'rejected', 'expired', 'superseded', 'failed', 'blocked'):
+        messages.info(request, f'Already in terminal state ({suggestion.review_state}).')
+        return _back(request, suggestion)
+
+    verdict = (request.POST.get('verdict') or '').strip().lower()
+    note = (request.POST.get('reviewer_note') or '').strip()[:2000]
+    if verdict not in ('helpful', 'reject'):
+        messages.error(request, 'Invalid feedback verdict.')
+        return _back(request, suggestion)
+
+    if verdict == 'helpful':
+        suggestion.review_state = 'approved'
+    else:
+        suggestion.review_state = 'rejected'
+    suggestion.reviewer = request.user
+    suggestion.reviewed_at = timezone.now()
+    suggestion.reviewer_note = note
+    suggestion.save(update_fields=[
+        'review_state', 'reviewer', 'reviewed_at', 'reviewer_note',
+    ])
+
+    from .models import AIActionLog
+    AIActionLog.objects.create(
+        suggestion=suggestion,
+        organization=suggestion.organization,
+        actor=request.user,
+        success=(verdict == 'helpful'),
+        error=('' if verdict == 'helpful' else (note[:200] or 'rejected without note')),
+        diff={'feedback': verdict},
+    )
+    AuditLog.log(
+        user=request.user, action='update', organization=suggestion.organization,
+        object_type='psa_ai.AISuggestion', object_id=suggestion.pk,
+        object_repr=f'triage feedback ({verdict}) on suggestion {suggestion.pk}',
+        description=f'AI triage marked {verdict} by tech.',
+        ip_address=_client_ip(request), path=request.path,
+        extra_data={'verdict': verdict, 'note_length': len(note)},
+    )
+    if verdict == 'helpful':
+        messages.success(request, 'Marked as helpful — feedback recorded for prompt tuning.')
+    else:
+        messages.success(request, 'Rejected — feedback recorded for prompt tuning.')
     return _back(request, suggestion)
 
 
