@@ -305,6 +305,42 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Knowledge Base Permissions -->
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0"><i class="fas fa-book"></i> Knowledge Base Permissions</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="kb_view_articles" id="kb_view_articles"
+                                       {% if role %}{% if role.kb_view_articles %}checked{% endif %}{% elif copy_from %}{% if copy_from.kb_view_articles %}checked{% endif %}{% else %}checked{% endif %}>
+                                <label class="form-check-label" for="kb_view_articles">View KB articles</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="kb_edit_articles" id="kb_edit_articles"
+                                       {% if role %}{% if role.kb_edit_articles %}checked{% endif %}{% elif copy_from %}{% if copy_from.kb_edit_articles %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="kb_edit_articles">Create / edit / delete KB articles</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="kb_move_articles" id="kb_move_articles"
+                                       {% if role %}{% if role.kb_move_articles %}checked{% endif %}{% elif copy_from %}{% if copy_from.kb_move_articles %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="kb_move_articles">Move KB articles between categories</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="kb_manage_categories" id="kb_manage_categories"
+                                       {% if role %}{% if role.kb_manage_categories %}checked{% endif %}{% elif copy_from %}{% if copy_from.kb_manage_categories %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="kb_manage_categories">Manage KB categories</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="kb_publish_articles" id="kb_publish_articles"
+                                       {% if role %}{% if role.kb_publish_articles %}checked{% endif %}{% elif copy_from %}{% if copy_from.kb_publish_articles %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="kb_publish_articles">Publish/unpublish KB articles</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <hr class="my-4">

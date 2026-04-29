@@ -384,6 +384,18 @@ def require_staff_user(view_func):
     return wrapper
 
 
+def require_kb_perm(perm_name):
+    """Require a specific KB permission (cross-org). Superusers/staff users pass."""
+    def deco(view_func):
+        def wrapper(request, *args, **kwargs):
+            from psa.views import _check_kb_perm
+            if not _check_kb_perm(request.user, perm_name):
+                raise PermissionDenied(f"You don't have the '{perm_name}' permission.")
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return deco
+
+
 @login_required
 @require_staff_user
 def global_kb_list(request):
@@ -449,7 +461,7 @@ def global_kb_detail(request, slug):
 
 
 @login_required
-@require_staff_user
+@require_kb_perm('kb_edit_articles')
 def global_kb_create(request):
     """
     Create global KB article (staff only), optionally from a template.
@@ -483,8 +495,17 @@ def global_kb_create(request):
         except Document.DoesNotExist:
             messages.warning(request, 'Template not found.')
 
+    # Pre-select category if ?category=<slug> was supplied (e.g. from PSA KB browse).
+    pre_cat_slug = (request.GET.get('category') or '').strip()
+    if pre_cat_slug and 'category' not in initial_data:
+        pre_cat = DocumentCategory.objects.filter(
+            slug=pre_cat_slug, organization__isnull=True
+        ).first()
+        if pre_cat:
+            initial_data['category'] = pre_cat
+
     if request.method == 'POST':
-        form = DocumentForm(request.POST, organization=org)
+        form = DocumentForm(request.POST, organization=org, include_global_categories=True)
         if form.is_valid():
             document = form.save(commit=False)
             document.organization = org
@@ -497,7 +518,7 @@ def global_kb_create(request):
             messages.success(request, f"Global KB article '{document.title}' created successfully.")
             return redirect('docs:global_kb_detail', slug=document.slug)
     else:
-        form = DocumentForm(organization=org, initial=initial_data)
+        form = DocumentForm(organization=org, initial=initial_data, include_global_categories=True)
 
     # Get available templates for dropdown (from any org for global KB)
     templates = Document.objects.filter(is_template=True).order_by('title')
@@ -511,7 +532,7 @@ def global_kb_create(request):
 
 
 @login_required
-@require_staff_user
+@require_kb_perm('kb_edit_articles')
 def global_kb_edit(request, slug):
     """
     Edit global KB article (staff only).
@@ -519,7 +540,7 @@ def global_kb_edit(request, slug):
     document = get_object_or_404(Document, slug=slug, is_global=True)
 
     if request.method == 'POST':
-        form = DocumentForm(request.POST, instance=document, organization=document.organization)
+        form = DocumentForm(request.POST, instance=document, organization=document.organization, include_global_categories=True)
         if form.is_valid():
             document = form.save(commit=False)
             document.is_global = True  # Ensure it stays global
@@ -529,7 +550,7 @@ def global_kb_edit(request, slug):
             messages.success(request, f"Global KB article '{document.title}' updated successfully.")
             return redirect('docs:global_kb_detail', slug=document.slug)
     else:
-        form = DocumentForm(instance=document, organization=document.organization)
+        form = DocumentForm(instance=document, organization=document.organization, include_global_categories=True)
 
     return render(request, 'docs/global_kb_form.html', {
         'form': form,
@@ -539,7 +560,7 @@ def global_kb_edit(request, slug):
 
 
 @login_required
-@require_staff_user
+@require_kb_perm('kb_edit_articles')
 def global_kb_delete(request, slug):
     """
     Delete global KB article (staff only).
@@ -1133,8 +1154,10 @@ def category_create(request):
     from .forms import DocumentCategoryForm
 
     target_org, is_global = _resolve_category_scope(request)
-    if is_global and not request.user.is_superuser:
-        raise PermissionDenied
+    if is_global:
+        from psa.views import _check_kb_perm
+        if not (request.user.is_superuser or _check_kb_perm(request.user, 'kb_manage_categories')):
+            raise PermissionDenied
 
     if request.method == 'POST':
         form = DocumentCategoryForm(request.POST, organization=target_org)
@@ -1168,7 +1191,8 @@ def category_edit(request, pk):
 
     target_org, is_global = _resolve_category_scope(request)
     if is_global:
-        if not request.user.is_superuser:
+        from psa.views import _check_kb_perm
+        if not (request.user.is_superuser or _check_kb_perm(request.user, 'kb_manage_categories')):
             raise PermissionDenied
         category = get_object_or_404(DocumentCategory, pk=pk, organization__isnull=True)
     else:
@@ -1204,7 +1228,8 @@ def category_delete(request, pk):
 
     target_org, is_global = _resolve_category_scope(request)
     if is_global:
-        if not request.user.is_superuser:
+        from psa.views import _check_kb_perm
+        if not (request.user.is_superuser or _check_kb_perm(request.user, 'kb_manage_categories')):
             raise PermissionDenied
         category = get_object_or_404(DocumentCategory, pk=pk, organization__isnull=True)
     else:

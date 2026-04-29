@@ -13,6 +13,7 @@ from core.decorators import require_admin, require_write
 from django.core.exceptions import PermissionDenied
 from .models import PSAConnection, PSACompany, PSAContact, PSATicket, RMMConnection, RMMDevice, RMMAlert, RMMSoftware, UnifiConnection, M365Connection, OmadaConnection, GrandstreamConnection, DistributorConnection, DistributorWebhookEvent, AccountingConnection
 from .forms import PSAConnectionForm, RMMConnectionForm, UnifiConnectionForm, M365ConnectionForm, OmadaConnectionForm, GrandstreamConnectionForm
+from .status import connection_status
 from .sync import PSASync
 from .providers import get_provider
 from .providers.rmm import get_rmm_provider
@@ -26,23 +27,136 @@ logger = logging.getLogger('integrations')
 
 @login_required
 def integration_list(request):
-    """List PSA, RMM, UniFi, M365, Omada, and Grandstream connections."""
+    """
+    Unified integrations dashboard. Renders one combined list of every
+    connection type (PSA / RMM / UniFi / M365 / Omada / Grandstream /
+    Distributor / Accounting) with a status pill, search box, and Tile/List
+    view toggle.
+    """
     org = get_request_organization(request)
-    psa_connections = PSAConnection.objects.for_organization(org)
-    rmm_connections = RMMConnection.objects.for_organization(org)
-    unifi_connections = UnifiConnection.objects.for_organization(org)
-    m365_connections = M365Connection.objects.for_organization(org)
-    omada_connections = OmadaConnection.objects.for_organization(org)
-    grandstream_connections = GrandstreamConnection.objects.for_organization(org)
+
+    # Each row: (icon, category, provider_label, name, conn, configure_url,
+    # detail_url_or_none, status_dict).
+    rows = []
+
+    def _add(qs, *, icon, category, configure_url_name, detail_url_name=None,
+             provider_label_attr='get_provider_type_display',
+             host_attr=None):
+        for conn in qs:
+            try:
+                if callable(getattr(conn, provider_label_attr, None)):
+                    provider_label = getattr(conn, provider_label_attr)()
+                else:
+                    provider_label = getattr(conn, provider_label_attr, category)
+            except Exception:
+                provider_label = category
+            # Some integration types don't have a get_provider_type_display
+            # (UniFi/M365/Omada/Grandstream are single-provider) — fall back
+            # to a host string when available so the row still has a useful
+            # secondary label.
+            if not provider_label or provider_label == category:
+                if host_attr:
+                    provider_label = getattr(conn, host_attr, '') or category
+            try:
+                configure_url = configure_url_name and __reverse_safe(configure_url_name, conn.pk)
+            except Exception:
+                configure_url = None
+            try:
+                detail_url = detail_url_name and __reverse_safe(detail_url_name, conn.pk)
+            except Exception:
+                detail_url = None
+
+            rows.append({
+                'icon': icon,
+                'category': category,
+                'provider_label': provider_label,
+                'name': conn.name,
+                'conn': conn,
+                'pk': conn.pk,
+                'configure_url': configure_url,
+                'detail_url': detail_url,
+                'status': connection_status(conn),
+            })
+
+    _add(PSAConnection.objects.for_organization(org),
+         icon='fas fa-ticket-alt', category='PSA',
+         configure_url_name='integrations:integration_edit',
+         detail_url_name='integrations:integration_detail')
+    _add(RMMConnection.objects.for_organization(org),
+         icon='fas fa-desktop', category='RMM',
+         configure_url_name='integrations:rmm_edit',
+         detail_url_name='integrations:rmm_detail')
+    _add(UnifiConnection.objects.for_organization(org),
+         icon='fas fa-network-wired', category='UniFi',
+         configure_url_name='integrations:unifi_edit',
+         detail_url_name='integrations:unifi_detail',
+         provider_label_attr='host', host_attr='host')
+    _add(M365Connection.objects.for_organization(org),
+         icon='fab fa-microsoft', category='Microsoft 365',
+         configure_url_name='integrations:m365_edit',
+         detail_url_name='integrations:m365_detail',
+         provider_label_attr='tenant_id')
+    _add(OmadaConnection.objects.for_organization(org),
+         icon='fas fa-network-wired', category='Omada',
+         configure_url_name='integrations:omada_edit',
+         detail_url_name='integrations:omada_detail',
+         provider_label_attr='host', host_attr='host')
+    _add(GrandstreamConnection.objects.for_organization(org),
+         icon='fas fa-wifi', category='Grandstream',
+         configure_url_name='integrations:grandstream_edit',
+         detail_url_name='integrations:grandstream_detail',
+         provider_label_attr='host', host_attr='host')
+    try:
+        _add(DistributorConnection.objects.for_organization(org),
+             icon='fas fa-truck', category='Distributor',
+             configure_url_name='integrations:distributor_edit')
+    except Exception:
+        pass
+    try:
+        _add(AccountingConnection.objects.for_organization(org),
+             icon='fas fa-file-invoice-dollar', category='Accounting',
+             configure_url_name='integrations:accounting_edit')
+    except Exception:
+        pass
+
+    # Search filter — provider label OR name OR category.
+    search_q = (request.GET.get('q') or '').strip()
+    if search_q:
+        needle = search_q.lower()
+        rows = [
+            r for r in rows
+            if needle in (r['name'] or '').lower()
+            or needle in (r['provider_label'] or '').lower()
+            or needle in (r['category'] or '').lower()
+        ]
+
+    # View mode — querystring is source of truth, JS layer mirrors to localStorage.
+    view_mode = request.GET.get('view') or 'tile'
+    if view_mode not in ('tile', 'list'):
+        view_mode = 'tile'
+
+    # Quick counters for the page header.
+    counts = {'total': len(rows), 'broken': 0, 'working': 0, 'off': 0, 'unknown': 0}
+    for r in rows:
+        counts[r['status']['state']] = counts.get(r['status']['state'], 0) + 1
+
+    rows.sort(key=lambda r: (r['category'], r['name'].lower()))
 
     return render(request, 'integrations/integration_list.html', {
-        'psa_connections': psa_connections,
-        'rmm_connections': rmm_connections,
-        'unifi_connections': unifi_connections,
-        'm365_connections': m365_connections,
-        'omada_connections': omada_connections,
-        'grandstream_connections': grandstream_connections,
+        'rows': rows,
+        'search_query': search_q,
+        'view_mode': view_mode,
+        'counts': counts,
     })
+
+
+def __reverse_safe(url_name, pk):
+    """Internal: reverse a URL name with `pk`, returning None if not registered."""
+    from django.urls import reverse, NoReverseMatch
+    try:
+        return reverse(url_name, args=[pk])
+    except NoReverseMatch:
+        return None
 
 
 @login_required

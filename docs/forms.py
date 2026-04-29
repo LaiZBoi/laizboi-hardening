@@ -29,11 +29,18 @@ class DocumentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         self.organization = kwargs.pop('organization', None)
+        # When creating a global KB article we want the category dropdown to
+        # also list global (NULL-org) categories — pass include_global_categories=True.
+        self.include_global_categories = kwargs.pop('include_global_categories', False)
         super().__init__(*args, **kwargs)
 
         if self.organization:
             self.fields['tags'].queryset = self.organization.tags.all()
-            self.fields['category'].queryset = DocumentCategory.objects.filter(organization=self.organization)
+            from django.db.models import Q
+            cat_q = Q(organization=self.organization)
+            if self.include_global_categories:
+                cat_q |= Q(organization__isnull=True)
+            self.fields['category'].queryset = DocumentCategory.objects.filter(cat_q).order_by('order', 'name')
             self.fields['category'].required = False
 
 

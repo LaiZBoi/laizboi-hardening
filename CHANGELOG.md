@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.135] - 2026-04-29
+
+### Added — Service Catalog Tile / List view toggle
+- Toggle at top of `/psa/catalog/` matches the org list (v3.17.115) and integrations (v3.17.133) pattern. Tile mode default. Preference persisted via `?view=` querystring + localStorage. List mode is a compact dark-mode-safe table (Name / Description / Default queue / Default priority / Fields / Status / Actions).
+
+## [3.17.134] - 2026-04-29
+
+### Added — KB: full CRUD + move + permission groups
+- Inline **New article / Edit / Delete / Move** buttons on the PSA KB browse page (gated by new permissions). New article pre-selects the currently-filtered category.
+- **Bulk move** — checkbox per article + "Move selected to →" dropdown. Single `POST /psa/kb/move/` endpoint validates permissions, updates rows in one query, writes one audit log entry per move.
+- Inline **category Manage** button in the sidebar opens the existing `/docs/categories/?global=1` page.
+- Five new **`RoleTemplate` boolean permissions**: `kb_view_articles`, `kb_edit_articles`, `kb_move_articles`, `kb_manage_categories`, `kb_publish_articles`. Defaults: Owner/Admin = all True; Editor = no manage_categories; Read-only = view only. Migration: `accounts.0019_roletemplate_kb_perms`.
+- Permission groups (RoleTemplates) are listed + editable + assignable from `/accounts/roles/` — the existing page now exposes the new KB booleans.
+- Server-side gate via `_check_kb_perm(user, perm_name)` helper — returns 403 if missing.
+- New `KBPermissionsTests` + `KBMoveArticlesTests` in `psa/tests.py`.
+
+### Changed — Integrations page condensed + Tile/List toggle + status indicator
+- Condensed grid: 6-column tile layout on desktop, ~30% less vertical whitespace.
+- New Grid ⇄ List view toggle (top right of page); preference persisted in localStorage + ?view= querystring.
+- New status pill per integration: OFF / ON · Working (green) / ON · Broken (red, with error tooltip) / ON · Unknown (amber). Most visually prominent element on each row so admins can scan a 100-integration page in seconds.
+- Search box filters by provider name + connection name.
+- New `connection_status(conn)` helper in `integrations/status.py`.
+
 ## [3.17.132] - 2026-04-29
 
 ### Added — Phase 2.1: Resource management foundation (skills, certifications, working hours)

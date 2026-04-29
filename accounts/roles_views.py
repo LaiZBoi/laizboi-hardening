@@ -110,6 +110,13 @@ def role_create(request):
         role.api_access = request.POST.get('api_access') == 'on'
         role.api_keys_manage = request.POST.get('api_keys_manage') == 'on'
 
+        # Knowledge Base permissions
+        role.kb_view_articles = request.POST.get('kb_view_articles') == 'on'
+        role.kb_edit_articles = request.POST.get('kb_edit_articles') == 'on'
+        role.kb_move_articles = request.POST.get('kb_move_articles') == 'on'
+        role.kb_manage_categories = request.POST.get('kb_manage_categories') == 'on'
+        role.kb_publish_articles = request.POST.get('kb_publish_articles') == 'on'
+
         role.save()
 
         messages.success(request, f'Role "{role.name}" created successfully.')
@@ -188,6 +195,13 @@ def role_edit(request, pk):
         role.org_manage_settings = request.POST.get('org_manage_settings') == 'on'
         role.api_access = request.POST.get('api_access') == 'on'
         role.api_keys_manage = request.POST.get('api_keys_manage') == 'on'
+
+        # Knowledge Base permissions
+        role.kb_view_articles = request.POST.get('kb_view_articles') == 'on'
+        role.kb_edit_articles = request.POST.get('kb_edit_articles') == 'on'
+        role.kb_move_articles = request.POST.get('kb_move_articles') == 'on'
+        role.kb_manage_categories = request.POST.get('kb_manage_categories') == 'on'
+        role.kb_publish_articles = request.POST.get('kb_publish_articles') == 'on'
 
         role.save()
 

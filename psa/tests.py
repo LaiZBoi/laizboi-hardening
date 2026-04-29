@@ -2590,3 +2590,227 @@ class ContractAutoRenewalTests(TestCase):
         old = self._make_contract(auto_renew=False)
         call_command('psa_auto_renew_contracts')
         self.assertEqual(Contract.objects.filter(parent_contract=old).count(), 0)
+
+
+# ---------------------------------------------------------------------------
+# v3.17.134 — KB CRUD + permission groups
+# ---------------------------------------------------------------------------
+
+class KBPermissionsTests(TestCase):
+    """v3.17.134: gate KB action buttons + mutation endpoints by RoleTemplate
+    booleans (kb_view_articles / kb_edit_articles / kb_move_articles /
+    kb_manage_categories / kb_publish_articles)."""
+
+    def setUp(self):
+        _enable_psa_global()
+        _setup_seed()
+        self.org = Organization.objects.create(name='KB Org', slug='kb-org')
+        _enable_psa_for(self.org)
+
+        from accounts.models import RoleTemplate
+
+        # Read-only role: only kb_view_articles
+        self.ro_role = RoleTemplate.objects.create(
+            name='KB-RO', description='read-only KB', is_system_template=False,
+            kb_view_articles=True, kb_edit_articles=False,
+            kb_move_articles=False, kb_manage_categories=False,
+            kb_publish_articles=False,
+        )
+        # Editor role: view + edit + move + publish, no manage_categories
+        self.editor_role = RoleTemplate.objects.create(
+            name='KB-Editor', description='editor KB', is_system_template=False,
+            kb_view_articles=True, kb_edit_articles=True,
+            kb_move_articles=True, kb_manage_categories=False,
+            kb_publish_articles=True,
+        )
+
+        self.ro_user = User.objects.create_user(username='ro', password='pw', email='ro@x.com')
+        Membership.objects.create(
+            user=self.ro_user, organization=self.org,
+            role=Role.READONLY, role_template=self.ro_role, is_active=True,
+        )
+        self.editor_user = User.objects.create_user(username='ed', password='pw', email='ed@x.com')
+        Membership.objects.create(
+            user=self.editor_user, organization=self.org,
+            role=Role.EDITOR, role_template=self.editor_role, is_active=True,
+        )
+
+    def test_check_kb_perm_helper(self):
+        from psa.views import _check_kb_perm
+        self.assertTrue(_check_kb_perm(self.ro_user, 'kb_view_articles'))
+        self.assertFalse(_check_kb_perm(self.ro_user, 'kb_edit_articles'))
+        self.assertFalse(_check_kb_perm(self.ro_user, 'kb_move_articles'))
+        self.assertTrue(_check_kb_perm(self.editor_user, 'kb_edit_articles'))
+        self.assertTrue(_check_kb_perm(self.editor_user, 'kb_move_articles'))
+        self.assertFalse(_check_kb_perm(self.editor_user, 'kb_manage_categories'))
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_readonly_user_does_not_see_edit_buttons(self):
+        c = Client()
+        c.force_login(self.ro_user)
+        resp = c.get('/psa/kb/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode('utf-8', errors='ignore')
+        self.assertNotIn('New article', body)
+        self.assertNotIn('Move selected', body)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_editor_user_sees_edit_and_move(self):
+        c = Client()
+        c.force_login(self.editor_user)
+        # Need at least one article so the move form renders.
+        from docs.models import Document
+        Document.objects.create(
+            organization=self.org, title='An article', slug='an-article',
+            body='hi', is_global=True,
+        )
+        resp = c.get('/psa/kb/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode('utf-8', errors='ignore')
+        self.assertIn('New article', body)
+        self.assertIn('Move selected', body)
+        # No manage_categories permission → no "Manage categories" button.
+        self.assertNotIn('Manage categories', body)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_readonly_post_to_move_endpoint_is_forbidden(self):
+        c = Client()
+        c.force_login(self.ro_user)
+        from docs.models import Document
+        a = Document.objects.create(
+            organization=self.org, title='Locked', slug='locked',
+            body='nope', is_global=True,
+        )
+        resp = c.post('/psa/kb/move/', {
+            'article_ids': [a.pk],
+            'target_category_id': '',
+        })
+        self.assertEqual(resp.status_code, 403)
+
+
+class KBMoveArticlesTests(TestCase):
+    """v3.17.134: bulk-move endpoint reassigns category and writes one audit row."""
+
+    def setUp(self):
+        _enable_psa_global()
+        _setup_seed()
+        self.org = Organization.objects.create(name='Move Org', slug='move-org')
+        _enable_psa_for(self.org)
+
+        from accounts.models import RoleTemplate
+        self.role = RoleTemplate.objects.create(
+            name='KB-Mover', description='mover', is_system_template=False,
+            kb_view_articles=True, kb_edit_articles=True,
+            kb_move_articles=True, kb_manage_categories=True,
+            kb_publish_articles=True,
+        )
+        self.user = User.objects.create_user(username='mv', password='pw', email='mv@x.com')
+        Membership.objects.create(
+            user=self.user, organization=self.org,
+            role=Role.EDITOR, role_template=self.role, is_active=True,
+        )
+
+        from docs.models import Document, DocumentCategory
+        self.cat_a = DocumentCategory.objects.create(name='Cat A', slug='cat-a')
+        self.cat_b = DocumentCategory.objects.create(name='Cat B', slug='cat-b')
+        self.a1 = Document.objects.create(
+            organization=self.org, title='Art 1', slug='art-1',
+            body='b', is_global=True, category=self.cat_a,
+        )
+        self.a2 = Document.objects.create(
+            organization=self.org, title='Art 2', slug='art-2',
+            body='b', is_global=True, category=self.cat_a,
+        )
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_move_to_target_category(self):
+        c = Client()
+        c.force_login(self.user)
+        before = AuditLog.objects.filter(object_type='docs.Document').count()
+        resp = c.post('/psa/kb/move/', {
+            'article_ids': [self.a1.pk, self.a2.pk],
+            'target_category_id': self.cat_b.pk,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.a1.refresh_from_db()
+        self.a2.refresh_from_db()
+        self.assertEqual(self.a1.category_id, self.cat_b.pk)
+        self.assertEqual(self.a2.category_id, self.cat_b.pk)
+        # Exactly one audit row written for the bulk move.
+        after = AuditLog.objects.filter(object_type='docs.Document').count()
+        self.assertEqual(after - before, 1)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_move_to_uncategorized(self):
+        c = Client()
+        c.force_login(self.user)
+        resp = c.post('/psa/kb/move/', {
+            'article_ids': [self.a1.pk],
+            'target_category_id': '',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.a1.refresh_from_db()
+        self.assertIsNone(self.a1.category_id)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_invalid_target_category_does_not_move(self):
+        c = Client()
+        c.force_login(self.user)
+        resp = c.post('/psa/kb/move/', {
+            'article_ids': [self.a1.pk],
+            'target_category_id': '999999',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.a1.refresh_from_db()
+        # Untouched — still in cat_a.
+        self.assertEqual(self.a1.category_id, self.cat_a.pk)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_no_article_ids_redirects(self):
+        c = Client()
+        c.force_login(self.user)
+        resp = c.post('/psa/kb/move/', {
+            'target_category_id': self.cat_b.pk,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.a1.refresh_from_db()
+        self.assertEqual(self.a1.category_id, self.cat_a.pk)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ServiceCatalogViewModeTests(TestCase):
+    """v3.17.135: catalog page renders tile and list views."""
+
+    def setUp(self):
+        from psa.models import ServiceCatalogItem
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='Cat Co', slug='cat-co')
+        self.user = User.objects.create_superuser('su', 'su@x.com', 'pw')
+        ServiceCatalogItem.objects.update_or_create(
+            slug='password-reset',
+            defaults={
+                'name': 'Password Reset', 'is_active': True,
+                'description': 'Reset a user password',
+                'default_subject': 'Password reset for {{user}}',
+                'default_body': 'User: {{user}}',
+            },
+        )
+
+    def test_tile_view_renders(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/psa/catalog/?view=tile')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Password Reset', r.content)
+
+    def test_list_view_renders(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/psa/catalog/?view=list')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Password Reset', r.content)
+        self.assertIn(b'<thead class="table-light">', r.content)
+
+    def test_invalid_view_falls_back_to_tile(self):
+        self.client.force_login(self.user)
+        r = self.client.get('/psa/catalog/?view=garbage')
+        self.assertEqual(r.status_code, 200)

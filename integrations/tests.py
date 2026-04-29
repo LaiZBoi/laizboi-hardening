@@ -236,3 +236,129 @@ class DistributorWebhookEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         event = DistributorWebhookEvent.objects.get(connection=self.conn)
         self.assertFalse(event.signature_valid)
+
+
+class ConnectionStatusHelperTests(TestCase):
+    """`connection_status()` powers the integration tiles + list rows."""
+
+    def setUp(self):
+        from .status import connection_status  # noqa: F401 — sanity import
+        self.org = Organization.objects.create(name='ConnStatus Org')
+
+    def _make(self, **kwargs):
+        defaults = dict(
+            organization=self.org,
+            provider_type='ingram_xvantage',
+            name='Status Test',
+        )
+        defaults.update(kwargs)
+        return DistributorConnection.objects.create(**defaults)
+
+    def test_inactive_connection_is_off(self):
+        from .status import connection_status
+        conn = self._make(is_active=False)
+        result = connection_status(conn)
+        self.assertEqual(result['state'], 'off')
+        self.assertEqual(result['label'], 'OFF')
+
+    def test_sync_disabled_connection_is_off(self):
+        from .status import connection_status
+        conn = self._make(is_active=True, sync_enabled=False)
+        result = connection_status(conn)
+        self.assertEqual(result['state'], 'off')
+
+    def test_last_error_means_broken(self):
+        from .status import connection_status
+        conn = self._make(last_error='401 Unauthorized — token expired.')
+        result = connection_status(conn)
+        self.assertEqual(result['state'], 'broken')
+        self.assertEqual(result['label'], 'ON · Broken')
+        self.assertIn('401', result['tooltip'])
+
+    def test_error_status_string_means_broken(self):
+        from .status import connection_status
+        conn = self._make(last_sync_status='error')
+        result = connection_status(conn)
+        self.assertEqual(result['state'], 'broken')
+
+    def test_recent_ok_sync_means_working(self):
+        from django.utils import timezone
+        from .status import connection_status
+        conn = self._make(
+            last_sync_status='ok',
+            last_sync_at=timezone.now(),
+        )
+        result = connection_status(conn)
+        self.assertEqual(result['state'], 'working')
+        self.assertEqual(result['label'], 'ON · Working')
+
+    def test_enabled_but_never_synced_is_unknown(self):
+        from .status import connection_status
+        conn = self._make()  # is_active default True, sync_enabled default True
+        result = connection_status(conn)
+        self.assertEqual(result['state'], 'unknown')
+
+    def test_long_error_is_truncated_in_tooltip(self):
+        from .status import connection_status
+        conn = self._make(last_error='X' * 800)
+        result = connection_status(conn)
+        self.assertEqual(result['state'], 'broken')
+        self.assertLessEqual(len(result['tooltip']), 240)
+        self.assertTrue(result['tooltip'].endswith('...'))
+
+
+class IntegrationListViewLogicTests(TestCase):
+    """
+    Exercise the integration_list view's collection / filter / view-mode logic
+    without going through the full auth/middleware/2FA stack — the project
+    middleware redirects to 2FA setup, which would obscure what we're testing.
+    We patch get_request_organization and call the view directly.
+    """
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        self.org = Organization.objects.create(name='ListView Org')
+        self.user = User.objects.create_user(
+            username='list_view_user', email='lv@lv.com', password='x',
+            is_staff=True, is_superuser=True,
+        )
+
+    def _call(self, url):
+        from unittest import mock
+        from django.test import RequestFactory
+        rf = RequestFactory()
+        req = rf.get(url)
+        req.user = self.user
+        with mock.patch('integrations.views.get_request_organization', return_value=self.org):
+            from integrations.views import integration_list
+            return integration_list(req)
+
+    def _seed_one(self):
+        DistributorConnection.objects.create(
+            organization=self.org, provider_type='ingram_xvantage',
+            name='Seed Conn')
+
+    def test_tile_mode_default(self):
+        self._seed_one()
+        resp = self._call('/integrations/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'integration-tile-grid', resp.content)
+
+    def test_list_mode_renders_table(self):
+        self._seed_one()
+        resp = self._call('/integrations/?view=list')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'table-light', resp.content)
+
+    def test_search_filters_results(self):
+        DistributorConnection.objects.create(
+            organization=self.org, provider_type='ingram_xvantage',
+            name='Findable Ingram')
+        DistributorConnection.objects.create(
+            organization=self.org, provider_type='ingram_xvantage',
+            name='Hidden Other')
+        resp = self._call('/integrations/?q=findable')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'Findable Ingram', resp.content)
+        self.assertNotIn(b'Hidden Other', resp.content)

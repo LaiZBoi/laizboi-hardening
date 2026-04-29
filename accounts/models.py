@@ -97,6 +97,9 @@ class Membership(BaseModel):
                 org_view_members=True, org_invite_members=True, org_manage_members=True,
                 org_manage_settings=True,
                 api_access=True, api_keys_manage=True,
+                # KB
+                kb_view_articles=True, kb_edit_articles=True, kb_move_articles=True,
+                kb_manage_categories=True, kb_publish_articles=True,
             )
         elif self.role == Role.ADMIN:
             return SimpleNamespace(
@@ -112,6 +115,9 @@ class Membership(BaseModel):
                 org_view_members=True, org_invite_members=True, org_manage_members=False,
                 org_manage_settings=False,
                 api_access=True, api_keys_manage=False,
+                # KB
+                kb_view_articles=True, kb_edit_articles=True, kb_move_articles=True,
+                kb_manage_categories=True, kb_publish_articles=True,
             )
         elif self.role == Role.EDITOR:
             return SimpleNamespace(
@@ -127,6 +133,9 @@ class Membership(BaseModel):
                 org_view_members=True, org_invite_members=False, org_manage_members=False,
                 org_manage_settings=False,
                 api_access=True, api_keys_manage=False,
+                # KB — Editor can view/edit/move/publish, but NOT manage_categories
+                kb_view_articles=True, kb_edit_articles=True, kb_move_articles=True,
+                kb_manage_categories=False, kb_publish_articles=True,
             )
         else:  # READONLY
             return SimpleNamespace(
@@ -142,6 +151,9 @@ class Membership(BaseModel):
                 org_view_members=True, org_invite_members=False, org_manage_members=False,
                 org_manage_settings=False,
                 api_access=False, api_keys_manage=False,
+                # KB — read-only sees articles but cannot mutate
+                kb_view_articles=True, kb_edit_articles=False, kb_move_articles=False,
+                kb_manage_categories=False, kb_publish_articles=False,
             )
 
     def can_read(self):
@@ -571,6 +583,18 @@ class RoleTemplate(BaseModel):
     psa_ai_request_triage = models.BooleanField(default=True,
         help_text='Request read-only AI triage guidance for a ticket (advisory output only)')
 
+    # Knowledge Base (KB) Permissions — see psa.kb_browse + docs.global_kb_*
+    kb_view_articles = models.BooleanField(default=True,
+        help_text='View KB articles (browse the knowledge base)')
+    kb_edit_articles = models.BooleanField(default=False,
+        help_text='Create / edit / delete KB articles')
+    kb_move_articles = models.BooleanField(default=False,
+        help_text='Move KB articles between categories (bulk move)')
+    kb_manage_categories = models.BooleanField(default=False,
+        help_text='Create / edit / delete KB categories (global or org)')
+    kb_publish_articles = models.BooleanField(default=False,
+        help_text='Publish/unpublish KB articles (toggle is_published)')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -634,6 +658,12 @@ class RoleTemplate(BaseModel):
                 'psa_ai_create_workflow': True,
                 'psa_ai_billing': True,
                 'psa_ai_admin': True,
+                # KB
+                'kb_view_articles': True,
+                'kb_edit_articles': True,
+                'kb_move_articles': True,
+                'kb_manage_categories': True,
+                'kb_publish_articles': True,
             },
             {
                 'name': 'Administrator',
@@ -684,6 +714,12 @@ class RoleTemplate(BaseModel):
                 'psa_ai_create_workflow': True,
                 'psa_ai_billing': True,
                 'psa_ai_admin': False,
+                # KB
+                'kb_view_articles': True,
+                'kb_edit_articles': True,
+                'kb_move_articles': True,
+                'kb_manage_categories': True,
+                'kb_publish_articles': True,
             },
             {
                 'name': 'Editor',
@@ -734,6 +770,12 @@ class RoleTemplate(BaseModel):
                 'psa_ai_create_workflow': True,
                 'psa_ai_billing': False,
                 'psa_ai_admin': False,
+                # KB — Editor: no manage_categories
+                'kb_view_articles': True,
+                'kb_edit_articles': True,
+                'kb_move_articles': True,
+                'kb_manage_categories': False,
+                'kb_publish_articles': True,
             },
             {
                 'name': 'Help Desk',
@@ -784,6 +826,12 @@ class RoleTemplate(BaseModel):
                 'psa_ai_create_workflow': False,
                 'psa_ai_billing': False,
                 'psa_ai_admin': False,
+                # KB — Help Desk: view + minimal edit (matches docs_create=True)
+                'kb_view_articles': True,
+                'kb_edit_articles': False,
+                'kb_move_articles': False,
+                'kb_manage_categories': False,
+                'kb_publish_articles': False,
             },
             {
                 'name': 'IT Manager',
@@ -834,6 +882,12 @@ class RoleTemplate(BaseModel):
                 'psa_ai_create_workflow': True,
                 'psa_ai_billing': False,
                 'psa_ai_admin': False,
+                # KB — IT Manager: full KB access
+                'kb_view_articles': True,
+                'kb_edit_articles': True,
+                'kb_move_articles': True,
+                'kb_manage_categories': True,
+                'kb_publish_articles': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -884,6 +938,12 @@ class RoleTemplate(BaseModel):
                 'psa_ai_create_workflow': False,
                 'psa_ai_billing': False,
                 'psa_ai_admin': False,
+                # KB — Documentation Writer: full KB access
+                'kb_view_articles': True,
+                'kb_edit_articles': True,
+                'kb_move_articles': True,
+                'kb_manage_categories': True,
+                'kb_publish_articles': True,
             },
             {
                 'name': 'Read-Only',
@@ -934,6 +994,12 @@ class RoleTemplate(BaseModel):
                 'psa_ai_create_workflow': False,
                 'psa_ai_billing': False,
                 'psa_ai_admin': False,
+                # KB — Read-Only: view only
+                'kb_view_articles': True,
+                'kb_edit_articles': False,
+                'kb_move_articles': False,
+                'kb_manage_categories': False,
+                'kb_publish_articles': False,
             },
         ]
 

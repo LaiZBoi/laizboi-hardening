@@ -3,373 +3,309 @@
 
 {% block title %}Integrations{% endblock %}
 
-{% block content %}
-<h1 class="mb-4">Integrations</h1>
+{% block extra_css %}
+<style>
+    /* Condensed integration tile grid — 6 cols desktop, 3 tablet, 2 phone. */
+    .integration-tile-grid {
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    @media (min-width: 576px) {
+        .integration-tile-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (min-width: 992px) {
+        .integration-tile-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1400px) {
+        .integration-tile-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    }
+    .integration-tile {
+        border: 1px solid var(--bs-border-color, #dee2e6);
+        border-radius: 0.5rem;
+        padding: 0.65rem 0.75rem;
+        background: var(--bs-body-bg, #fff);
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        min-height: 130px;
+        transition: box-shadow .15s ease;
+    }
+    .integration-tile:hover { box-shadow: 0 0.25rem 0.6rem rgba(0,0,0,0.08); }
+    .integration-tile .tile-head {
+        display: flex; align-items: center; gap: 0.4rem;
+        font-size: 0.78rem; color: var(--bs-secondary-color, #6c757d);
+        text-transform: uppercase; letter-spacing: 0.02em;
+    }
+    .integration-tile .tile-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        line-height: 1.15;
+        word-break: break-word;
+    }
+    .integration-tile .tile-provider {
+        font-size: 0.78rem; color: var(--bs-secondary-color, #6c757d);
+        word-break: break-word;
+    }
+    .integration-tile .tile-foot {
+        margin-top: auto;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 0.4rem;
+        font-size: 0.72rem;
+    }
+    /* Status pill — designed to dominate the tile so a 100-integration page
+       can be scanned at a glance. */
+    .status-pill {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        padding: 0.2rem 0.55rem; border-radius: 999px;
+        font-weight: 600; font-size: 0.78rem;
+        line-height: 1; white-space: nowrap;
+    }
+    .status-pill .dot {
+        width: 0.55rem; height: 0.55rem; border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.35);
+    }
+    .status-pill.status-off     { background:#e9ecef; color:#495057; }
+    .status-pill.status-working { background:#d1e7dd; color:#0f5132; }
+    .status-pill.status-broken  { background:#f8d7da; color:#842029; }
+    .status-pill.status-unknown { background:#fff3cd; color:#664d03; }
 
-<!-- PSA Integrations Section -->
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-ticket-alt"></i> PSA Integrations</h5>
-        <a href="{% url 'integrations:integration_create' %}" class="btn btn-sm btn-primary">
-            <i class="fas fa-plus"></i> Add PSA Integration
-        </a>
-    </div>
-    <div class="card-body">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Provider</th>
-                    <th>Status</th>
-                    <th>Last Sync</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for conn in psa_connections %}
-                <tr>
-                    <td><a href="{% url 'integrations:integration_detail' conn.pk %}">{{ conn.name }}</a></td>
-                    <td>{{ conn.get_provider_type_display }}</td>
-                    <td>
-                        {% if conn.is_active %}
-                        <span class="badge bg-success">Active</span>
-                        {% else %}
-                        <span class="badge bg-secondary">Inactive</span>
-                        {% endif %}
-                    </td>
-                    <td>{% if conn.last_sync_at %}<span data-utc="{{ conn.last_sync_at|date:"c" }}">{{ conn.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td>
-                    <td>
-                        <button class="btn btn-sm btn-info test-conn" data-id="{{ conn.pk }}">Test</button>
-                        <button class="btn btn-sm btn-primary sync-conn" data-id="{{ conn.pk }}">Sync</button>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="5" class="text-center">No PSA integrations configured.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <div class="mt-3">
-            <a href="{% url 'integrations:psa_companies' %}" class="btn btn-outline-primary btn-sm">View Synced Companies</a>
-            <a href="{% url 'integrations:psa_tickets' %}" class="btn btn-outline-primary btn-sm">View Synced Tickets</a>
+    /* Dark-mode tweaks (bs-data-theme). */
+    [data-bs-theme="dark"] .integration-tile {
+        background: rgba(255,255,255,0.03);
+        border-color: rgba(255,255,255,0.12);
+    }
+    [data-bs-theme="dark"] .status-pill.status-off     { background:#343a40; color:#dee2e6; }
+    [data-bs-theme="dark"] .status-pill.status-working { background:#0f5132; color:#d1e7dd; }
+    [data-bs-theme="dark"] .status-pill.status-broken  { background:#842029; color:#f8d7da; }
+    [data-bs-theme="dark"] .status-pill.status-unknown { background:#664d03; color:#fff3cd; }
+
+    .summary-chips .badge { font-weight: 500; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="mb-1"><i class="fas fa-plug"></i> Integrations</h1>
+        <div class="summary-chips d-flex flex-wrap gap-2 small">
+            <span class="badge bg-secondary">{{ counts.total }} total</span>
+            {% if counts.working %}<span class="badge bg-success">{{ counts.working }} working</span>{% endif %}
+            {% if counts.broken %}<span class="badge bg-danger">{{ counts.broken }} broken</span>{% endif %}
+            {% if counts.unknown %}<span class="badge bg-warning text-dark">{{ counts.unknown }} unknown</span>{% endif %}
+            {% if counts.off %}<span class="badge bg-light text-dark border">{{ counts.off }} off</span>{% endif %}
         </div>
+    </div>
+    <div class="btn-group flex-wrap" role="group" aria-label="Add integration">
+        <a href="{% url 'integrations:integration_create' %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> PSA</a>
+        <a href="{% url 'integrations:rmm_create' %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> RMM</a>
+        {% url 'integrations:unifi_create' as u %}{% if u %}<a href="{{ u }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> UniFi</a>{% endif %}
+        {% url 'integrations:m365_create' as u %}{% if u %}<a href="{{ u }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> M365</a>{% endif %}
+        {% url 'integrations:omada_create' as u %}{% if u %}<a href="{{ u }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Omada</a>{% endif %}
+        {% url 'integrations:grandstream_create' as u %}{% if u %}<a href="{{ u }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Grandstream</a>{% endif %}
+        {% url 'integrations:distributor_create' as u %}{% if u %}<a href="{{ u }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Distributor</a>{% endif %}
+        {% url 'integrations:accounting_create' as u %}{% if u %}<a href="{{ u }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Accounting</a>{% endif %}
     </div>
 </div>
 
-<!-- RMM Integrations Section -->
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-desktop"></i> RMM Integrations</h5>
-        <a href="{% url 'integrations:rmm_create' %}" class="btn btn-sm btn-primary">
-            <i class="fas fa-plus"></i> Add RMM Integration
-        </a>
+<!-- Filter / search / view toggle -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end" id="integrations-filter-form">
+            <div class="col-md-6 col-lg-8">
+                <label for="search_q" class="form-label small mb-1"><i class="fas fa-search"></i> Search</label>
+                <input type="text" name="q" id="search_q" class="form-control form-control-sm"
+                       placeholder="Provider or connection name..." value="{{ search_query|default:'' }}">
+            </div>
+            <div class="col-md-3 col-lg-2">
+                <label class="form-label small mb-1 d-block"><i class="fas fa-eye"></i> View</label>
+                <div class="btn-group btn-group-sm w-100" role="group" aria-label="View mode toggle">
+                    <input type="hidden" name="view" id="view_mode_input" value="{{ view_mode }}">
+                    <button type="button" id="view_mode_tile"
+                            class="btn {% if view_mode == 'tile' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+                            title="Tile view">
+                        <i class="fas fa-th"></i> Tile
+                    </button>
+                    <button type="button" id="view_mode_list"
+                            class="btn {% if view_mode == 'list' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+                            title="List view">
+                        <i class="fas fa-list"></i> List
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-3 col-lg-2 text-end">
+                <button type="submit" class="btn btn-sm btn-secondary w-100">
+                    <i class="fas fa-search"></i> Apply
+                </button>
+            </div>
+        </form>
     </div>
-    <div class="card-body">
-        <table class="table table-striped">
-            <thead>
+</div>
+
+{% if rows %}
+
+{% if view_mode == 'list' %}
+<!-- ============== LIST view ============== -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
                 <tr>
+                    <th style="width:1%"></th>
+                    <th>Category</th>
                     <th>Name</th>
                     <th>Provider</th>
                     <th>Status</th>
-                    <th>Last Sync</th>
-                    <th>Devices</th>
-                    <th>Actions</th>
+                    <th>Last sync</th>
+                    <th class="text-end">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                {% for conn in rmm_connections %}
+                {% for r in rows %}
                 <tr>
-                    <td><a href="{% url 'integrations:rmm_detail' conn.pk %}">{{ conn.name }}</a></td>
-                    <td>{{ conn.get_provider_type_display }}</td>
+                    <td class="text-muted"><i class="{{ r.icon }}"></i></td>
+                    <td><span class="text-muted small">{{ r.category }}</span></td>
                     <td>
-                        {% if conn.sync_enabled %}
-                        <span class="badge bg-success">Enabled</span>
+                        {% if r.detail_url %}
+                            <a href="{{ r.detail_url }}">{{ r.name }}</a>
                         {% else %}
-                        <span class="badge bg-secondary">Disabled</span>
+                            {{ r.name }}
                         {% endif %}
                     </td>
-                    <td>{% if conn.last_sync_at %}<span data-utc="{{ conn.last_sync_at|date:"c" }}">{{ conn.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td>
-                    <td>{{ conn.devices.count }}</td>
+                    <td class="small">{{ r.provider_label|default:"—" }}</td>
                     <td>
-                        <a href="{% url 'integrations:rmm_edit' conn.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                        <span class="status-pill status-{{ r.status.state }}"
+                              {% if r.status.tooltip %}data-bs-toggle="tooltip" title="{{ r.status.tooltip }}"{% endif %}>
+                            <span class="dot"></span>{{ r.status.label }}
+                        </span>
+                    </td>
+                    <td class="small">
+                        {% if r.status.last_at %}
+                            <span data-utc="{{ r.status.last_at|date:"c" }}">{{ r.status.last_at|localtime|date:"Y-m-d H:i" }}</span>
+                        {% else %}
+                            <span class="text-muted">Never</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if r.configure_url %}
+                            <a href="{{ r.configure_url }}" class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-cog"></i> Configure
+                            </a>
+                        {% endif %}
                     </td>
                 </tr>
-                {% empty %}
-                <tr><td colspan="6" class="text-center">No RMM integrations configured.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% if rmm_connections %}
-        <div class="mt-3">
-            <a href="{% url 'integrations:rmm_devices' %}" class="btn btn-outline-primary btn-sm">View All Devices</a>
+    </div>
+</div>
+
+{% else %}
+<!-- ============== TILE view (default) ============== -->
+<div class="integration-tile-grid">
+    {% for r in rows %}
+    <div class="integration-tile">
+        <div class="tile-head">
+            <i class="{{ r.icon }}"></i>
+            <span>{{ r.category }}</span>
         </div>
+        <div class="tile-name">
+            {% if r.detail_url %}
+                <a href="{{ r.detail_url }}" class="text-decoration-none">{{ r.name }}</a>
+            {% else %}
+                {{ r.name }}
+            {% endif %}
+        </div>
+        {% if r.provider_label and r.provider_label != r.category %}
+            <div class="tile-provider">{{ r.provider_label|truncatechars:32 }}</div>
+        {% endif %}
+        <div>
+            <span class="status-pill status-{{ r.status.state }}"
+                  {% if r.status.tooltip %}data-bs-toggle="tooltip" title="{{ r.status.tooltip }}"{% endif %}>
+                <span class="dot"></span>{{ r.status.label }}
+            </span>
+        </div>
+        <div class="tile-foot">
+            <span class="text-muted">
+                {% if r.status.last_at %}
+                    <span data-utc="{{ r.status.last_at|date:"c" }}">{{ r.status.last_at|localtime|date:"m/d H:i" }}</span>
+                {% else %}
+                    Never synced
+                {% endif %}
+            </span>
+            {% if r.configure_url %}
+                <a href="{{ r.configure_url }}" class="btn btn-sm btn-outline-secondary py-0 px-2">
+                    <i class="fas fa-cog"></i> Configure
+                </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="fas fa-plug fa-3x text-muted mb-3"></i>
+        <h5 class="text-muted">No integrations match.</h5>
+        {% if search_query %}
+            <p class="text-muted">No matches for "{{ search_query }}".</p>
+            <a href="{% url 'integrations:integration_list' %}" class="btn btn-sm btn-secondary">
+                <i class="fas fa-times"></i> Clear search
+            </a>
+        {% else %}
+            <p class="text-muted">Add your first integration with the buttons above.</p>
         {% endif %}
     </div>
 </div>
-{% url 'integrations:unifi_create' as unifi_create_url %}
-{% url 'integrations:m365_create' as m365_create_url %}
-
-<!-- UniFi Integrations Section -->
-{% if unifi_create_url %}
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-network-wired"></i> UniFi Integrations</h5>
-        <a href="{{ unifi_create_url }}" class="btn btn-sm btn-primary">
-            <i class="fas fa-plus"></i> Add UniFi Integration
-        </a>
-    </div>
-    <div class="card-body">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Host</th>
-                    <th>Status</th>
-                    <th>Last Sync</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for conn in unifi_connections %}
-                {% url 'integrations:unifi_detail' conn.pk as unifi_detail_url %}
-                {% url 'integrations:unifi_edit' conn.pk as unifi_edit_url %}
-                <tr>
-                    <td><a href="{{ unifi_detail_url }}">{{ conn.name }}</a></td>
-                    <td>{{ conn.host }}</td>
-                    <td>
-                        {% if conn.last_sync_status == 'ok' %}
-                        <span class="badge bg-success">OK</span>
-                        {% elif conn.last_sync_status == 'error' %}
-                        <span class="badge bg-danger">Error</span>
-                        {% elif conn.is_active %}
-                        <span class="badge bg-secondary">Active</span>
-                        {% else %}
-                        <span class="badge bg-secondary">Inactive</span>
-                        {% endif %}
-                    </td>
-                    <td>{% if conn.last_sync_at %}<span data-utc="{{ conn.last_sync_at|date:"c" }}">{{ conn.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td>
-                    <td>
-                        <a href="{{ unifi_detail_url }}" class="btn btn-sm btn-outline-primary">View</a>
-                        <a href="{{ unifi_edit_url }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="5" class="text-center">No UniFi integrations configured.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
 {% endif %}
 
-<!-- M365 Integrations Section -->
-{% if m365_create_url %}
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fab fa-microsoft"></i> Microsoft 365 Integrations</h5>
-        <a href="{{ m365_create_url }}" class="btn btn-sm btn-primary">
-            <i class="fas fa-plus"></i> Add M365 Integration
-        </a>
-    </div>
-    <div class="card-body">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Tenant ID</th>
-                    <th>Status</th>
-                    <th>Last Sync</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for conn in m365_connections %}
-                {% url 'integrations:m365_detail' conn.pk as m365_detail_url %}
-                {% url 'integrations:m365_edit' conn.pk as m365_edit_url %}
-                <tr>
-                    <td><a href="{{ m365_detail_url }}">{{ conn.name }}</a></td>
-                    <td><code>{{ conn.tenant_id|truncatechars:16 }}</code></td>
-                    <td>
-                        {% if conn.last_sync_status == 'ok' %}
-                        <span class="badge bg-success">OK</span>
-                        {% elif conn.last_sync_status == 'error' %}
-                        <span class="badge bg-danger">Error</span>
-                        {% elif conn.is_active %}
-                        <span class="badge bg-secondary">Active</span>
-                        {% else %}
-                        <span class="badge bg-secondary">Inactive</span>
-                        {% endif %}
-                    </td>
-                    <td>{% if conn.last_sync_at %}<span data-utc="{{ conn.last_sync_at|date:"c" }}">{{ conn.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td>
-                    <td>
-                        <a href="{{ m365_detail_url }}" class="btn btn-sm btn-outline-primary">View</a>
-                        <a href="{{ m365_edit_url }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="5" class="text-center">No Microsoft 365 integrations configured.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
-
-{% url 'integrations:omada_create' as omada_create_url %}
-{% url 'integrations:grandstream_create' as grandstream_create_url %}
-
-<!-- Omada Integrations Section -->
-{% if omada_create_url %}
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-network-wired"></i> TP-Link Omada Integrations</h5>
-        <a href="{{ omada_create_url }}" class="btn btn-sm btn-primary">
-            <i class="fas fa-plus"></i> Add Omada Integration
-        </a>
-    </div>
-    <div class="card-body">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Host</th>
-                    <th>Status</th>
-                    <th>Last Sync</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for conn in omada_connections %}
-                {% url 'integrations:omada_detail' conn.pk as omada_detail_url %}
-                {% url 'integrations:omada_edit' conn.pk as omada_edit_url %}
-                <tr>
-                    <td><a href="{{ omada_detail_url }}">{{ conn.name }}</a></td>
-                    <td>{{ conn.host }}</td>
-                    <td>
-                        {% if conn.last_sync_status == 'ok' %}
-                        <span class="badge bg-success">OK</span>
-                        {% elif conn.last_sync_status == 'error' %}
-                        <span class="badge bg-danger">Error</span>
-                        {% elif conn.is_active %}
-                        <span class="badge bg-secondary">Active</span>
-                        {% else %}
-                        <span class="badge bg-secondary">Inactive</span>
-                        {% endif %}
-                    </td>
-                    <td>{% if conn.last_sync_at %}<span data-utc="{{ conn.last_sync_at|date:"c" }}">{{ conn.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td>
-                    <td>
-                        <a href="{{ omada_detail_url }}" class="btn btn-sm btn-outline-primary">View</a>
-                        <a href="{{ omada_edit_url }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="5" class="text-center">No Omada integrations configured.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
-
-{% url 'integrations:distributor_list' as distributor_list_url %}
-{% if distributor_list_url %}
-<!-- Distributors Section (Workstream 8) -->
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-truck"></i> Distributors</h5>
-        <a href="{% url 'integrations:distributor_list' %}" class="btn btn-sm btn-primary">
-            <i class="fas fa-cog"></i> Manage Distributors
-        </a>
-    </div>
-    <div class="card-body">
-        <p class="text-muted mb-2">Vendor catalog, pricing, stock, and order placement. Currently supported: <strong>Ingram Micro Xvantage</strong>. Reserved provider types: TD Synnex, D&amp;H, ScanSource, Pax8, QBS, Westcoast.</p>
-        <a href="{% url 'integrations:distributor_create' %}" class="btn btn-outline-primary btn-sm">
-            <i class="fas fa-plus"></i> Add Distributor
-        </a>
-        <a href="{% url 'integrations:distributor_list' %}" class="btn btn-outline-secondary btn-sm">View All</a>
-    </div>
-</div>
-{% endif %}
-
-<!-- Grandstream Integrations Section -->
-{% if grandstream_create_url %}
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-wifi"></i> Grandstream GWN Integrations</h5>
-        <a href="{{ grandstream_create_url }}" class="btn btn-sm btn-primary">
-            <i class="fas fa-plus"></i> Add Grandstream Integration
-        </a>
-    </div>
-    <div class="card-body">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Host</th>
-                    <th>Status</th>
-                    <th>Last Sync</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for conn in grandstream_connections %}
-                {% url 'integrations:grandstream_detail' conn.pk as grandstream_detail_url %}
-                {% url 'integrations:grandstream_edit' conn.pk as grandstream_edit_url %}
-                <tr>
-                    <td><a href="{{ grandstream_detail_url }}">{{ conn.name }}</a></td>
-                    <td>{{ conn.host }}</td>
-                    <td>
-                        {% if conn.last_sync_status == 'ok' %}
-                        <span class="badge bg-success">OK</span>
-                        {% elif conn.last_sync_status == 'error' %}
-                        <span class="badge bg-danger">Error</span>
-                        {% elif conn.is_active %}
-                        <span class="badge bg-secondary">Active</span>
-                        {% else %}
-                        <span class="badge bg-secondary">Inactive</span>
-                        {% endif %}
-                    </td>
-                    <td>{% if conn.last_sync_at %}<span data-utc="{{ conn.last_sync_at|date:"c" }}">{{ conn.last_sync_at|localtime|date:"Y-m-d H:i" }}</span>{% else %}Never{% endif %}</td>
-                    <td>
-                        <a href="{{ grandstream_detail_url }}" class="btn btn-sm btn-outline-primary">View</a>
-                        <a href="{{ grandstream_edit_url }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="5" class="text-center">No Grandstream integrations configured.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
-document.querySelectorAll('.test-conn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const id = this.dataset.id;
-        fetch(`/integrations/${id}/test/`, {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}})
-        .then(r => r.json())
-        .then(data => alert(data.message))
-        .catch(e => alert('Error testing connection'));
-    });
-});
+(function () {
+    // View-mode toggle persistence: querystring is the source of truth on render,
+    // localStorage restores preference across visits when no ?view= is present.
+    var STORAGE_KEY = 'integrationsViewMode';
+    var input = document.getElementById('view_mode_input');
+    var btnTile = document.getElementById('view_mode_tile');
+    var btnList = document.getElementById('view_mode_list');
+    var form = document.getElementById('integrations-filter-form');
+    var serverMode = input ? input.value : 'tile';
 
-document.querySelectorAll('.sync-conn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const id = this.dataset.id;
-        if (!confirm('Start sync now?')) return;
-        this.disabled = true;
-        this.textContent = 'Syncing...';
-        fetch(`/integrations/${id}/sync/`, {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}})
-        .then(r => r.json())
-        .then(data => {
-            alert(data.message + '\n' + JSON.stringify(data.stats));
-            location.reload();
-        })
-        .catch(e => alert('Sync error'));
-    });
-});
+    try {
+        var params = new URLSearchParams(window.location.search);
+        if (!params.has('view')) {
+            var stored = localStorage.getItem(STORAGE_KEY);
+            if (stored === 'list' && serverMode !== 'list') {
+                params.set('view', 'list');
+                window.location.search = params.toString();
+                return;
+            }
+        } else {
+            localStorage.setItem(STORAGE_KEY, serverMode);
+        }
+    } catch (e) { /* localStorage unavailable; ignore */ }
+
+    function setMode(mode) {
+        try { localStorage.setItem(STORAGE_KEY, mode); } catch (e) {}
+        if (input) input.value = mode;
+        if (form) form.submit();
+    }
+    if (btnTile) btnTile.addEventListener('click', function () { setMode('tile'); });
+    if (btnList) btnList.addEventListener('click', function () { setMode('list'); });
+
+    // Bootstrap tooltips on status pills (only if the bootstrap bundle exposes it).
+    try {
+        if (window.bootstrap && bootstrap.Tooltip) {
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+                new bootstrap.Tooltip(el);
+            });
+        }
+    } catch (e) {}
+})();
 </script>
 {% endblock %}

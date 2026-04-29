@@ -15,11 +15,18 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0"><i class="fas fa-book me-2"></i>Knowledge Base</h2>
-    {% if request.user.is_superuser or request.user.is_staff %}
-    <a href="{% url 'docs:category_list' %}?global=1" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-folder-tree me-1"></i>Manage categories
-    </a>
-    {% endif %}
+    <div class="d-flex gap-2">
+        {% if can_edit_kb %}
+        <a href="{% url 'docs:global_kb_create' %}{% if selected_cat %}?category={{ selected_cat.slug }}{% endif %}" class="btn btn-sm btn-primary">
+            <i class="fas fa-plus me-1"></i>New article
+        </a>
+        {% endif %}
+        {% if can_manage_categories %}
+        <a href="{% url 'docs:category_list' %}?global=1" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-folder-tree me-1"></i>Manage categories
+        </a>
+        {% endif %}
+    </div>
 </div>
 
 <form method="get" class="mb-3">
@@ -36,7 +43,14 @@
         <div class="card">
             <div class="card-header py-2 d-flex justify-content-between align-items-center">
                 <strong><i class="fas fa-folder-tree me-1"></i>Categories</strong>
-                <span class="badge bg-secondary">{{ all_categories_count }}</span>
+                <span class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary">{{ all_categories_count }}</span>
+                    {% if can_manage_categories %}
+                    <a href="{% url 'docs:category_list' %}?global=1" class="btn btn-sm btn-link p-0" title="Manage categories">
+                        <i class="fas fa-cog"></i> Manage
+                    </a>
+                    {% endif %}
+                </span>
             </div>
             <div class="list-group list-group-flush small">
                 <a href="{% url 'psa:kb_browse' %}{% if query %}?q={{ query }}{% endif %}"
@@ -48,7 +62,7 @@
             {% if not category_roots %}
             <div class="card-body small text-muted">
                 No categories yet.
-                {% if request.user.is_superuser or request.user.is_staff %}
+                {% if can_manage_categories %}
                 <a href="{% url 'docs:category_create' %}?global=1">Create one →</a>
                 {% endif %}
             </div>
@@ -69,20 +83,71 @@
                 </span>
                 <span class="badge bg-info">{{ articles|length }} article{{ articles|length|pluralize }}</span>
             </div>
+
+            {% if can_move_kb and articles %}
+            <form method="post" action="{% url 'psa:kb_move_articles' %}" id="kb-move-form" class="px-3 pt-3 pb-2 border-bottom">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <div class="d-flex flex-wrap align-items-center gap-2 small">
+                    <label for="kb-move-target" class="mb-0"><i class="fas fa-arrows-alt me-1"></i>Move selected to:</label>
+                    <select name="target_category_id" id="kb-move-target" class="form-select form-select-sm" style="max-width: 320px;">
+                        <option value="">— Uncategorized —</option>
+                        {% for c, depth in flat_categories %}
+                        <option value="{{ c.id }}">{% for i in ""|ljust:depth %}&nbsp;&nbsp;{% endfor %}{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-outline-primary" id="kb-move-submit" disabled>
+                        <i class="fas fa-arrow-right me-1"></i>Move <span id="kb-move-count">0</span> article(s)
+                    </button>
+                    <span class="text-muted ms-auto"><span id="kb-selected-count">0</span> selected</span>
+                </div>
+            </form>
+            {% endif %}
+
             <div class="card-body p-0">
                 <table class="table table-hover mb-0">
-                    <thead class="table-light"><tr><th>Title</th><th>Category</th><th>Updated</th><th>Author</th></tr></thead>
+                    <thead class="table-light">
+                        <tr>
+                            {% if can_move_kb %}<th style="width: 32px;"><input type="checkbox" id="kb-select-all" form="kb-move-form" aria-label="Select all"></th>{% endif %}
+                            <th>Title</th>
+                            <th>Category</th>
+                            <th>Updated</th>
+                            <th>Author</th>
+                            {% if can_edit_kb or can_move_kb %}<th style="width: 180px;">Actions</th>{% endif %}
+                        </tr>
+                    </thead>
                     <tbody>
                     {% for a in articles %}
                         <tr>
+                            {% if can_move_kb %}
+                            <td><input type="checkbox" class="kb-row-check" name="article_ids" value="{{ a.id }}" form="kb-move-form" aria-label="Select article"></td>
+                            {% endif %}
                             <td><a href="{% url 'docs:document_detail' a.slug %}"><strong>{{ a.title }}</strong></a></td>
                             <td>{% if a.category %}<a href="?category={{ a.category.slug }}" class="text-decoration-none"><span class="badge bg-light text-dark border">{{ a.category.name }}</span></a>{% else %}<span class="text-muted small">—</span>{% endif %}</td>
                             <td><small><span data-utc="{{ a.updated_at|date:'c' }}">{{ a.updated_at|date:'Y-m-d' }}</span></small></td>
                             <td><small>{% if a.created_by %}{{ a.created_by.username }}{% else %}—{% endif %}</small></td>
+                            {% if can_edit_kb or can_move_kb %}
+                            <td class="text-nowrap">
+                                {% if can_edit_kb %}
+                                <a href="{% url 'docs:global_kb_edit' a.slug %}" class="btn btn-sm btn-outline-secondary" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{% url 'docs:global_kb_delete' a.slug %}" class="btn btn-sm btn-outline-danger" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                                {% endif %}
+                                {% if can_move_kb %}
+                                <button type="button" class="btn btn-sm btn-outline-primary kb-quick-move-btn"
+                                        data-article-id="{{ a.id }}" title="Move this article">
+                                    <i class="fas fa-arrows-alt"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                            {% endif %}
                         </tr>
                     {% empty %}
-                        <tr><td colspan="4" class="text-center text-muted py-4">
-                        {% if query %}No matches.{% elif selected_cat %}No articles in this category yet.{% else %}No KB articles yet — create one in the Docs section with "global" enabled.{% endif %}
+                        <tr><td colspan="{% if can_edit_kb or can_move_kb %}{% if can_move_kb %}6{% else %}5{% endif %}{% else %}4{% endif %}" class="text-center text-muted py-4">
+                        {% if query %}No matches.{% elif selected_cat %}No articles in this category yet.{% else %}No KB articles yet — {% if can_edit_kb %}<a href="{% url 'docs:global_kb_create' %}{% if selected_cat %}?category={{ selected_cat.slug }}{% endif %}">create one →</a>{% else %}create one in the Docs section with "global" enabled.{% endif %}{% endif %}
                         </td></tr>
                     {% endfor %}
                     </tbody>
@@ -91,4 +156,46 @@
         </div>
     </main>
 </div>
+
+{% if can_move_kb %}
+<script>
+(function() {
+    var selectAll = document.getElementById('kb-select-all');
+    var rows = document.querySelectorAll('.kb-row-check');
+    var submit = document.getElementById('kb-move-submit');
+    var countSpan = document.getElementById('kb-move-count');
+    var selectedSpan = document.getElementById('kb-selected-count');
+
+    function update() {
+        var n = 0;
+        rows.forEach(function(r){ if (r.checked) n++; });
+        if (countSpan) countSpan.textContent = n;
+        if (selectedSpan) selectedSpan.textContent = n;
+        if (submit) submit.disabled = (n === 0);
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            rows.forEach(function(r){ r.checked = selectAll.checked; });
+            update();
+        });
+    }
+    rows.forEach(function(r) { r.addEventListener('change', update); });
+
+    // Single-row "Move" button checks just that row, then scrolls to the form.
+    document.querySelectorAll('.kb-quick-move-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = btn.getAttribute('data-article-id');
+            rows.forEach(function(r) { r.checked = (r.value === id); });
+            if (selectAll) selectAll.checked = false;
+            update();
+            var sel = document.getElementById('kb-move-target');
+            if (sel) sel.focus();
+        });
+    });
+
+    update();
+})();
+</script>
+{% endif %}
 {% endblock %}

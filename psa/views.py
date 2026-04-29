@@ -1559,9 +1559,13 @@ def service_catalog(request):
     ).order_by('sort_order', 'name')
     if not is_admin:
         qs = qs.filter(is_active=True)
+    view_mode = request.GET.get('view', 'tile')
+    if view_mode not in ('tile', 'list'):
+        view_mode = 'tile'
     return render(request, 'psa/service_catalog.html', {
         'items': qs,
         'is_catalog_admin': is_admin,
+        'view_mode': view_mode,
     })
 
 
@@ -1976,6 +1980,33 @@ def recurring_form(request, pk=None):
     return _render()
 
 
+def _check_kb_perm(user, perm_name):
+    """Cross-org KB permission check.
+
+    Superusers / staff users always pass. For everyone else we walk all
+    of their active memberships — having the permission on ANY membership
+    grants it (typical for KB which is mostly cross-org / global).
+    """
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser or getattr(user, 'is_staff', False):
+        return True
+    from accounts.models import Membership
+    qs = Membership.objects.filter(user=user, is_active=True).select_related('role_template')
+    for m in qs:
+        perms = m.get_permissions()
+        if getattr(perms, perm_name, False):
+            return True
+    return False
+
+
+def _flatten_categories(cats_by_parent, parent_id=None, depth=0):
+    """Walk a parent_id→children dict, yielding (cat, depth) in tree order."""
+    for c in cats_by_parent.get(parent_id, []):
+        yield c, depth
+        yield from _flatten_categories(cats_by_parent, c.id, depth + 1)
+
+
 @login_required
 @require_psa_enabled
 def kb_browse(request):
@@ -2029,6 +2060,14 @@ def kb_browse(request):
 
     articles = qs.select_related('category', 'created_by').order_by('-updated_at')[:100]
 
+    # Permission flags — drive button visibility in the template.
+    can_edit_kb = _check_kb_perm(request.user, 'kb_edit_articles')
+    can_move_kb = _check_kb_perm(request.user, 'kb_move_articles')
+    can_manage_categories = _check_kb_perm(request.user, 'kb_manage_categories')
+
+    # Pre-built flat category list for the "Move to →" dropdown.
+    flat_cats = list(_flatten_categories(cats_by_parent))
+
     return render(request, 'psa/kb_browse.html', {
         'articles': articles,
         'query': q,
@@ -2037,7 +2076,89 @@ def kb_browse(request):
         'selected_cat': selected_cat,
         'selected_breadcrumb': selected_breadcrumb,
         'all_categories_count': cats_qs.count(),
+        'can_edit_kb': can_edit_kb,
+        'can_move_kb': can_move_kb,
+        'can_manage_categories': can_manage_categories,
+        'flat_categories': flat_cats,
     })
+
+
+@login_required
+@require_psa_enabled
+@require_http_methods(['POST'])
+def kb_move_articles(request):
+    """Bulk-move KB articles between categories.
+
+    POST body:
+      article_ids[] -- list of Document IDs (must be is_global=True)
+      target_category_id -- DocumentCategory.id, or empty/'' for "uncategorized"
+
+    Permission: kb_move_articles (cross-org check via _check_kb_perm).
+    """
+    from django.core.exceptions import PermissionDenied
+    from docs.models import Document, DocumentCategory
+
+    if not _check_kb_perm(request.user, 'kb_move_articles'):
+        raise PermissionDenied("You don't have permission to move KB articles.")
+
+    raw_ids = request.POST.getlist('article_ids') or request.POST.getlist('article_ids[]')
+    try:
+        article_ids = [int(x) for x in raw_ids if str(x).strip()]
+    except (TypeError, ValueError):
+        article_ids = []
+
+    if not article_ids:
+        messages.error(request, 'Select at least one article to move.')
+        return redirect(request.META.get('HTTP_REFERER') or reverse('psa:kb_browse'))
+
+    target_raw = (request.POST.get('target_category_id') or '').strip()
+    target_id = None
+    target_cat = None
+    if target_raw:
+        try:
+            target_id = int(target_raw)
+        except (TypeError, ValueError):
+            target_id = None
+        if target_id is not None:
+            target_cat = DocumentCategory.objects.filter(
+                pk=target_id, organization__isnull=True
+            ).first()
+            if not target_cat:
+                messages.error(request, 'Invalid target category.')
+                return redirect(request.META.get('HTTP_REFERER') or reverse('psa:kb_browse'))
+
+    # Single-query update across all selected global KB articles.
+    qs = Document.objects.filter(pk__in=article_ids, is_global=True)
+    n = qs.update(category=target_cat)
+
+    AuditLog.log(
+        user=request.user,
+        action='update',
+        organization=None,
+        object_type='docs.Document',
+        object_id=None,
+        object_repr=f'KB bulk move ({n} article{"s" if n != 1 else ""})',
+        description=(
+            f'Moved {n} KB article(s) to '
+            f'{target_cat.name if target_cat else "Uncategorized"} '
+            f'(ids={article_ids})'
+        ),
+        ip_address=_client_ip(request),
+        path=request.path,
+    )
+
+    if n:
+        target_label = target_cat.name if target_cat else 'Uncategorized'
+        messages.success(
+            request,
+            f'Moved {n} article{"s" if n != 1 else ""} to "{target_label}".'
+        )
+    else:
+        messages.warning(request, 'No matching KB articles to move.')
+
+    # Preserve the user's current category filter on redirect.
+    next_url = request.POST.get('next') or reverse('psa:kb_browse')
+    return redirect(next_url)
 
 
 @login_required

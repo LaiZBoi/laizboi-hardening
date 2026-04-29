@@ -8,18 +8,33 @@
     </ol>
 </nav>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
         <h2 class="mb-0"><i class="fas fa-th me-2"></i>Service Catalog</h2>
         <small class="text-muted">Pre-fill a new ticket from a common request template.</small>
     </div>
-    {% if is_catalog_admin %}
-    <a href="{% url 'psa:service_catalog_create' %}" class="btn btn-primary">
-        <i class="fas fa-plus me-1"></i>New Catalog Item
-    </a>
-    {% endif %}
+    <div class="d-flex align-items-center gap-2">
+        <div class="btn-group btn-group-sm" role="group" aria-label="View mode">
+            <a href="?view=tile{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}"
+               class="btn btn-outline-secondary {% if view_mode == 'tile' %}active{% endif %}"
+               title="Tile view">
+                <i class="fas fa-th"></i> Tile
+            </a>
+            <a href="?view=list{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}"
+               class="btn btn-outline-secondary {% if view_mode == 'list' %}active{% endif %}"
+               title="List view">
+                <i class="fas fa-list"></i> List
+            </a>
+        </div>
+        {% if is_catalog_admin %}
+        <a href="{% url 'psa:service_catalog_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>New Catalog Item
+        </a>
+        {% endif %}
+    </div>
 </div>
 
+{% if view_mode == 'tile' %}
 <div class="row g-3">
     {% for item in items %}
     <div class="col-md-6 col-lg-4">
@@ -51,4 +66,60 @@
     <div class="col-12 text-muted small">No catalog items configured. {% if is_catalog_admin %}Click <strong>New Catalog Item</strong> above or run <code>psa_seed_defaults</code>.{% endif %}</div>
     {% endfor %}
 </div>
+{% else %}
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr><th>Name</th><th>Description</th><th>Default queue</th><th>Default priority</th><th>Fields</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>
+                        {% if item.icon %}<i class="{{ item.icon }} me-1"></i>{% endif %}
+                        <a href="{% url 'psa:ticket_create' %}?from_catalog={{ item.slug }}"><strong>{{ item.name }}</strong></a>
+                    </td>
+                    <td class="small text-muted">{{ item.description|truncatechars:80 }}</td>
+                    <td>{{ item.default_queue.name|default:'—' }}</td>
+                    <td>{{ item.default_priority.code|default:'—' }}</td>
+                    <td><span class="badge text-bg-light border">{{ item.fields_json|length }}</span></td>
+                    <td>
+                        {% if item.is_active %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if is_catalog_admin %}
+                        <a href="{% url 'psa:service_catalog_edit' item.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-pen"></i></a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">No catalog items yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+    const KEY = 'serviceCatalogViewMode';
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('view')) {
+        const saved = localStorage.getItem(KEY);
+        if (saved === 'list') {
+            params.set('view', 'list');
+            window.location.replace(window.location.pathname + '?' + params.toString());
+            return;
+        }
+    }
+    if (params.get('view') === 'list') localStorage.setItem(KEY, 'list');
+    else localStorage.setItem(KEY, 'tile');
+})();
+</script>
 {% endblock %}

@@ -47,6 +47,7 @@ urlpatterns = [
     path('recurring/<int:pk>/edit/', views.recurring_form, name='recurring_edit'),
     # Knowledge Base browser
     path('kb/', views.kb_browse, name='kb_browse'),
+    path('kb/move/', views.kb_move_articles, name='kb_move_articles'),
     # Approvals
     path('approvals/', views.approval_list, name='approval_list'),
     path('approvals/<int:pk>/decide/', views.approval_decide, name='approval_decide'),
