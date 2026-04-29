@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     'psa.apps.PsaConfig',
     'psa_ai.apps.PsaAiConfig',
     'portal.apps.PortalConfig',
+    'resourcing.apps.ResourcingConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)

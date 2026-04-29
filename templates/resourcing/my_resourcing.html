@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}My Resources{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1"><i class="fas fa-user-graduate"></i>
+            {% if viewing_as_admin %}{{ target.username }} — Resources{% else %}My Resources{% endif %}
+        </h1>
+        <p class="text-muted mb-0">Skills, certifications, and working hours.</p>
+    </div>
+    {% if request.user.is_staff or request.user.is_superuser %}
+    <a href="{% url 'resourcing:tech_roster' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-users"></i> Tech Roster
+    </a>
+    {% endif %}
+</div>
+
+{% if viewing_as_admin %}
+<div class="alert alert-warning">
+    <i class="fas fa-user-shield"></i> Viewing as admin. Edits affect <strong>{{ target.username }}</strong>.
+</div>
+{% endif %}
+
+{% if messages %}
+{% for m in messages %}
+<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+{% endfor %}
+{% endif %}
+
+<div class="row g-4">
+
+<!-- Skills card -->
+<div class="col-lg-6">
+    <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-screwdriver-wrench"></i> Skills <span class="badge bg-secondary">{{ skills.count }}</span></h5>
+            <a href="{% url 'resourcing:skill_add' %}{% if viewing_as_admin %}?user={{ target.id }}{% endif %}" class="btn btn-sm btn-primary">
+                <i class="fas fa-plus"></i> Add Skill
+            </a>
+        </div>
+        <div class="card-body p-0">
+            {% if skills %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Skill</th>
+                        <th>Proficiency</th>
+                        <th>Years</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for skill in skills %}
+                    <tr>
+                        <td>
+                            <strong>{{ skill.name }}</strong>
+                            {% if skill.notes %}<br><small class="text-muted">{{ skill.notes|truncatechars:80 }}</small>{% endif %}
+                        </td>
+                        <td><span class="badge bg-info text-dark">{{ skill.get_proficiency_display }}</span></td>
+                        <td>{{ skill.years_experience|default:"—" }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'resourcing:skill_edit' skill.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a>
+                            <a href="{% url 'resourcing:skill_delete' skill.pk %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-screwdriver-wrench fa-2x mb-2"></i>
+                <p class="mb-0">No skills yet. Click <strong>Add Skill</strong> to get started.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Certifications card -->
+<div class="col-lg-6">
+    <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-certificate"></i> Certifications <span class="badge bg-secondary">{{ certifications.count }}</span></h5>
+            <a href="{% url 'resourcing:cert_add' %}{% if viewing_as_admin %}?user={{ target.id }}{% endif %}" class="btn btn-sm btn-primary">
+                <i class="fas fa-plus"></i> Add Certification
+            </a>
+        </div>
+        <div class="card-body p-0">
+            {% if certifications %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Certification</th>
+                        <th>Issuer</th>
+                        <th>Expires</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cert in certifications %}
+                    <tr>
+                        <td>
+                            <strong>{{ cert.name }}</strong>
+                            {% if cert.credential_id %}<br><small class="text-muted">ID: {{ cert.credential_id }}</small>{% endif %}
+                            {% if cert.verification_url %}<br><a href="{{ cert.verification_url }}" target="_blank" rel="noopener" class="small">Verify <i class="fas fa-external-link-alt"></i></a>{% endif %}
+                            {% if cert.attachment %}<br><a href="{{ cert.attachment.url }}" target="_blank" rel="noopener" class="small"><i class="fas fa-file"></i> Attachment</a>{% endif %}
+                        </td>
+                        <td>{{ cert.issuer|default:"—" }}</td>
+                        <td>
+                            {% if cert.expires_at %}
+                                {{ cert.expires_at|date:"Y-m-d" }}
+                                {% if cert.is_expired %}
+                                    <span class="badge bg-danger ms-1">Expired</span>
+                                {% elif cert.expires_soon %}
+                                    <span class="badge bg-warning text-dark ms-1">Soon</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">No expiry</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'resourcing:cert_edit' cert.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a>
+                            <a href="{% url 'resourcing:cert_delete' cert.pk %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-certificate fa-2x mb-2"></i>
+                <p class="mb-0">No certifications yet. Click <strong>Add Certification</strong>.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Working Hours card -->
+<div class="col-12">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-clock"></i> Working Hours <span class="badge bg-secondary">{{ working_hours.count }}</span></h5>
+            <a href="{% url 'resourcing:hours_add' %}{% if viewing_as_admin %}?user={{ target.id }}{% endif %}" class="btn btn-sm btn-primary">
+                <i class="fas fa-plus"></i> Add Working Hours
+            </a>
+        </div>
+        <div class="card-body p-0">
+            {% if working_hours %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Weekday</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Active</th>
+                        <th>Notes</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for wh in working_hours %}
+                    <tr>
+                        <td><strong>{{ wh.get_weekday_display }}</strong></td>
+                        <td>{{ wh.start_time|time:"H:i" }}</td>
+                        <td>{{ wh.end_time|time:"H:i" }}</td>
+                        <td>
+                            {% if wh.is_active %}
+                                <span class="badge bg-success">Active</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ wh.notes|default:"—" }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'resourcing:hours_edit' wh.pk %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a>
+                            <a href="{% url 'resourcing:hours_delete' wh.pk %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-clock fa-2x mb-2"></i>
+                <p class="mb-1">No working hours configured.</p>
+                <p class="small mb-0">Without rows, the system treats you as <em>always working</em> (capacity reporting + GPS off-shift suppression are disabled).</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+</div>
+{% endblock %}

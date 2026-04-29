@@ -49,6 +49,7 @@ urlpatterns = [
     path('psa/', include('psa.urls')),
     path('psa/ai/', include('psa_ai.urls')),
     path('portal/', include('portal.urls')),
+    path('resourcing/', include('resourcing.urls')),
 
     # API
     path('api/', include('api.urls')),

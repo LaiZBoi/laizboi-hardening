@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.132] - 2026-04-29
+
+### Added — Phase 2.1: Resource management foundation (skills, certifications, working hours)
+- New `resourcing` Django app with three models: `UserSkill` (proficiency tiers + years experience), `UserCertification` (issuer + credential id + expiry warnings + attachment upload), `WorkingHours` (per-weekday windows; split shifts allowed).
+- "My Resources" page at `/resourcing/me/` — three-card profile view where users manage their own skills, certs, and working hours.
+- Staff-only **tech roster** at `/resourcing/roster/` — every internal user with skill counts, cert counts, "working now" indicator, expiring-cert warnings.
+- Superusers + staff can edit anyone's rows via `?user=<id>` querystring; regular users limited to their own.
+- New `UserProfile.is_working_now()` helper — used by capacity reporting (Phase 3) and GPS off-shift suppression (Phase 8.5). Backwards-compatible: returns True if user has zero WorkingHours rows.
+- 6 unit tests in `resourcing/tests.py`.
+
+Phase 2.2 (PTO + LeaveRequest + BillableTarget) and Phase 2.3 (capacity report + skill-ranking on dispatch board) come next.
+
+### Migration
+`resourcing.0001_initial`.
+
 ## [3.17.131] - 2026-04-29
 
 ### Roadmap

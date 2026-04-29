@@ -399,6 +399,30 @@ class UserProfile(BaseModel):
         from django.utils import timezone
         return timezone.now() < self.account_locked_until
 
+    def is_working_now(self):
+        """True if the user has an active WorkingHours window covering 'now'
+        in their profile timezone. Returns True if no WorkingHours rows exist
+        (no constraint = always working — backwards-compatible default).
+
+        Used by capacity reporting (Phase 3) and GPS off-shift suppression
+        (Phase 8.5)."""
+        from django.utils import timezone
+        import zoneinfo
+        try:
+            tz = zoneinfo.ZoneInfo(self.timezone or 'UTC')
+        except Exception:
+            tz = zoneinfo.ZoneInfo('UTC')
+        now = timezone.now().astimezone(tz)
+        weekday = now.weekday()
+        rows = self.user.resourcing_working_hours.filter(weekday=weekday, is_active=True)
+        if not rows.exists():
+            # If the user has any WorkingHours at all (other days), assume they don't work today
+            if self.user.resourcing_working_hours.exists():
+                return False
+            return True  # No WorkingHours configured: backwards-compatible "always"
+        t = now.time()
+        return any(r.start_time <= t <= r.end_time for r in rows)
+
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):

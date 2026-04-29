@@ -294,6 +294,7 @@
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="{% url 'accounts:profile' %}" data-bs-toggle="tooltip" data-bs-placement="left" title="{% trans 'View and edit your user profile' %}"><i class="fas fa-user"></i> {% trans "My Profile" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'resourcing:my_resourcing' %}" data-bs-toggle="tooltip" data-bs-placement="left" title="{% trans 'Manage your skills, certifications, and working hours' %}"><i class="fas fa-user-graduate"></i> {% trans "My Resources" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'core:help_index' %}" data-bs-toggle="tooltip" data-bs-placement="left" title="{% trans 'Integrated help and documentation' %}"><i class="fas fa-book"></i> {% trans "Documentation & Help" %}</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'core:about' %}" data-bs-toggle="tooltip" data-bs-placement="left" title="{% trans 'System information and version details' %}"><i class="fas fa-info-circle"></i> {% trans "About" %}</a></li>
