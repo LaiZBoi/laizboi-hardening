@@ -5,6 +5,12 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.131] - 2026-04-29
+
+### Roadmap
+- Added **Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock** to `docs/ROADMAP.md`. Reverses the earlier "PWA only" deferral. Five sub-phases: backend foundation (TechnicianLocation / TimeclockEntry / ClientSiteGeofence models + REST API), GPS auto-documentation engine, Timeclock feature (web + mobile, selectable per-tech and per-org), React Native build, privacy + safeguards (off-shift suppression, geofence-only mode, retention policy, audit trail).
+- Marked Phase 1 sub-phases 1.1 + 1.2 as shipped in the sizing table.
+
 ## [3.17.130] - 2026-04-29
 
 ### Added — Phase 1.2 Contract engine: bundle editor + auto-renewal + profitability
