@@ -215,6 +215,34 @@ def sla_breach_trend(params):
     return {'labels': labels, 'series': series}
 
 
+# ---- v3.17.147 — Client-health widgets -------------------------------------
+
+def at_risk_clients(params):
+    """Top 5 at-risk clients by health score (worst first)."""
+    from reports.queries import client_health_scores_all
+    rows = client_health_scores_all()[:5]
+    table_rows = [
+        [r['client_name'], r['score'], r['category'].replace('_', ' ').title()]
+        for r in rows
+    ]
+    return {'columns': ['Client', 'Health', 'Status'], 'rows': table_rows}
+
+
+def client_health_breakdown(params):
+    """Pie chart: Healthy / At-Risk / Trouble counts."""
+    from reports.queries import client_health_scores_all
+    rows = client_health_scores_all()
+    counts = {'Healthy': 0, 'At-Risk': 0, 'Trouble': 0}
+    for r in rows:
+        if r['category'] == 'healthy':
+            counts['Healthy'] += 1
+        elif r['category'] == 'at_risk':
+            counts['At-Risk'] += 1
+        else:
+            counts['Trouble'] += 1
+    return {'labels': list(counts.keys()), 'data': list(counts.values())}
+
+
 # ---- Registry --------------------------------------------------------------
 
 REGISTRY = {
@@ -229,11 +257,13 @@ REGISTRY = {
     'top_clients_by_revenue': top_clients_by_revenue,
     'tickets_by_priority': tickets_by_priority,
     'my_assigned_tickets': my_assigned_tickets,
+    'at_risk_clients': at_risk_clients,
     # chart
     'revenue_trend_30d': revenue_trend_30d,
     'tickets_opened_30d': tickets_opened_30d,
     'hours_split_pie': hours_split_pie,
     'sla_breach_trend': sla_breach_trend,
+    'client_health_breakdown': client_health_breakdown,
 }
 
 DATA_SOURCE_CHOICES = [
@@ -247,10 +277,12 @@ DATA_SOURCE_CHOICES = [
     ('top_clients_by_revenue', 'Top clients by revenue (table)', 'table'),
     ('tickets_by_priority', 'Open tickets by priority (table)', 'table'),
     ('my_assigned_tickets', 'My assigned tickets (table)', 'table'),
+    ('at_risk_clients', 'At-risk clients (table)', 'table'),
     ('revenue_trend_30d', 'Revenue trend 30d (bar chart)', 'chart_bar'),
     ('tickets_opened_30d', 'Tickets opened 30d (line chart)', 'chart_line'),
     ('hours_split_pie', 'Billable vs non-billable (pie chart)', 'chart_pie'),
     ('sla_breach_trend', 'SLA breach trend 30d (line chart)', 'chart_line'),
+    ('client_health_breakdown', 'Client health breakdown (pie)', 'chart_pie'),
 ]
 
 

@@ -74,5 +74,7 @@ urlpatterns = [
     path('wallboard/', views.wallboard, name='wallboard'),
     path('wallboard/data/', views.wallboard_data, name='wallboard_data'),
     path('exec-scorecard/', views.exec_scorecard, name='exec_scorecard'),
+    # Phase 3.6 wave B — Client-health score (v3.17.147)
+    path('psa/client-health/', views.psa_client_health, name='psa_client_health'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

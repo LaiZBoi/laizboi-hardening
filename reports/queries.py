@@ -1183,3 +1183,145 @@ def margin_analytics_by_service_line(start_date, end_date, organization=None,
         })
     rows.sort(key=lambda r: r['revenue'], reverse=True)
     return rows
+
+
+# ---- Phase 3.6 wave B: Client-health score ---------------------------------
+
+def client_health_score(client_org_id, ref_date=None):
+    """
+    Composite client-health score (0-100, higher = healthier). Returns dict
+    with score, category, components, and explanatory metrics.
+
+    Weighted components:
+      - SLA hits           (30 pts) — (1 - resolution_breach_rate_30d) × 30
+      - Ticket velocity    (20 pts) — opened ≤ closed → full; else scaled
+      - Billing aging      (25 pts) — (1 - over_60d / total_outstanding) × 25
+      - Engagement         (15 pts) — any tickets in 30d → full
+      - NPS proxy          (10 pts) — neutral 7/10 default
+
+    Categories:
+      - Healthy   ≥ 80  (success / green)
+      - At-risk   60-80 (warning / amber)
+      - Trouble   < 60  (danger / red)
+    """
+    from django.utils import timezone
+    from psa.models import Ticket, Invoice
+    from core.models import Organization
+
+    ref = ref_date or timezone.now().date()
+    start_30 = ref - timedelta(days=29)
+
+    org = Organization.objects.filter(pk=client_org_id).first()
+    if not org:
+        return None
+
+    # --- SLA component ------------------------------------------------------
+    tix = Ticket.objects.filter(
+        organization_id=client_org_id,
+        created_at__date__gte=start_30,
+        created_at__date__lte=ref,
+    )
+    total_tix = tix.count()
+    breaches = tix.filter(
+        resolution_due_at__isnull=False,
+        closed_at__isnull=False,
+        closed_at__gt=F('resolution_due_at'),
+    ).count()
+    sla_rate = (1 - breaches / total_tix) if total_tix else 1.0
+    sla_score = sla_rate * 30
+
+    # --- Velocity component -------------------------------------------------
+    opened = Ticket.objects.filter(
+        organization_id=client_org_id,
+        created_at__date__gte=start_30,
+    ).count()
+    closed = Ticket.objects.filter(
+        organization_id=client_org_id,
+        closed_at__date__gte=start_30,
+    ).count()
+    if opened == 0:
+        velocity_score = 20
+    elif closed >= opened:
+        velocity_score = 20
+    else:
+        velocity_score = max(0, 20 * (closed / opened))
+
+    # --- Billing aging component -------------------------------------------
+    inv_qs = Invoice.objects.filter(
+        client_org_id=client_org_id,
+        status__in=['sent', 'partial', 'overdue'],
+    )
+    total_outstanding = sum(
+        float((inv.total or 0) - (inv.amount_paid or 0)) for inv in inv_qs
+    )
+    over_60 = 0.0
+    for inv in inv_qs:
+        if inv.due_date and (ref - inv.due_date).days > 60:
+            over_60 += float((inv.total or 0) - (inv.amount_paid or 0))
+    if total_outstanding == 0:
+        aging_score = 25
+    else:
+        aging_score = max(0, 25 * (1 - over_60 / total_outstanding))
+
+    # --- Engagement component ----------------------------------------------
+    if total_tix == 0:
+        # No activity is itself a yellow flag — half credit.
+        engagement_score = 7.5
+    else:
+        engagement_score = 15
+
+    # --- NPS proxy component -----------------------------------------------
+    # Neutral 7/10 default — placeholder until a real CSAT field is wired up.
+    nps_raw = 7  # 0-10 scale
+    nps_weighted = (nps_raw / 10.0) * 10  # → 7.0 of 10 max
+
+    # --- Total + category --------------------------------------------------
+    total = round(sla_score + velocity_score + aging_score
+                  + engagement_score + nps_weighted)
+    if total >= 80:
+        category = 'healthy'
+        color = 'success'
+    elif total >= 60:
+        category = 'at_risk'
+        color = 'warning'
+    else:
+        category = 'trouble'
+        color = 'danger'
+
+    return {
+        'client_id': client_org_id,
+        'client_name': org.name,
+        'score': total,
+        'category': category,
+        'color': color,
+        'components': {
+            'sla': round(sla_score, 1),
+            'velocity': round(velocity_score, 1),
+            'aging': round(aging_score, 1),
+            'engagement': round(engagement_score, 1),
+            'nps': round(nps_weighted, 1),
+        },
+        'metrics': {
+            'total_tickets_30d': total_tix,
+            'tickets_opened': opened,
+            'tickets_closed': closed,
+            'sla_breaches': breaches,
+            'total_outstanding': round(total_outstanding, 2),
+            'over_60_days': round(over_60, 2),
+        },
+    }
+
+
+def client_health_scores_all(organization_filter=None):
+    """Compute health score for every active client. Returns list sorted by
+    score asc (worst clients first — most-actionable view)."""
+    from core.models import Organization
+    qs = Organization.objects.filter(is_active=True)
+    if organization_filter is not None:
+        qs = qs.filter(pk=organization_filter)
+    rows = []
+    for org in qs:
+        s = client_health_score(org.pk)
+        if s:
+            rows.append(s)
+    return sorted(rows, key=lambda r: r['score'])

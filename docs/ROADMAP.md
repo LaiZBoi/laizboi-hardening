@@ -31,21 +31,21 @@ Required by capacity planning, profitability-by-tech, and scheduling improvement
 - **Capacity report** — forecast vs. scheduled vs. actual hours per week per tech
 - **Skill matching** on the dispatch board — when assigning, surface techs ranked by skill+availability
 
-## Phase 3 — Financial reporting + BI **(L · keystone)** [in progress]
+## Phase 3 — Financial reporting + BI **(L · keystone)** [complete]
 
 Most-requested feature class. Big surface, but builds entirely on Phase 1+2 foundations.
 
 - Canonical reporting query layer (`reports/queries.py`) — single source of truth for revenue, hours, costs *(3.1 — shipped v3.17.139)*
-- **Profitability by**: client *(3.1 — shipped v3.17.139)* / contract / project / tech / agreement / ticket-type / closure-category
-- **Effective hourly rate** report (revenue ÷ billable hours)
-- **Revenue-leakage report** (unbilled time ≥ N days old + expired blocks + un-pushed invoices)
-- **SLA trend report** — breach rate per client, per priority, over time
-- **Margin analytics** by service line
-- **Custom dashboards** — drag-and-drop widgets sourced from the canonical query layer
-- **Scheduled reports** — cron-style, email PDF/CSV
-- **Wallboard view** — TV-ready big-number display (active tickets, breaches, MTTR, queue depth)
-- **Executive scorecard** — single page rolling 30-day MSP KPIs
-- **Client-health score** — composite of SLA hits, ticket velocity, NPS proxy, billing aging
+- **Profitability by**: client *(3.1 — shipped v3.17.139)* / contract / project / tech *(3.2 — shipped v3.17.140)* / agreement / ticket-type / closure-category
+- **Effective hourly rate** report (revenue ÷ billable hours) *(3.3 — shipped v3.17.141)*
+- **Revenue-leakage report** (unbilled time ≥ N days old + expired blocks + un-pushed invoices) *(3.3 — shipped v3.17.141)*
+- **SLA trend report** — breach rate per client, per priority, over time *(3.4 — shipped v3.17.143)*
+- **Margin analytics** by service line *(3.4 — shipped v3.17.143)*
+- **Custom dashboards** — drag-and-drop widgets sourced from the canonical query layer *(3.5 — shipped v3.17.142)*
+- **Scheduled reports** — cron-style, email PDF/CSV *(3.6 wave B — shipped v3.17.147)*
+- **Wallboard view** — TV-ready big-number display (active tickets, breaches, MTTR, queue depth) *(3.6 wave A — shipped v3.17.146)*
+- **Executive scorecard** — single page rolling 30-day MSP KPIs *(3.6 wave A — shipped v3.17.146)*
+- **Client-health score** — composite of SLA hits, ticket velocity, NPS proxy, billing aging *(3.6 wave B — shipped v3.17.147)*
 
 ## Phase 4 — Procurement workflow **(L)**
 
@@ -184,7 +184,7 @@ Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentat
 |---|---|---|---|
 | 1 — Contract engine | M | 2-3 weeks | none — **1.1 + 1.2 shipped (v3.17.126 / v3.17.130)** |
 | 2 — Resource mgmt | M | 2-3 weeks | none |
-| 3 — Financial reporting + BI | L | 4-6 weeks | 1, 2 |
+| 3 — Financial reporting + BI | L | 4-6 weeks | 1, 2 — **complete (v3.17.139–147)** |
 | 4 — Procurement | L | 4-5 weeks | none (ideally after 1) |
 | 5 — CRM | L | 4-5 weeks | none |
 | 6 — ITIL | M | 2-3 weeks | none |

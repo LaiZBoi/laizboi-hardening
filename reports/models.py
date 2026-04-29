@@ -72,9 +72,16 @@ class ScheduledReport(models.Model):
     delivery_method = models.CharField(max_length=20, choices=DELIVERY_METHODS, default='email')
     recipients = models.JSONField(default=list, help_text='List of email addresses')
     parameters = models.JSONField(default=dict)
+    output_format = models.CharField(
+        max_length=10, default='pdf',
+        help_text='Output format: pdf | csv | excel | json',
+    )
     is_active = models.BooleanField(default=True)
     last_run = models.DateTimeField(null=True, blank=True)
-    next_run = models.DateTimeField()
+    # `next_run` left as nullable in the migration (was previously required) so
+    # the cron runner can pick up rows where it's been blanked out, and so
+    # newly-saved schedules can auto-populate it from `frequency`.
+    next_run = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -83,6 +90,32 @@ class ScheduledReport(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.get_frequency_display()}"
+
+    def save(self, *args, **kwargs):
+        """v3.17.147: auto-set next_run from frequency when blank.
+
+        Lets the cron runner (`run_scheduled_reports`) immediately pick up
+        a freshly-created schedule on the next 15-minute tick instead of
+        requiring callers to compute it themselves.
+        """
+        if not self.next_run:
+            self.next_run = self._compute_next_run(timezone.now())
+        super().save(*args, **kwargs)
+
+    def _compute_next_run(self, from_dt):
+        from datetime import timedelta
+        freq = (self.frequency or 'daily').lower()
+        if freq == 'hourly':
+            return from_dt + timedelta(hours=1)
+        if freq == 'daily':
+            return from_dt + timedelta(days=1)
+        if freq == 'weekly':
+            return from_dt + timedelta(days=7)
+        if freq == 'monthly':
+            return from_dt + timedelta(days=30)
+        if freq == 'quarterly':
+            return from_dt + timedelta(days=90)
+        return from_dt + timedelta(days=1)
 
 
 class GeneratedReport(models.Model):

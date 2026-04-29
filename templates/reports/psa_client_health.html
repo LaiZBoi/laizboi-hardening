@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Client Health Score{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+            <li class="breadcrumb-item active">Client Health</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0"><i class="fas fa-heart-pulse me-2"></i>Client Health Score</h2>
+            <small class="text-muted">
+                Composite 0-100 score per client. Surface trouble before it escalates.
+            </small>
+        </div>
+        <a href="?format=csv" class="btn btn-outline-secondary">
+            <i class="fas fa-file-csv me-1"></i>Export CSV
+        </a>
+    </div>
+
+    {# ---------- 3-up summary cards ---------- #}
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card border-success h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-heart fa-2x text-success mb-2"></i>
+                    <h6 class="text-muted mb-1">Healthy</h6>
+                    <h2 class="mb-0 text-success">{{ summary.healthy }}</h2>
+                    <small class="text-muted">score &ge; 80</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card border-warning h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-triangle-exclamation fa-2x text-warning mb-2"></i>
+                    <h6 class="text-muted mb-1">At-Risk</h6>
+                    <h2 class="mb-0 text-warning">{{ summary.at_risk }}</h2>
+                    <small class="text-muted">60 - 80</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card border-danger h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-fire fa-2x text-danger mb-2"></i>
+                    <h6 class="text-muted mb-1">Trouble</h6>
+                    <h2 class="mb-0 text-danger">{{ summary.trouble }}</h2>
+                    <small class="text-muted">&lt; 60</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-building fa-2x text-secondary mb-2"></i>
+                    <h6 class="text-muted mb-1">Total Clients</h6>
+                    <h2 class="mb-0">{{ summary.total }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ---------- Help text ---------- #}
+    <div class="alert alert-secondary small">
+        <strong>Score formula (0-100):</strong>
+        SLA hits (30%) +
+        Ticket velocity (20%) +
+        Billing aging over 60d (25%) +
+        Engagement (15%) +
+        NPS proxy (10%).
+        Sorted worst-first so the most-actionable clients are at the top.
+    </div>
+
+    {# ---------- Per-client table ---------- #}
+    <div class="card">
+        <div class="card-body">
+            {% if rows %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover" id="health-table">
+                    <thead>
+                        <tr>
+                            <th>Client</th>
+                            <th class="text-center">Score</th>
+                            <th>SLA</th>
+                            <th>Velocity</th>
+                            <th>Aging</th>
+                            <th>Engagement</th>
+                            <th>NPS</th>
+                            <th class="text-end">Tickets 30d</th>
+                            <th class="text-end">Over 60d ($)</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in rows %}
+                        <tr>
+                            <td><strong>{{ r.client_name }}</strong></td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ r.color }} fs-6 px-3 py-2"
+                                      style="min-width: 60px; display: inline-block;">
+                                    {{ r.score }}
+                                </span>
+                                <div class="small text-muted mt-1">{{ r.category|cut:"_"|title }}</div>
+                            </td>
+                            <td style="min-width: 110px;">
+                                <div class="progress" style="height: 8px;" title="SLA: {{ r.components.sla }} / 30">
+                                    <div class="progress-bar bg-success" role="progressbar"
+                                         style="width: {% widthratio r.components.sla 30 100 %}%"></div>
+                                </div>
+                                <small class="text-muted">{{ r.components.sla }}/30</small>
+                            </td>
+                            <td style="min-width: 110px;">
+                                <div class="progress" style="height: 8px;" title="Velocity: {{ r.components.velocity }} / 20">
+                                    <div class="progress-bar bg-info" role="progressbar"
+                                         style="width: {% widthratio r.components.velocity 20 100 %}%"></div>
+                                </div>
+                                <small class="text-muted">{{ r.components.velocity }}/20</small>
+                            </td>
+                            <td style="min-width: 110px;">
+                                <div class="progress" style="height: 8px;" title="Aging: {{ r.components.aging }} / 25">
+                                    <div class="progress-bar bg-warning" role="progressbar"
+                                         style="width: {% widthratio r.components.aging 25 100 %}%"></div>
+                                </div>
+                                <small class="text-muted">{{ r.components.aging }}/25</small>
+                            </td>
+                            <td style="min-width: 110px;">
+                                <div class="progress" style="height: 8px;" title="Engagement: {{ r.components.engagement }} / 15">
+                                    <div class="progress-bar bg-primary" role="progressbar"
+                                         style="width: {% widthratio r.components.engagement 15 100 %}%"></div>
+                                </div>
+                                <small class="text-muted">{{ r.components.engagement }}/15</small>
+                            </td>
+                            <td style="min-width: 110px;">
+                                <div class="progress" style="height: 8px;" title="NPS: {{ r.components.nps }} / 10">
+                                    <div class="progress-bar bg-secondary" role="progressbar"
+                                         style="width: {% widthratio r.components.nps 10 100 %}%"></div>
+                                </div>
+                                <small class="text-muted">{{ r.components.nps }}/10</small>
+                            </td>
+                            <td class="text-end">{{ r.metrics.total_tickets_30d }}</td>
+                            <td class="text-end">${{ r.metrics.over_60_days|floatformat:2 }}</td>
+                            <td class="text-end">
+                                <a href="/accounts/organizations/{{ r.client_id }}/"
+                                   class="btn btn-sm btn-outline-primary"
+                                   title="Drill into account">
+                                    <i class="fas fa-arrow-right"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No active clients to score.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

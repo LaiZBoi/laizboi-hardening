@@ -1767,3 +1767,40 @@ def exec_scorecard(request):
         'window_start': start_30,
         'window_end': today,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.6 wave B — Client-health score report (v3.17.147)
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm('reports_view_financial')
+def psa_client_health(request):
+    """Composite client-health score report. CSV via ?format=csv."""
+    from .queries import client_health_scores_all
+    rows = client_health_scores_all()
+    summary = {
+        'healthy': sum(1 for r in rows if r['category'] == 'healthy'),
+        'at_risk': sum(1 for r in rows if r['category'] == 'at_risk'),
+        'trouble': sum(1 for r in rows if r['category'] == 'trouble'),
+        'total': len(rows),
+    }
+    if (request.GET.get('format') or '').lower() == 'csv':
+        resp = HttpResponse(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="client_health.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Client', 'Score', 'Category',
+                    'SLA', 'Velocity', 'Aging', 'Engagement', 'NPS',
+                    'Tickets 30d', 'Over 60d ($)'])
+        for r in rows:
+            c = r['components']
+            m = r['metrics']
+            w.writerow([
+                r['client_name'], r['score'], r['category'],
+                c['sla'], c['velocity'], c['aging'], c['engagement'], c['nps'],
+                m['total_tickets_30d'], m['over_60_days'],
+            ])
+        return resp
+    return render(request, 'reports/psa_client_health.html', {
+        'rows': rows, 'summary': summary,
+    })

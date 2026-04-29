@@ -882,3 +882,179 @@ class ExecScorecardTests(TestCase):
         r = self.client.get('/reports/exec-scorecard/')
         self.assertEqual(r.status_code, 200)
         self.assertIn(b'Executive Scorecard', r.content)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.6 wave B — Scheduled reports runner + Client-health score (v3.17.147)
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ScheduledReportRunnerTests(TestCase):
+    """v3.17.147: scheduled reports runner advances next_run and creates
+    GeneratedReport rows."""
+
+    def _make_schedule(self, *, due, active=True):
+        from datetime import timedelta
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+        from core.models import Organization
+        from reports.models import ReportTemplate, ScheduledReport
+        org = Organization.objects.create(
+            name=f'SchedCo-{due}-{active}',
+            slug=f'sched-co-{abs(hash((due, active))) % 100000}',
+        )
+        user = User.objects.filter(username='cron-tester').first() or \
+            User.objects.create_user('cron-tester', 'c@x.com', 'pw')
+        # Use 'custom' report_type — the generator wrapper handles "no
+        # generator registered" gracefully (returns an error dict that
+        # serializes to a tiny PDF), so the runner can complete + advance
+        # next_run without depending on real PSA fixture data.
+        template = ReportTemplate.objects.create(
+            name='Cron Test Report', report_type='custom',
+            query_template='', is_global=True, created_by=user,
+        )
+        s = ScheduledReport.objects.create(
+            name='nightly cron test', template=template, organization=org,
+            frequency='daily', delivery_method='email',
+            recipients=[], output_format='csv',
+            is_active=active,
+            next_run=(timezone.now() - timedelta(hours=1)) if due
+                    else (timezone.now() + timedelta(days=2)),
+        )
+        return s
+
+    def test_due_schedule_runs(self):
+        from django.core.management import call_command
+        from django.utils import timezone
+        from reports.models import GeneratedReport
+        s = self._make_schedule(due=True)
+        before = GeneratedReport.objects.count()
+        call_command('run_scheduled_reports', verbosity=0)
+        s.refresh_from_db()
+        # next_run advanced into the future
+        self.assertIsNotNone(s.next_run)
+        self.assertGreater(s.next_run, timezone.now())
+        # last_run set
+        self.assertIsNotNone(s.last_run)
+        # GeneratedReport row created
+        self.assertEqual(GeneratedReport.objects.count(), before + 1)
+
+    def test_dry_run_does_not_advance(self):
+        from django.core.management import call_command
+        from reports.models import GeneratedReport
+        s = self._make_schedule(due=True)
+        original_next = s.next_run
+        before = GeneratedReport.objects.count()
+        call_command('run_scheduled_reports', '--dry-run', verbosity=0)
+        s.refresh_from_db()
+        self.assertEqual(s.next_run, original_next)
+        self.assertEqual(GeneratedReport.objects.count(), before)
+        self.assertIsNone(s.last_run)
+
+    def test_inactive_skipped(self):
+        from django.core.management import call_command
+        from reports.models import GeneratedReport
+        s = self._make_schedule(due=True, active=False)
+        original_next = s.next_run
+        before = GeneratedReport.objects.count()
+        call_command('run_scheduled_reports', verbosity=0)
+        s.refresh_from_db()
+        # Untouched
+        self.assertEqual(s.next_run, original_next)
+        self.assertEqual(GeneratedReport.objects.count(), before)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ClientHealthScoreTests(TestCase):
+    """v3.17.147: composite health score with weighted components."""
+
+    def setUp(self):
+        from django.core.management import call_command
+        from core.models import Organization
+        call_command('psa_seed_defaults', verbosity=0)
+        self.org = Organization.objects.create(
+            name='HealthCo', slug='health-co',
+        )
+
+    def test_healthy_client_with_no_issues(self):
+        """No tickets / no aging → score ≥ 80 (full SLA + velocity + aging,
+        engagement at half because no activity, NPS at 7)."""
+        from reports.queries import client_health_score
+        result = client_health_score(self.org.id)
+        self.assertIsNotNone(result)
+        # 30 (SLA) + 20 (velocity) + 25 (aging) + 7.5 (engagement) + 7 (nps) ≈ 89-90
+        self.assertGreaterEqual(result['score'], 80)
+        self.assertEqual(result['category'], 'healthy')
+
+    def test_breaches_lower_score(self):
+        """Tickets with resolution breaches drop the SLA component."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from psa.models import (
+            Queue, TicketStatus, TicketPriority, TicketType, Ticket,
+        )
+        from reports.queries import client_health_score
+
+        now = timezone.now()
+        for i in range(5):
+            t = Ticket.objects.create(
+                organization=self.org, subject=f'Issue {i}',
+                queue=Queue.objects.first(),
+                status=TicketStatus.objects.filter(is_terminal=True).first(),
+                priority=TicketPriority.objects.first(),
+                ticket_type=TicketType.objects.first(),
+                resolution_due_at=now - timedelta(days=2),
+                closed_at=now,  # breach: closed_at > resolution_due_at
+            )
+            # 3 of 5 breach
+            if i >= 3:
+                t.resolution_due_at = now + timedelta(days=2)
+                t.save(update_fields=['resolution_due_at'])
+        result = client_health_score(self.org.id)
+        # SLA drops from full 30 → ~12 (2/5 breach-free × 30) — score should drop
+        self.assertLess(result['components']['sla'], 30)
+        self.assertGreaterEqual(result['metrics']['sla_breaches'], 3)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ClientHealthViewTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from accounts.models import Membership, RoleTemplate
+        from core.models import Organization
+        self.org = Organization.objects.create(
+            name='CHViewCo', slug='ch-view-co',
+        )
+        self.owner = User.objects.create_user(
+            'ch_owner', 'o@x.com', 'pw',
+            is_staff=True, is_superuser=True,
+        )
+        # Tech / dashboards-only — should be blocked
+        self.tech = User.objects.create_user('ch_tech', 't@x.com', 'pw')
+        rt = RoleTemplate.objects.create(
+            name='CHDashOnly',
+            reports_view_dashboards=True,
+            reports_view_financial=False,
+        )
+        Membership.objects.create(
+            user=self.tech, organization=self.org,
+            role='editor', role_template=rt, is_active=True,
+        )
+
+    def test_renders_for_owner(self):
+        self.client.force_login(self.owner)
+        r = self.client.get('/reports/psa/client-health/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Client Health', r.content)
+
+    def test_blocks_tech_user(self):
+        self.client.force_login(self.tech)
+        r = self.client.get('/reports/psa/client-health/')
+        self.assertIn(r.status_code, [302, 403])
+
+    def test_csv_export(self):
+        self.client.force_login(self.owner)
+        r = self.client.get('/reports/psa/client-health/?format=csv')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'].split(';')[0].strip(), 'text/csv')
+        self.assertIn(b'Client', r.content)

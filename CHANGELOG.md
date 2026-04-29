@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.147] - 2026-04-29
+
+### Added — Phase 3.6 wave B: Scheduled reports runner + Client-health score (closes Phase 3)
+- New management command `run_scheduled_reports` processes any `ScheduledReport` with `next_run <= now`. For each: generates the report (PDF/CSV via the existing `reports.generators`), saves a `GeneratedReport` audit row, emails it to recipients, advances `next_run` based on frequency. `--dry-run` and `--force-id N` flags supported. Failures don't advance the schedule (next tick retries).
+- Auto-installed cron at `*/15 * * * *` via `deploy/update_instructions.sh`.
+- New `client_health_score(client_org_id)` query — composite 0-100 score across 5 weighted components: SLA hits (30%), ticket velocity (20%), billing aging over 60 days (25%), engagement (15%), NPS proxy (10%). Categories: Healthy ≥80, At-risk 60-80, Trouble <60.
+- New report at `/reports/psa/client-health/` — staff/financial perm. Sortable table with color-coded score badges, 3-up summary cards, component mini-bars per row, CSV export.
+- Two new dashboard widgets: "At-risk clients" (table) + "Client health breakdown" (pie chart).
+- 8 new tests in `reports.tests`.
+
+### Phase 3 status: **complete**.
+- 3.1 canonical query layer + Profitability by Client (v3.17.139)
+- 3.2 TechCostRate + profit by tech/contract/project (v3.17.140)
+- 3.3 effective hourly rate + revenue leakage (v3.17.141)
+- 3.4 SLA trends + margin analytics (v3.17.143)
+- 3.5 dashboards + 12 starter widgets (v3.17.142)
+- 3.6 wallboard + executive scorecard + scheduled reports + client health (v3.17.146-147)
+- Roadmap updated.
+
+### Migration
+`reports.0002_scheduledreport_output_format_and_more` — adds `output_format` field to `ScheduledReport` and makes `next_run` nullable.
+
 ## [3.17.146] - 2026-04-29
 
 ### Added — Phase 3.6 wave A: Wallboard + Executive Scorecard

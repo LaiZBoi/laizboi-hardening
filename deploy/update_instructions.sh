@@ -221,6 +221,14 @@ if ! crontab -l 2>/dev/null | grep -q "sync_distributors"; then
         || log "[WARN] Distributor cron setup failed (non-critical)"
 fi
 
+# Scheduled reports — every 15 minutes (v3.17.147 — Phase 3.6 wave B)
+PSA_REPORTS="*/15 * * * * $VENV_DIR/bin/python $BASE_DIR/manage.py run_scheduled_reports >/dev/null 2>&1"
+if ! crontab -l 2>/dev/null | grep -q "run_scheduled_reports"; then
+    ( (crontab -l 2>/dev/null; echo "$PSA_REPORTS") | crontab - \
+        && log "Cron job configured for scheduled reports runner" ) \
+        || log "[WARN] Scheduled reports cron setup failed (non-critical)"
+fi
+
 # =====================================================================
 # Step 5: Clear Python bytecode cache + graceful reload
 # =====================================================================
