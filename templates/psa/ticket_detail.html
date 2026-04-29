@@ -414,6 +414,35 @@
             </div>
         </div>
 
+        {# Workflows applied to this ticket #}
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="fas fa-bolt me-1"></i>Workflows</strong>
+                <a href="{% url 'psa:ticket_launch_workflow' ticket.ticket_number %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-play"></i> Launch workflow
+                </a>
+            </div>
+            {% if workflow_executions %}
+            <ul class="list-group list-group-flush small">
+                {% for ex in workflow_executions %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>
+                        <a href="{% url 'processes:execution_detail' ex.pk %}"><strong>{{ ex.process.name }}</strong></a>
+                        {% if ex.status == 'completed' %}<span class="badge text-bg-success">Completed</span>
+                        {% elif ex.status == 'in_progress' %}<span class="badge text-bg-info">In progress</span>
+                        {% elif ex.status == 'cancelled' %}<span class="badge text-bg-secondary">Cancelled</span>
+                        {% elif ex.status == 'failed' %}<span class="badge text-bg-danger">Failed</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ ex.get_status_display }}</span>{% endif %}
+                        <small class="text-muted ms-1">— {{ ex.assigned_to.username|default:'—' }} · started {{ ex.started_at|timesince }} ago</small>
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="card-body p-2 small text-muted">No workflows applied yet.</div>
+            {% endif %}
+        </div>
+
         {# Expenses (Phase 5) #}
         <div class="card mt-3">
             <div class="card-header d-flex justify-content-between align-items-center">

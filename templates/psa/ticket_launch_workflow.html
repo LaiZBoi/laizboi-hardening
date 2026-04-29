@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Launch workflow — {{ ticket.ticket_number }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_detail' ticket.ticket_number %}">{{ ticket.ticket_number }}</a></li>
+        <li class="breadcrumb-item active">Launch workflow</li>
+    </ol>
+</nav>
+
+<h4 class="mb-3"><i class="fas fa-bolt me-2"></i>Launch workflow on {{ ticket.ticket_number }}</h4>
+<p class="text-muted small">Pick a multi-step process to run against this ticket. The execution is owned by you and links back to the ticket — completing each stage updates the ticket timeline.</p>
+
+<form method="post" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+        {% if processes %}
+        <div class="mb-3">
+            <label class="form-label">Workflow</label>
+            <select name="process" class="form-select" required>
+                <option value="">— select —</option>
+                {% for p in processes %}
+                <option value="{{ p.pk }}">{{ p.name }}{% if p.is_global %} <span class="text-muted">(global)</span>{% endif %}{% if p.stages.count %} — {{ p.stages.count }} stages{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Notes (optional)</label>
+            <textarea name="notes" rows="3" class="form-control" placeholder="Why this workflow is being launched, special considerations..."></textarea>
+        </div>
+        {% else %}
+        <div class="alert alert-warning mb-0">
+            No active workflows available for this client. Create one in <a href="{% url 'processes:process_list' %}">Operations → Workflows</a>.
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-footer">
+        {% if processes %}<button type="submit" class="btn btn-primary"><i class="fas fa-play"></i> Launch</button>{% endif %}
+        <a href="{% url 'psa:ticket_detail' ticket.ticket_number %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.105] - 2026-04-29
+
+### Added — Apply workflows (multi-step processes) to native PSA tickets
+- **`processes.ProcessExecution.native_psa_ticket`** FK on the existing process-execution model. Previously executions could link only to third-party (`integrations.PSATicket`) tickets; now they can attach to native PSA tickets too.
+- **Launch workflow button** on ticket detail. Opens a picker of active processes (organization-scoped + global) with optional notes, creates a `ProcessExecution` linked to the ticket, drops a system note on the ticket timeline, and redirects to the execution page so the tech can step through stages.
+- **Workflows card** on ticket detail lists every execution launched against the ticket with status badges (in progress / completed / cancelled / failed) and deep-links to each execution.
+- New URL: `psa:ticket_launch_workflow` at `/psa/t/<ticket_number>/workflow/launch/`.
+
+Distinct from `psa.WorkflowRule` (the JSON-DSL automated rule engine that fires on ticket events). `ProcessExecution` is for multi-step procedural workflows that humans walk through (e.g., a 7-stage onboarding checklist defined in `processes.Process`).
+
+Migration: `processes.0005_processexecution_native_psa_ticket_and_more`.
+
 ## [3.17.104] - 2026-04-28
 
 ### Docs — Re-captured PSA screenshots in clean light theme

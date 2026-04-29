@@ -233,8 +233,21 @@ def ticket_detail(request, ticket_number):
     except Exception:
         ai_enabled = False
 
+    # Workflow executions tied to this ticket (Operations → Workflows)
+    workflow_executions = []
+    try:
+        from processes.models import ProcessExecution
+        workflow_executions = list(
+            ProcessExecution.objects.filter(native_psa_ticket=ticket)
+            .select_related('process', 'assigned_to')
+            .order_by('-created_at')[:10]
+        )
+    except Exception:
+        pass
+
     return render(request, 'psa/ticket_detail.html', {
         'ticket': ticket,
+        'workflow_executions': workflow_executions,
         'comments': ticket.comments.select_related('author').order_by('created_at'),
         'attachments': ticket.attachments.select_related('uploaded_by').order_by('-created_at'),
         'vault_entries': vault_entries,
@@ -2916,4 +2929,79 @@ def aging_report(request):
     return render(request, 'psa/aging_report.html', {
         'rows': rows,
         'totals': totals,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Apply a Process workflow to a native PSA ticket
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def ticket_launch_workflow(request, ticket_number):
+    """
+    Pick a process from the catalog (organization-scoped + global) and
+    launch a ProcessExecution against this ticket. The execution gets
+    `native_psa_ticket=ticket` so the relationship is queryable from
+    either side.
+    """
+    from processes.models import Process, ProcessExecution
+    from django.db.models import Q
+
+    org = get_request_organization(request)
+    qs = Ticket.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    ticket = get_object_or_404(qs, ticket_number=ticket_number)
+
+    # Available processes — global + same-org as the ticket's client
+    processes = Process.objects.filter(
+        Q(is_global=True) | Q(organization=ticket.organization),
+        is_active=True,
+    ).order_by('name')
+
+    if request.method == 'POST':
+        try:
+            process = processes.get(pk=request.POST.get('process') or 0)
+        except (Process.DoesNotExist, ValueError):
+            messages.error(request, 'Pick a valid workflow.')
+            return redirect('psa:ticket_detail', ticket_number=ticket_number)
+
+        execution = ProcessExecution.objects.create(
+            process=process,
+            organization=ticket.organization,
+            assigned_to=request.user,
+            started_by=request.user,
+            started_at=timezone.now(),
+            status='in_progress',
+            native_psa_ticket=ticket,
+            notes=(request.POST.get('notes') or '').strip()[:5000],
+        )
+
+        # Drop a system note on the ticket so timeline shows the launch
+        TicketComment.objects.create(
+            ticket=ticket, body=f'Launched workflow: **{process.name}** (execution #{execution.pk})',
+            is_internal=True, is_system=True,
+            source='workflow',
+        )
+        AuditLog.log(
+            user=request.user, action='create',
+            organization=ticket.organization,
+            object_type='processes.ProcessExecution', object_id=execution.pk,
+            object_repr=f'{process.name} on {ticket.ticket_number}',
+            description=f'Launched workflow "{process.name}" against {ticket.ticket_number}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Launched "{process.name}".')
+        try:
+            return redirect('processes:execution_detail', pk=execution.pk)
+        except Exception:
+            return redirect('psa:ticket_detail', ticket_number=ticket_number)
+
+    return render(request, 'psa/ticket_launch_workflow.html', {
+        'ticket': ticket,
+        'processes': processes,
     })

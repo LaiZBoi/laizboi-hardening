@@ -31,6 +31,7 @@ urlpatterns = [
     path('t/<str:ticket_number>/merge/', views.ticket_merge, name='ticket_merge'),
     path('t/<str:ticket_number>/kb-link/', views.ticket_kb_link, name='ticket_kb_link'),
     path('t/<str:ticket_number>/kb-unlink/<int:link_pk>/', views.ticket_kb_unlink, name='ticket_kb_unlink'),
+    path('t/<str:ticket_number>/workflow/launch/', views.ticket_launch_workflow, name='ticket_launch_workflow'),
     path('t/<str:ticket_number>/', views.ticket_detail, name='ticket_detail'),
     # Projects (Workstream 3)
     path('projects/', views.project_list, name='project_list'),

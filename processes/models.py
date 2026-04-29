@@ -259,14 +259,23 @@ class ProcessExecution(BaseModel):
     # Notes
     notes = models.TextField(blank=True)
 
-    # PSA ticket linking
+    # PSA ticket linking — third-party external PSA (Halo/Autotask/etc.)
     psa_ticket = models.ForeignKey(
         'integrations.PSATicket',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='process_executions',
-        help_text='Related PSA ticket for this execution'
+        help_text='Related external (third-party) PSA ticket for this execution'
+    )
+    # Native PSA ticket linking — runs against the in-house PSA module
+    native_psa_ticket = models.ForeignKey(
+        'psa.Ticket',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='process_executions',
+        help_text='Related native PSA ticket — set when a tech launches the workflow from the ticket detail page'
     )
     psa_note_internal = models.BooleanField(
         default=False,
