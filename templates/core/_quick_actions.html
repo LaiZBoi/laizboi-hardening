@@ -1,0 +1,119 @@
+<style>
+/* Quick Actions wizard tiles - theme-aware */
+.quick-actions-card .qa-subtitle {
+    font-size: 0.72rem;
+    color: var(--bs-secondary-color, #6c757d);
+}
+.quick-action-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    text-decoration: none;
+    padding: 14px 8px;
+    border-radius: 9px;
+    border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.125));
+    background-color: var(--surface, var(--bs-body-bg, #fff));
+    color: var(--bs-body-color, #212529);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+    height: 100%;
+    min-height: 76px;
+}
+.quick-action-tile:hover,
+.quick-action-tile:focus {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+    border-color: var(--primary-color, var(--bs-primary, #0d6efd));
+    color: var(--primary-color, var(--bs-primary, #0d6efd));
+    text-decoration: none;
+}
+.quick-action-tile .qa-icon {
+    font-size: 24px;
+    line-height: 1;
+    margin-bottom: 6px;
+    color: var(--primary-color, var(--bs-primary, #0d6efd));
+}
+.quick-action-tile .qa-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+[data-bs-theme="dark"] .quick-action-tile {
+    border-color: rgba(255, 255, 255, 0.12);
+    background-color: var(--surface, #2b3035);
+    color: #dee2e6;
+}
+[data-bs-theme="dark"] .quick-action-tile:hover,
+[data-bs-theme="dark"] .quick-action-tile:focus {
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    border-color: var(--primary-color, var(--bs-primary, #0d6efd));
+}
+</style>
+
+<div class="card mb-3 quick-actions-card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <div>
+            <h6 class="mb-0"><i class="fas fa-bolt"></i> Quick Actions</h6>
+            <span class="qa-subtitle">Most-used MSP shortcuts</span>
+        </div>
+    </div>
+    <div class="card-body py-2">
+        <div class="row row-cols-3 row-cols-md-5 row-cols-lg-8 g-2">
+            {% if psa_enabled %}
+            <div class="col">
+                <a href="{% url 'psa:ticket_create' %}" class="quick-action-tile" data-bs-toggle="tooltip" data-bs-placement="top" title="Create a new support ticket">
+                    <i class="fas fa-headset qa-icon"></i>
+                    <span class="qa-label">New Ticket</span>
+                </a>
+            </div>
+            {% endif %}
+            <div class="col">
+                <a href="{% url 'assets:asset_create' %}" class="quick-action-tile" data-bs-toggle="tooltip" data-bs-placement="top" title="Add a new asset to inventory">
+                    <i class="fas fa-server qa-icon"></i>
+                    <span class="qa-label">Add Asset</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="{% url 'vault:password_create' %}" class="quick-action-tile" data-bs-toggle="tooltip" data-bs-placement="top" title="Create a new encrypted password">
+                    <i class="fas fa-key qa-icon"></i>
+                    <span class="qa-label">New Password</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="{% url 'docs:document_create' %}" class="quick-action-tile" data-bs-toggle="tooltip" data-bs-placement="top" title="Create a new documentation article">
+                    <i class="fas fa-file-alt qa-icon"></i>
+                    <span class="qa-label">Add Document</span>
+                </a>
+            </div>
+            {% if vehicles_enabled %}
+            <div class="col">
+                <a href="{% url 'vehicles:receipt_quick' %}" class="quick-action-tile" data-bs-toggle="tooltip" data-bs-placement="top" title="Quickly scan or upload a receipt">
+                    <i class="fas fa-receipt qa-icon"></i>
+                    <span class="qa-label">Scan Receipt</span>
+                </a>
+            </div>
+            {% endif %}
+            <div class="col">
+                <a href="{% url 'processes:execution_list' %}" class="quick-action-tile" data-bs-toggle="tooltip" data-bs-placement="top" title="Run or view workflow executions">
+                    <i class="fas fa-diagram-project qa-icon"></i>
+                    <span class="qa-label">Run Workflow</span>
+                </a>
+            </div>
+            {% if psa_enabled %}
+            <div class="col">
+                <a href="{% url 'psa:quote_create' %}" class="quick-action-tile" data-bs-toggle="tooltip" data-bs-placement="top" title="Create a new quote">
+                    <i class="fas fa-file-signature qa-icon"></i>
+                    <span class="qa-label">New Quote</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="{% url 'psa:invoice_create' %}" class="quick-action-tile" data-bs-toggle="tooltip" data-bs-placement="top" title="Create a new invoice">
+                    <i class="fas fa-file-invoice-dollar qa-icon"></i>
+                    <span class="qa-label">New Invoice</span>
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

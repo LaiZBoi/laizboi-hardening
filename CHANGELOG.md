@@ -5,44 +5,48 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.116] - 2026-04-29
+
+### Added
+- Quick Actions wizard now also shows on the **Global Dashboard** (superuser landing page). Was only on per-org dashboard before.
+- Quick Actions extracted to `templates/core/_quick_actions.html` partial — single source of truth.
+
+### Changed
+- **Phase-2 density**: base font 14.5px (was 16px), tighter dashboard stat cards (h3/h4/h5 inside `.card` shrunk), `.fa-2x` / `.fa-3x` icons sized down, `.row.g-2` gutter cut to 0.4rem. Pages now hit the ~30% smaller target.
+- "What's New" changelog block on the System Updates page is **dark-mode-safe and condensed**: theme-aware colors (no more dark text on dark surface), tighter line-height, smaller code badges. Future entries written as bullet lists for at-a-glance scanning.
+
 ## [3.17.115] - 2026-04-29
 
-### Fixed — Org "Members" list no longer pollutes with auto-attached users
-The `accounts.create_default_membership` post-save signal silently bound every newly-created non-superuser to the **first active organization** as a Read-Only member. From the org admin's perspective, brand-new staff users (or any user created outside the Add Member flow) showed up under "Members" of an org they were never invited to.
+### Fixed
+- **Org Members no longer auto-polluted.** The `create_default_membership` post-save signal silently bound every new non-superuser to the first active org. It is now **opt-in via thread-local flag** (`accounts.models._enable_auto_membership`) and OFF by default. Org-admin Add Member flow creates Memberships explicitly.
+- Existing stale Membership rows are *not* auto-cleaned — review `/admin/accounts/membership/` and remove any that shouldn't be there.
 
-The signal is now **opt-in via a thread-local flag** (`accounts.models._enable_auto_membership` context manager) and is OFF by default. The org-admin Add Member flow already creates Membership rows explicitly, so no code path in the project needs the auto-attach behavior. Existing membership rows in the database are untouched — review them in the admin if any look stale.
-
-The Members section on the org detail page (`accounts/views.py:480-483`) was already filtering correctly to `Membership.objects.filter(organization=org, is_active=True)` — the bug was strictly in the signal creating rows that satisfied that filter.
-
-### Added — Grid / List view toggle on the Organizations index
-The Organizations list page now has a **Grid ⇄ List** toggle in the page header. List mode is a compact Bootstrap table with columns: Name (linked) / Slug / Active members / Asset count / Status / Created / Actions. Built for installs with hundreds or thousands of clients.
-
-- **Pagination** — 50 rows per page in list mode, 24 cards per page in grid mode (Django `Paginator`)
-- **Search box** filters by `name__icontains` or `slug__icontains` and is preserved across pagination + view-toggle
-- **Annotated counts** — `Count('memberships', filter=Q(is_active=True), distinct=True)` and `Count('assets', distinct=True)` done once on the queryset (no N+1)
-- **Persistence** — view choice survives in `localStorage['orgListViewMode']` and via `?view=list` querystring; toggle preserves search + sort + page params
-- **Dark-mode-safe** — the list table uses `<thead class="table-light">` so the v3.17.113 dark-mode override applies cleanly
+### Added
+- **Grid ⇄ List toggle on the Organizations page** for installs with 1000s of clients.
+- List mode: compact table — Name / Slug / Active members / Asset count / Status / Created / Actions.
+- Pagination — 50 rows in list mode, 24 cards in grid mode.
+- Search box filters name + slug; survives across pagination + toggle.
+- Annotated counts (no N+1) via `Count('memberships', filter=Q(is_active=True), distinct=True)`.
+- View choice persisted in `localStorage` + `?view=list` querystring.
 
 ## [3.17.114] - 2026-04-29
 
-### Added — Quick Actions wizard on the dashboard
-A prominent row of 8 large icon tiles at the top of the dashboard for the most-used create flows: **New Ticket / Add Asset / New Password / Add Document / Scan Receipt / Run Workflow / New Quote / New Invoice**. Themed via existing CSS variables (works in light + all dark themes), tiles have hover lift + tooltip, and PSA/Vehicle tiles are gated by `psa_enabled` / `vehicles_enabled` so they only appear when those features are on. The legacy small "Quick Actions" card at the bottom of the dashboard was removed (superseded).
+### Added
+- **Quick Actions wizard** on the dashboard — large icon tiles for the 8 most-used create flows (New Ticket, Add Asset, New Password, Add Document, Scan Receipt, Run Workflow, New Quote, New Invoice).
+- PSA + Vehicle tiles auto-hidden when `psa_enabled` / `vehicles_enabled` is off.
 
-### Changed — ~30% page-density reduction site-wide
-Single-file CSS layer at the bottom of `static/css/custom.css` reducing vertical padding/margin on cards, headings, containers, form rows, tables (`.table.table > tbody > tr > td` etc — doubled-class to win specificity vs the existing `.table tbody td` rule), buttons, inputs, breadcrumbs (incl. the higher-specificity `nav[aria-label="breadcrumb"]:not(.card *) > .breadcrumb` rule), nav tabs, and list groups. ~30% less whitespace; readable on phones because mobile is in the same cascade. Reversible by deleting the marked block at the bottom of `custom.css`.
-
-### Changed — Global KB navbar link is now PSA-aware
-The "Global KB" link in the primary navbar is hidden when **Internal PSA is enabled** (it lives under PSA → KB at that point) and stays visible when PSA is disabled — so non-PSA installs don't lose access. Gated by the existing `psa_enabled` context variable.
+### Changed
+- **~30% page-density reduction site-wide.** Single CSS layer in `custom.css` tightens cards, headings, tables, buttons, inputs, breadcrumbs, nav tabs, list groups.
+- **Global KB link is now PSA-aware** — hidden when PSA is on (lives under PSA → KB), shown when PSA is off.
 
 ## [3.17.113] - 2026-04-29
 
-### Fixed — Dark-mode contrast across PSA + portal pages
-22 PSA / portal templates use Bootstrap's `<thead class="table-light">` which hard-pins a white background regardless of theme — so in dark mode (or any of the dracula / monokai theme variants) every list page rendered white-on-white headers (Aging report, Recurring tickets, Tickets, Quotes, Invoices, Contracts, Approvals, Workflow Rules, Email configs, Canned replies, Service catalog, KB browse, Project list / detail, Vault context, Portal vault list / item, Portal KB list, Portal ticket list).
+### Fixed
+- **Dark-mode contrast across all PSA + portal list pages.** Bootstrap's `.table-light` was hard-pinning a white header background even in dark themes, so 22 templates rendered white-on-white. One global CSS rule re-binds the Bootstrap table vars on `[data-bs-theme="dark"]` and fixes them all (Aging, Recurring, Tickets, Quotes, Invoices, Contracts, Approvals, Workflow Rules, Email configs, Canned replies, Catalog, KB browse, Projects, Vault context, Portal vault/KB/tickets).
+- Generic `.bg-light` and `.bg-light.text-dark` badge combo also softened in dark mode.
 
-Single fix in `static/css/themes.css`: when `data-bs-theme="dark"` is set on the `<html>` element, re-bind the Bootstrap table CSS variables (`--bs-table-color` / `--bs-table-bg` / `--bs-table-border-color` / striped / hover / active) on `.table-light` to the dark surface palette. Also softens generic `.bg-light` (used on AI-suggestion blocks and badges) and the `.bg-light.text-dark` badge combo so dark text doesn't lock against the (now-dark) surface.
-
-### Removed — "Global KB" link from primary navbar
-The Global KB now lives under **PSA → KB** (`/psa/kb/`) and the duplicate top-level link was redundant noise. Staff users still reach it via the PSA menu; the underlying URL `docs:global_kb_list` is unchanged.
+### Removed
+- Duplicate **"Global KB"** link from the primary navbar (lives under PSA → KB now).
 
 ## [3.17.112] - 2026-04-28
 

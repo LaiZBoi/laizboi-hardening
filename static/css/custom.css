@@ -1669,3 +1669,48 @@ nav[aria-label="breadcrumb"]:not(.card *) > .breadcrumb {
 .card .display-6 {
     margin-bottom: 0.25rem;
 }
+
+/* ========================================================================
+   COMPACT DENSITY — PHASE 2 (v3.17.116 — 2026-04-29)
+   Pushes the 30% target across the board: shrinks base font, dashboard stat
+   cards (h3/h4/h5 inside .card), tiles, and FA icons that have been forced
+   oversize via .fa-lg / .fa-2x / .fa-3x. Also tightens the row .g-2 gutter
+   so the grid of cards packs in more efficiently.
+   ======================================================================== */
+html { font-size: 14.5px; }                    /* was browser default 16px → ~10% baseline shrink */
+body { font-size: 0.92rem; }
+
+.card .card-body h3,
+.card .card-body .h3 { font-size: 1.15rem; line-height: 1.2; }
+.card .card-body h4,
+.card .card-body .h4 { font-size: 1rem; line-height: 1.2; margin-bottom: 0.15rem; }
+.card .card-body h5,
+.card .card-body .h5 { font-size: 0.95rem; line-height: 1.25; }
+.card .card-body h6,
+.card .card-body .h6 { font-size: 0.82rem; }
+.card .card-body small { font-size: 0.72rem; }
+
+/* Stat-card icons (the fa-lg / fa-2x / fa-3x decoration on dashboard tiles) */
+.card .card-body .fa-lg { font-size: 1rem; }
+.card .card-body .fa-2x { font-size: 1.4rem; }
+.card .card-body .fa-3x { font-size: 1.8rem; }
+
+/* Card body spacing — even tighter than phase 1 inside dashboard tiles */
+.card .card-body.py-2 { padding-top: 0.4rem !important; padding-bottom: 0.4rem !important; }
+.card .card-body.py-3 { padding-top: 0.55rem !important; padding-bottom: 0.55rem !important; }
+
+/* Bootstrap utility-class column gutters that hard-code rems */
+.row.g-2 { --bs-gutter-y: 0.4rem; --bs-gutter-x: 0.4rem; }
+
+/* Card header text + py utility */
+.card-header h5, .card-header .h5 { font-size: 0.95rem; }
+.card-header h6, .card-header .h6 { font-size: 0.82rem; }
+.card-header.py-2 { padding-top: 0.35rem !important; padding-bottom: 0.35rem !important; }
+
+/* Section spacing — replace mb-3/mb-4 utility on page-level rows */
+.row.mb-3 { margin-bottom: 0.6rem !important; }
+.row.mb-4 { margin-bottom: 0.85rem !important; }
+
+/* Page-title h2 — slightly smaller, less vertical bloat */
+main h2 { font-size: 1.35rem; }
+main h2 + .badge { font-size: 0.7rem; }

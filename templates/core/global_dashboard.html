@@ -3,10 +3,12 @@
 {% block title %}Global Dashboard - {{ system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r" }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2><i class="fas fa-globe"></i> Global Dashboard</h2>
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0"><i class="fas fa-globe"></i> Global Dashboard</h2>
     <span class="badge bg-danger">Superuser Only</span>
 </div>
+
+{% include "core/_quick_actions.html" %}
 
 <!-- System-wide Stats Cards -->
 <div class="row g-2 mb-3">
