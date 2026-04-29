@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.139] - 2026-04-29
+
+### Added — Phase 3.1: Canonical reporting query layer + Profitability by Client
+- New `reports/queries.py` module — single source of truth for revenue / hours / cost / margin queries. Every Phase 3 report (and Phase 8 mobile timeclock utilization) will read from this module instead of building bespoke querysets per view.
+- Canonical functions: `hours_minutes_by_client`, `hours_minutes_by_tech`, `revenue_by_client`, `cost_estimate_by_client`, `profitability_by_client`. All take `(start_date, end_date, organization=None)` and return list-of-dicts (no querysets) for clean JSON / CSV export.
+- New report at `/reports/psa/profitability-by-client/` — date-range picker (7d / 30d / 90d / YTD chips + custom), summary card (Revenue / Cost / Margin / Margin %), sortable table per client, color-coded margin column. CSV export via `?format=csv`. Linked from Reports Home.
+- Loaded-rate placeholder: `DEFAULT_LOADED_RATE = $60/hr` until Phase 3.2 ships per-tech cost rates.
+- 6 new tests in `reports.tests` cover query shape, view auth gate, CSV export.
+
+### Roadmap
+- Phase 2 marked complete in roadmap. Phase 3 in flight.
+
 ## [3.17.138] - 2026-04-29
 
 ### Added — Phase 2.3: Capacity report + skill ranking on dispatch board

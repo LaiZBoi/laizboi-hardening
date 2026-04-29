@@ -20,7 +20,7 @@ ClientSt0r has the basics; mature PSAs have years of edge cases baked in. Withou
 - **Bundled services** — line items per agreement (managed AV + backup + monitoring as one)
 - Agreement **profitability snapshot** — revenue vs. cost-of-delivery this period
 
-## Phase 2 — Resource management foundation **(M · foundation)**
+## Phase 2 — Resource management foundation **(M · foundation)** [complete]
 
 Required by capacity planning, profitability-by-tech, and scheduling improvements.
 
@@ -31,12 +31,12 @@ Required by capacity planning, profitability-by-tech, and scheduling improvement
 - **Capacity report** — forecast vs. scheduled vs. actual hours per week per tech
 - **Skill matching** on the dispatch board — when assigning, surface techs ranked by skill+availability
 
-## Phase 3 — Financial reporting + BI **(L · keystone)**
+## Phase 3 — Financial reporting + BI **(L · keystone)** [in progress]
 
 Most-requested feature class. Big surface, but builds entirely on Phase 1+2 foundations.
 
-- Canonical reporting query layer (`reports/queries.py`) — single source of truth for revenue, hours, costs
-- **Profitability by**: client / contract / project / tech / agreement / ticket-type / closure-category
+- Canonical reporting query layer (`reports/queries.py`) — single source of truth for revenue, hours, costs *(3.1 — shipped v3.17.139)*
+- **Profitability by**: client *(3.1 — shipped v3.17.139)* / contract / project / tech / agreement / ticket-type / closure-category
 - **Effective hourly rate** report (revenue ÷ billable hours)
 - **Revenue-leakage report** (unbilled time ≥ N days old + expired blocks + un-pushed invoices)
 - **SLA trend report** — breach rate per client, per priority, over time

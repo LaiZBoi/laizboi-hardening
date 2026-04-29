@@ -117,6 +117,13 @@
                                 <i class="fas fa-ticket-alt me-2"></i>PSA Reports
                             </a>
                         </div>
+                        {% if user.is_staff or user.is_superuser %}
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'reports:psa_profitability_by_client' %}" class="btn btn-outline-success w-100">
+                                <i class="fas fa-chart-line me-2"></i>Profitability by Client (PSA)
+                            </a>
+                        </div>
+                        {% endif %}
                         {% endif %}
                     </div>
                 </div>

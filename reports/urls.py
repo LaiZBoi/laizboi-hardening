@@ -42,5 +42,9 @@ urlpatterns = [
 
     # PSA reports (Workstream 6)
     path('psa/', views.psa_reports_list, name='psa_reports_list'),
+    # Phase 3.1 — canonical profitability report. Must come BEFORE the
+    # catch-all `<str:report_type>/` so the literal slug routes here.
+    path('psa/profitability-by-client/', views.psa_profitability_by_client,
+         name='psa_profitability_by_client'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

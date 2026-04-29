@@ -2,17 +2,19 @@
 Views for Reports and Analytics
 """
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.http import HttpResponse, FileResponse, JsonResponse
 from django.db.models import Count, Q
 from django.utils import timezone
-from datetime import timedelta
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 from .models import (
     Dashboard, DashboardWidget, ReportTemplate, GeneratedReport,
     ScheduledReport, AnalyticsEvent
 )
 from .generators import REPORT_GENERATORS
+import csv as _csv
 import json
 
 
@@ -746,3 +748,99 @@ def _psa_report_csv(report_type, data):
     for k, v in data.items():
         writer.writerow([k, v])
     return response
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.1 — Profitability by Client (PSA)
+# ---------------------------------------------------------------------------
+
+def _is_staff_or_super(user):
+    return user.is_authenticated and (user.is_superuser or user.is_staff)
+
+
+def _parse_date(s, fallback):
+    """Parse YYYY-MM-DD safely; fall back when missing or invalid."""
+    if not s:
+        return fallback
+    try:
+        return date.fromisoformat(s)
+    except (TypeError, ValueError):
+        return fallback
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def psa_profitability_by_client(request):
+    """
+    Per-client profitability report — revenue, cost, margin over a
+    user-chosen window. CSV via ?format=csv. Pulls from the canonical
+    `reports.queries` layer.
+    """
+    from .queries import (
+        profitability_by_client,
+        DEFAULT_LOADED_RATE,
+    )
+
+    today = date.today()
+    default_start = today - timedelta(days=30)
+    start_date = _parse_date(request.GET.get('start'), default_start)
+    end_date = _parse_date(request.GET.get('end'), today)
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    # Loaded rate override
+    loaded_rate_raw = (request.GET.get('loaded_rate') or '').strip()
+    loaded_rate = DEFAULT_LOADED_RATE
+    if loaded_rate_raw:
+        try:
+            loaded_rate = Decimal(loaded_rate_raw)
+        except (InvalidOperation, ValueError):
+            loaded_rate = DEFAULT_LOADED_RATE
+
+    rows = profitability_by_client(start_date, end_date,
+                                   default_loaded_rate=loaded_rate)
+
+    # Aggregates
+    total_revenue = sum(r['revenue'] for r in rows)
+    total_cost = sum(r['cost'] for r in rows)
+    total_margin = total_revenue - total_cost
+    blended_margin_pct = (total_margin / total_revenue * 100) if total_revenue else 0.0
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = (
+            f'attachment; filename="profitability-by-client-'
+            f'{start_date.isoformat()}-{end_date.isoformat()}.csv"'
+        )
+        writer = _csv.writer(response)
+        writer.writerow(['Client', 'Hours', 'Revenue', 'Cost', 'Margin', 'Margin %'])
+        for r in rows:
+            writer.writerow([
+                r['client_name'],
+                f"{r['hours']:.2f}",
+                f"{r['revenue']:.2f}",
+                f"{r['cost']:.2f}",
+                f"{r['margin']:.2f}",
+                f"{r['margin_pct']:.1f}",
+            ])
+        # Totals row
+        writer.writerow([
+            'TOTAL', '',
+            f"{total_revenue:.2f}", f"{total_cost:.2f}",
+            f"{total_margin:.2f}", f"{round(blended_margin_pct, 1):.1f}",
+        ])
+        return response
+
+    context = {
+        'rows': rows,
+        'start_date': start_date,
+        'end_date': end_date,
+        'loaded_rate': loaded_rate,
+        'default_loaded_rate': DEFAULT_LOADED_RATE,
+        'total_revenue': total_revenue,
+        'total_cost': total_cost,
+        'total_margin': total_margin,
+        'blended_margin_pct': round(blended_margin_pct, 1),
+    }
+    return render(request, 'reports/psa_profitability_by_client.html', context)

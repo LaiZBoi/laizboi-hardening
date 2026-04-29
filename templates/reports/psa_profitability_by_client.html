@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Profitability by Client (PSA){% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+            <li class="breadcrumb-item active">Profitability by Client</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0"><i class="fas fa-chart-line me-2"></i>Profitability by Client</h2>
+            <small class="text-muted">Revenue vs. cost-of-delivery per client over the selected window. Data sourced from <code>reports/queries.py</code>.</small>
+        </div>
+        <a href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&loaded_rate={{ loaded_rate }}&format=csv"
+           class="btn btn-outline-secondary">
+            <i class="fas fa-file-csv me-1"></i>Export CSV
+        </a>
+    </div>
+
+    {# ---------- Filter bar ---------- #}
+    <form method="get" class="card mb-3" id="filter-form">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Start date</label>
+                    <input type="date" name="start" id="filter-start"
+                           class="form-control form-control-sm"
+                           value="{{ start_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">End date</label>
+                    <input type="date" name="end" id="filter-end"
+                           class="form-control form-control-sm"
+                           value="{{ end_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Loaded rate ($/hr)</label>
+                    <input type="number" step="0.01" min="0" name="loaded_rate"
+                           class="form-control form-control-sm"
+                           value="{{ loaded_rate }}"
+                           placeholder="{{ default_loaded_rate }}">
+                    <small class="text-muted" style="font-size: 0.7rem;">Defaults to ${{ default_loaded_rate }}/hr until per-tech cost rates ship in Phase 3.2</small>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Apply</button>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Quick range">
+                        <button type="button" class="btn btn-outline-secondary" data-range="7">7 days</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="30">30 days</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="90">90 days</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="ytd">YTD</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {# ---------- Summary cards ---------- #}
+    <div class="row mb-3">
+        <div class="col-md-3 mb-2">
+            <div class="card border-primary h-100">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Revenue</h6>
+                    <h3 class="mb-0">${{ total_revenue|floatformat:2 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-warning h-100">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Cost</h6>
+                    <h3 class="mb-0">${{ total_cost|floatformat:2 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-success h-100">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Margin</h6>
+                    <h3 class="mb-0">${{ total_margin|floatformat:2 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-info h-100">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Blended Margin %</h6>
+                    <h3 class="mb-0">{{ blended_margin_pct }}%</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ---------- Per-client table ---------- #}
+    <div class="card">
+        <div class="card-body p-0">
+            {% if rows %}
+            <table class="table table-hover mb-0" id="profitability-table">
+                <thead class="table-light">
+                    <tr>
+                        <th class="sortable" data-sort="client_name">Client</th>
+                        <th class="text-end sortable" data-sort="hours">Hours</th>
+                        <th class="text-end sortable" data-sort="revenue">Revenue</th>
+                        <th class="text-end sortable" data-sort="cost">Cost</th>
+                        <th class="text-end sortable" data-sort="margin">Margin</th>
+                        <th class="text-end sortable" data-sort="margin_pct">Margin %</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td>{{ r.client_name }}</td>
+                        <td class="text-end">{{ r.hours|floatformat:2 }}</td>
+                        <td class="text-end">${{ r.revenue|floatformat:2 }}</td>
+                        <td class="text-end">${{ r.cost|floatformat:2 }}</td>
+                        <td class="text-end">${{ r.margin|floatformat:2 }}</td>
+                        <td class="text-end">
+                            {% if r.margin_pct < 0 %}
+                                <span class="badge bg-danger">{{ r.margin_pct }}%</span>
+                            {% elif r.margin_pct < 15 %}
+                                <span class="badge bg-warning text-dark">{{ r.margin_pct }}%</span>
+                            {% elif r.margin_pct < 30 %}
+                                <span class="badge bg-info">{{ r.margin_pct }}%</span>
+                            {% else %}
+                                <span class="badge bg-success">{{ r.margin_pct }}%</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'accounts:organization_detail' r.client_id %}"
+                               class="btn btn-sm btn-outline-primary"
+                               title="Open client account">
+                                <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="fas fa-info-circle me-1"></i>
+                No invoiced revenue or logged hours for the selected window.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // Quick-range chips
+    document.querySelectorAll('[data-range]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var range = btn.getAttribute('data-range');
+            var today = new Date();
+            var end = today.toISOString().slice(0, 10);
+            var start;
+            if (range === 'ytd') {
+                start = today.getFullYear() + '-01-01';
+            } else {
+                var d = new Date(today);
+                d.setDate(d.getDate() - parseInt(range, 10));
+                start = d.toISOString().slice(0, 10);
+            }
+            document.getElementById('filter-start').value = start;
+            document.getElementById('filter-end').value = end;
+            document.getElementById('filter-form').submit();
+        });
+    });
+
+    // Sortable table — client-side
+    var table = document.getElementById('profitability-table');
+    if (!table) return;
+    var headers = table.querySelectorAll('th.sortable');
+    headers.forEach(function(h, idx) {
+        h.style.cursor = 'pointer';
+        h.addEventListener('click', function() {
+            var asc = h.getAttribute('data-asc') !== 'true';
+            headers.forEach(function(x) { x.removeAttribute('data-asc'); });
+            h.setAttribute('data-asc', asc ? 'true' : 'false');
+
+            var tbody = table.querySelector('tbody');
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+            rows.sort(function(a, b) {
+                var av = a.children[idx].innerText.trim();
+                var bv = b.children[idx].innerText.trim();
+                var an = parseFloat(av.replace(/[$,%]/g, ''));
+                var bn = parseFloat(bv.replace(/[$,%]/g, ''));
+                if (!isNaN(an) && !isNaN(bn)) {
+                    return asc ? an - bn : bn - an;
+                }
+                return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+            });
+            rows.forEach(function(r) { tbody.appendChild(r); });
+        });
+    });
+})();
+</script>
+{% endblock %}
