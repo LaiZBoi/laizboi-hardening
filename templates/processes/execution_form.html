@@ -26,6 +26,23 @@
                         <i class="fas fa-info-circle"></i> This workflow will be assigned to you automatically.
                     </div>
 
+                    {% if psa_enabled %}
+                    <div class="mb-3">
+                        <label for="client_org_id" class="form-label">Client</label>
+                        <select name="client_org_id" id="client_org_id" class="form-select" required>
+                            <option value="">-- Select a client --</option>
+                            {% for client in client_orgs %}
+                            <option value="{{ client.pk }}">{{ client.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">A new ticket will be created for this client and the workflow attached to it.</small>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning small mb-3">
+                        <i class="fas fa-info-circle"></i> PSA is disabled — workflow will run as a standalone execution.
+                    </div>
+                    {% endif %}
+
                     <div class="mb-3">
                         <label for="{{ form.due_date.id_for_label }}" class="form-label">Due Date (optional)</label>
                         {{ form.due_date }}

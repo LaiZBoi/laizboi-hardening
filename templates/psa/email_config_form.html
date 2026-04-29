@@ -14,6 +14,19 @@
 <form method="post" class="card">
     {% csrf_token %}
     <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Client</label>
+            <select name="client_org_id" class="form-select" {% if not item %}required{% endif %}>
+                <option value="">-- Select client --</option>
+                {% for o in client_orgs %}
+                <option value="{{ o.pk }}"
+                        {% if item and item.organization_id == o.pk %}selected{% elif selected_client_org_id == o.pk %}selected{% endif %}>
+                    {{ o.name }}
+                </option>
+                {% endfor %}
+            </select>
+            {% if item %}<small class="text-muted">Changing the client will reassign this email config.</small>{% endif %}
+        </div>
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">Name (internal)</label>

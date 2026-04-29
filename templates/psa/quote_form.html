@@ -14,6 +14,19 @@
 <form method="post" class="card quote-form">
     {% csrf_token %}
     <div class="card-body py-2">
+        <div class="mb-2 small">
+            <label class="form-label">Client</label>
+            <select name="client_org_id" class="form-select form-select-sm" {% if not item %}required{% endif %}>
+                <option value="">-- Select client --</option>
+                {% for o in client_orgs %}
+                <option value="{{ o.pk }}"
+                        {% if item and item.organization_id == o.pk %}selected{% elif selected_client_org_id == o.pk %}selected{% endif %}>
+                    {{ o.name }}
+                </option>
+                {% endfor %}
+            </select>
+            {% if item %}<small class="text-muted">Changing the client will reassign this quote.</small>{% endif %}
+        </div>
         <div class="row g-2 small">
             <div class="col-md-5">
                 <label class="form-label">Title</label>

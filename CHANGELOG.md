@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.117] - 2026-04-29
+
+### Changed — Workflows now live inside PSA tickets
+- Running a workflow on the **Workflows page** (`/processes/`) now always creates a **new PSA ticket** with the workflow's checklist embedded. The execution form has a "Client" picker; the new ticket is named `Workflow: <Process title>` and assigned to the chosen client.
+- The **PSA ticket detail page** now shows the **full stage checklist inline** with AJAX checkboxes — no more bouncing to a separate execution-detail page to mark a stage complete. Progress bar updates in place.
+- Visiting `/processes/execution/<pk>/` now **redirects to the ticket** if the execution is linked to one. Superusers can still see the legacy page via `?legacy=1`.
+- Non-superusers no longer see the "View All Executions" link from the Workflows page.
+- Added an info banner on the Workflows page: *"Run a workflow to attach it to a new PSA ticket."*
+
+### Fixed — Six PSA forms no longer redirect with "Pick a client first"
+The Project / Recurring Schedule / Contract / Email Config / Quote / Invoice **edit and create** pages now work in **Global view**. Each form has a Client picker; on save the chosen client becomes the form's tenant. No more bounce-to-list with an error message.
+
+- Edit flow now loads the row by pk only (was previously gated by current-org filter), then derives the org from the row itself.
+- Validation errors re-render the form preserving user input — never redirect.
+- Each of the 6 templates got a new `client_org_id` selector at the top (above existing fields). The pre-existing `client_org` "linked customer" picker on quote/invoice/contract/project/recurring forms is unchanged — those serve a different purpose.
+
 ## [3.17.116] - 2026-04-29
 
 ### Added

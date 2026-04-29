@@ -68,6 +68,9 @@ def process_list(request):
         'categories': Process.CATEGORY_CHOICES,
         'selected_category': category,
         'in_global_view': in_global_view,
+        # Only superusers should see the "View All Executions" link — regular
+        # users should access workflow runs through the linked PSA tickets.
+        'show_executions_link': request.user.is_superuser,
     })
 
 
@@ -414,7 +417,19 @@ def global_process_create(request):
 # Process Execution
 @login_required
 def execution_create(request, slug):
-    """Create a process execution"""
+    """Create a process execution.
+
+    New behavior (PSA enabled): every workflow run is attached to a freshly
+    created native PSA ticket. The user picks a client org from a dropdown
+    on the form; we create a Ticket for that org and link the execution via
+    `native_psa_ticket=ticket`, then redirect to the ticket page where the
+    embedded checklist lives.
+
+    Legacy behavior (PSA disabled): keep the original free-floating
+    execution flow so installs without PSA still work.
+    """
+    from core.models import Organization, SystemSetting
+
     org = get_request_organization(request)
     if not org:
         messages.error(request, 'Organization context required.')
@@ -425,9 +440,128 @@ def execution_create(request, slug):
         slug=slug
     )
 
+    psa_enabled = bool(getattr(SystemSetting.get_settings(), 'psa_enabled', False))
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
     if request.method == 'POST':
         form = ProcessExecutionForm(request.POST, organization=org)
         if form.is_valid():
+            if psa_enabled:
+                # ----------------- New path: create a PSA ticket -----------------
+                from psa.models import (
+                    Queue,
+                    Ticket,
+                    TicketPriority,
+                    TicketStatus,
+                    TicketType,
+                )
+                from accounts.models import Membership
+                try:
+                    from psa.sla import apply_due_dates
+                except Exception:
+                    apply_due_dates = None  # SLA module optional; ticket still saves.
+
+                client_org_id = (request.POST.get('client_org_id') or '').strip()
+                if not client_org_id:
+                    messages.error(request, 'Please pick a client for this workflow.')
+                    return render(request, 'processes/execution_form.html', {
+                        'form': form,
+                        'process': process,
+                        'current_organization': org,
+                        'psa_enabled': psa_enabled,
+                        'client_orgs': client_orgs,
+                    })
+                try:
+                    client_org = client_orgs.get(pk=client_org_id)
+                except Organization.DoesNotExist:
+                    messages.error(request, 'That client is not available.')
+                    return render(request, 'processes/execution_form.html', {
+                        'form': form,
+                        'process': process,
+                        'current_organization': org,
+                        'psa_enabled': psa_enabled,
+                        'client_orgs': client_orgs,
+                    })
+
+                queue = Queue.objects.filter(is_active=True).first()
+                status_obj = TicketStatus.objects.filter(slug='new').first()
+                priority = TicketPriority.objects.first()
+                ticket_type = TicketType.objects.first()
+                if not (queue and status_obj and priority and ticket_type):
+                    messages.error(
+                        request,
+                        'PSA is not fully configured (missing default queue/status/priority/type). '
+                        'Set up PSA defaults before launching workflows as tickets.'
+                    )
+                    return render(request, 'processes/execution_form.html', {
+                        'form': form,
+                        'process': process,
+                        'current_organization': org,
+                        'psa_enabled': psa_enabled,
+                        'client_orgs': client_orgs,
+                    })
+
+                user_has_membership = Membership.objects.filter(
+                    user=request.user, organization=client_org, is_active=True
+                ).exists()
+                notes = (form.cleaned_data.get('notes') or '').strip()
+
+                ticket = Ticket.objects.create(
+                    organization=client_org,
+                    subject=f"Workflow: {process.title}",
+                    description=notes,
+                    queue=queue,
+                    status=status_obj,
+                    priority=priority,
+                    ticket_type=ticket_type,
+                    source='manual',
+                    created_by=request.user,
+                    updated_by=request.user,
+                    assigned_to=request.user if user_has_membership else None,
+                )
+                if apply_due_dates:
+                    try:
+                        apply_due_dates(ticket)
+                    except Exception:
+                        logger.exception("apply_due_dates failed for new workflow ticket")
+
+                execution = form.save(commit=False)
+                execution.process = process
+                execution.organization = client_org
+                execution.assigned_to = request.user
+                execution.started_by = request.user
+                execution.started_at = timezone.now()
+                execution.status = 'in_progress'
+                execution.native_psa_ticket = ticket
+                execution.save()
+
+                # Create stage completion records
+                for stage in process.stages.all():
+                    ProcessStageCompletion.objects.create(
+                        execution=execution,
+                        stage=stage,
+                        is_completed=False
+                    )
+
+                # Log execution creation
+                ProcessExecutionAuditLog.log_action(
+                    execution=execution,
+                    action_type='execution_created',
+                    user=request.user,
+                    description=(
+                        f"{request.user.username} launched workflow '{process.title}' "
+                        f"on ticket {ticket.ticket_number}"
+                    ),
+                    request=request
+                )
+
+                messages.success(
+                    request,
+                    f"Created ticket {ticket.ticket_number} with workflow {process.title}"
+                )
+                return redirect('psa:ticket_detail', ticket_number=ticket.ticket_number)
+
+            # ------------------- Legacy path: PSA disabled -------------------
             execution = form.save(commit=False)
             execution.process = process
             execution.organization = org
@@ -463,6 +597,8 @@ def execution_create(request, slug):
         'form': form,
         'process': process,
         'current_organization': org,
+        'psa_enabled': psa_enabled,
+        'client_orgs': client_orgs,
     })
 
 
@@ -540,7 +676,14 @@ def execution_list(request):
 
 @login_required
 def execution_detail(request, pk):
-    """View execution with stage completion tracking"""
+    """View execution with stage completion tracking.
+
+    If this execution is attached to a native PSA ticket, the canonical
+    home for the checklist is the ticket detail page. Bounce there so users
+    don't see two slightly-different views of the same workflow run.
+    Superusers can still hit the legacy page with `?legacy=1` for debugging
+    standalone executions.
+    """
     org = get_request_organization(request)
 
     # Allow superusers/staff to view any execution in global view
@@ -550,6 +693,15 @@ def execution_detail(request, pk):
         execution = get_object_or_404(ProcessExecution, pk=pk)
     else:
         execution = get_object_or_404(ProcessExecution, pk=pk, organization=org)
+
+    # Redirect to the PSA ticket page where the embedded checklist now lives.
+    if execution.native_psa_ticket_id and not (
+        request.user.is_superuser and request.GET.get('legacy')
+    ):
+        return redirect(
+            'psa:ticket_detail',
+            ticket_number=execution.native_psa_ticket.ticket_number,
+        )
 
     # Get stage completions
     completions = execution.stage_completions.all().select_related('stage')

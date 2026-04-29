@@ -414,7 +414,13 @@
             </div>
         </div>
 
-        {# Workflows applied to this ticket #}
+        {# Workflows applied to this ticket — full inline stage checklist #}
+        <style>
+            .workflow-stage-toggle { background: none; border: none; padding: 0; margin-right: .35rem; cursor: pointer; line-height: 1; }
+            .workflow-stage-toggle:focus { outline: 2px solid #0d6efd; outline-offset: 1px; border-radius: 2px; }
+            .workflow-stage-item.checked .workflow-stage-title { text-decoration: line-through; color: #6c757d; }
+            .workflow-stage-meta a { text-decoration: none; }
+        </style>
         <div class="card mt-3">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <strong><i class="fas fa-bolt me-1"></i>Workflows</strong>
@@ -423,23 +429,128 @@
                 </a>
             </div>
             {% if workflow_executions %}
-            <ul class="list-group list-group-flush small">
+            {# CSRF token for inline AJAX stage toggles #}
+            {% csrf_token %}
+            <div class="card-body p-0">
                 {% for ex in workflow_executions %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <span>
-                        <a href="{% url 'processes:execution_detail' ex.pk %}"><strong>{{ ex.process.name }}</strong></a>
-                        {% if ex.status == 'completed' %}<span class="badge text-bg-success">Completed</span>
-                        {% elif ex.status == 'in_progress' %}<span class="badge text-bg-info">In progress</span>
-                        {% elif ex.status == 'cancelled' %}<span class="badge text-bg-secondary">Cancelled</span>
-                        {% elif ex.status == 'failed' %}<span class="badge text-bg-danger">Failed</span>
-                        {% else %}<span class="badge text-bg-secondary">{{ ex.get_status_display }}</span>{% endif %}
-                        <small class="text-muted ms-1">— {{ ex.assigned_to.username|default:'—' }} · started {{ ex.started_at|timesince }} ago</small>
-                    </span>
-                </li>
+                {% with completions=ex.stage_completions.all %}
+                {% with total=completions|length %}
+                <div class="workflow-execution border-bottom p-3" data-execution-id="{{ ex.pk }}">
+                    <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
+                        <div>
+                            <strong>{{ ex.process.title }}</strong>
+                            {% if ex.status == 'completed' %}<span class="badge text-bg-success">Completed</span>
+                            {% elif ex.status == 'in_progress' %}<span class="badge text-bg-info">In progress</span>
+                            {% elif ex.status == 'cancelled' %}<span class="badge text-bg-secondary">Cancelled</span>
+                            {% elif ex.status == 'failed' %}<span class="badge text-bg-danger">Failed</span>
+                            {% else %}<span class="badge text-bg-secondary">{{ ex.get_status_display }}</span>{% endif %}
+                            <div class="small text-muted mt-1">
+                                Assigned to {{ ex.assigned_to.username|default:'—' }}
+                                {% if ex.started_at %} · started {{ ex.started_at|timesince }} ago
+                                {% else %} · not started yet{% endif %}
+                            </div>
+                        </div>
+                        <div class="text-end small">
+                            <a href="{% url 'processes:execution_audit_log' ex.pk %}" class="text-decoration-none">
+                                <i class="fas fa-history me-1"></i>View audit log
+                            </a>
+                            {% if request.user.is_superuser %}
+                            <span class="text-muted mx-1">·</span>
+                            <a href="{% url 'processes:execution_detail' ex.pk %}" class="text-decoration-none text-muted">
+                                <i class="fas fa-external-link-alt me-1"></i>View standalone
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {# Progress bar #}
+                    {% with done=ex.stage_completions.all|length %}
+                    <div class="d-flex align-items-center gap-2 mb-2 small">
+                        <span class="text-muted text-nowrap workflow-progress-label" data-execution-id="{{ ex.pk }}">
+                            <span class="workflow-done-count">{{ ex.completion_percentage|floatformat:0 }}%</span>
+                            <span class="text-muted">·</span>
+                            <span>{{ total }} stage{{ total|pluralize }}</span>
+                        </span>
+                        <div class="progress flex-grow-1" style="height: 8px;" role="progressbar"
+                             aria-valuenow="{{ ex.completion_percentage }}" aria-valuemin="0" aria-valuemax="100">
+                            <div class="progress-bar workflow-progress"
+                                 data-execution-id="{{ ex.pk }}"
+                                 style="width: {{ ex.completion_percentage }}%;"></div>
+                        </div>
+                    </div>
+                    {% endwith %}
+                    {# Inline stage list #}
+                    {% if completions %}
+                    <ul class="list-group list-group-flush">
+                        {% for completion in completions %}
+                        <li class="list-group-item px-0 py-2 workflow-stage-item{% if completion.is_completed %} checked{% endif %}">
+                            <div class="d-flex align-items-start">
+                                <button type="button"
+                                        class="workflow-stage-toggle{% if completion.is_completed %} checked{% endif %}"
+                                        data-completion-id="{{ completion.pk }}"
+                                        title="{% if completion.is_completed %}Mark as incomplete{% else %}Mark as complete{% endif %}">
+                                    {% if completion.is_completed %}
+                                    <i class="fas fa-check-square text-success"></i>
+                                    {% else %}
+                                    <i class="far fa-square text-muted"></i>
+                                    {% endif %}
+                                </button>
+                                <div class="flex-grow-1">
+                                    <div class="workflow-stage-title">
+                                        <strong>{{ completion.stage.order|add:1 }}.</strong> {{ completion.stage.title }}
+                                        {% if completion.stage.requires_confirmation %}
+                                        <span class="badge text-bg-warning ms-1" title="Requires explicit confirmation"><i class="fas fa-exclamation-circle"></i></span>
+                                        {% endif %}
+                                    </div>
+                                    {% if completion.stage.description %}
+                                    <div class="small text-muted">{{ completion.stage.description|linebreaksbr }}</div>
+                                    {% endif %}
+                                    {# Linked entity shortcuts #}
+                                    {% if completion.stage.linked_document or completion.stage.linked_password or completion.stage.linked_secure_note or completion.stage.linked_asset %}
+                                    <div class="workflow-stage-meta small mt-1 d-flex flex-wrap gap-2">
+                                        {% if completion.stage.linked_document %}
+                                        <a href="{% url 'docs:document_detail' completion.stage.linked_document.slug %}" class="text-primary">
+                                            <i class="fas fa-file-alt me-1"></i>{{ completion.stage.linked_document.title }}
+                                        </a>
+                                        {% endif %}
+                                        {% if completion.stage.linked_password %}
+                                        <a href="{% url 'vault:password_detail' completion.stage.linked_password.pk %}" class="text-primary">
+                                            <i class="fas fa-key me-1"></i>{{ completion.stage.linked_password.title }}
+                                        </a>
+                                        {% endif %}
+                                        {% if completion.stage.linked_secure_note %}
+                                        <span class="text-muted">
+                                            <i class="fas fa-sticky-note me-1"></i>{{ completion.stage.linked_secure_note.title }}
+                                        </span>
+                                        {% endif %}
+                                        {% if completion.stage.linked_asset %}
+                                        <a href="{% url 'assets:asset_detail' completion.stage.linked_asset.pk %}" class="text-primary">
+                                            <i class="fas fa-server me-1"></i>{{ completion.stage.linked_asset.name|default:completion.stage.linked_asset }}
+                                        </a>
+                                        {% endif %}
+                                    </div>
+                                    {% endif %}
+                                    {% if completion.is_completed and completion.completed_by %}
+                                    <div class="small text-muted mt-1">
+                                        <i class="fas fa-check me-1"></i>Done by {{ completion.completed_by.username }}{% if completion.completed_at %} {{ completion.completed_at|timesince }} ago{% endif %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="small text-muted">No stages defined for this workflow.</div>
+                    {% endif %}
+                </div>
+                {% endwith %}
+                {% endwith %}
                 {% endfor %}
-            </ul>
+            </div>
             {% else %}
-            <div class="card-body p-2 small text-muted">No workflows applied yet.</div>
+            <div class="card-body p-3 small text-muted">
+                No workflows applied yet. Launch one to attach a workflow checklist to this ticket.
+            </div>
             {% endif %}
         </div>
 
@@ -673,4 +784,64 @@
     </div>
 </div>
 {% endif %}
+
+{# Workflow stage toggle — AJAX checkbox handling for inline workflow checklists #}
+<script>
+(function() {
+    function csrfToken() {
+        var el = document.querySelector('[name=csrfmiddlewaretoken]');
+        return el ? el.value : '';
+    }
+    document.querySelectorAll('.workflow-stage-toggle').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            var completionId = btn.dataset.completionId;
+            var isChecked = btn.classList.contains('checked');
+            var url = isChecked
+                ? '/processes/completion/' + completionId + '/uncomplete/'
+                : '/processes/completion/' + completionId + '/complete/';
+            btn.disabled = true;
+            try {
+                var r = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                });
+                var data = await r.json();
+                if (!data || !data.success) {
+                    console.warn('Stage toggle failed', data);
+                    btn.disabled = false;
+                    return;
+                }
+                // Toggle button + parent <li> classes
+                btn.classList.toggle('checked');
+                var li = btn.closest('.workflow-stage-item');
+                if (li) li.classList.toggle('checked');
+                var icon = btn.querySelector('i');
+                if (icon) {
+                    icon.className = btn.classList.contains('checked')
+                        ? 'fas fa-check-square text-success'
+                        : 'far fa-square text-muted';
+                }
+                // Update progress bar + label belonging to the same execution
+                var execContainer = btn.closest('.workflow-execution');
+                if (execContainer) {
+                    var execId = execContainer.dataset.executionId;
+                    var bar = document.querySelector('.workflow-progress[data-execution-id="' + execId + '"]');
+                    if (bar) {
+                        bar.style.width = data.completion_percentage + '%';
+                        var pbWrap = bar.parentElement;
+                        if (pbWrap) pbWrap.setAttribute('aria-valuenow', data.completion_percentage);
+                    }
+                    var label = document.querySelector('.workflow-progress-label[data-execution-id="' + execId + '"] .workflow-done-count');
+                    if (label) label.textContent = Math.round(data.completion_percentage) + '%';
+                }
+            } catch (e) {
+                console.error('Stage toggle error', e);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    });
+})();
+</script>
 {% endblock %}

@@ -234,12 +234,28 @@ def ticket_detail(request, ticket_number):
         ai_enabled = False
 
     # Workflow executions tied to this ticket (Operations → Workflows)
+    # Eager-load stage completions so the ticket detail page can render the
+    # full inline stage checklist without N+1 queries.
     workflow_executions = []
     try:
-        from processes.models import ProcessExecution
+        from django.db.models import Prefetch
+        from processes.models import ProcessExecution, ProcessStageCompletion
         workflow_executions = list(
             ProcessExecution.objects.filter(native_psa_ticket=ticket)
-            .select_related('process', 'assigned_to')
+            .select_related('process', 'assigned_to', 'started_by')
+            .prefetch_related(
+                Prefetch(
+                    'stage_completions',
+                    queryset=ProcessStageCompletion.objects.select_related(
+                        'stage',
+                        'stage__linked_document',
+                        'stage__linked_password',
+                        'stage__linked_secure_note',
+                        'stage__linked_asset',
+                        'completed_by',
+                    ).order_by('stage__order'),
+                )
+            )
             .order_by('-created_at')[:10]
         )
     except Exception:
@@ -1471,20 +1487,48 @@ def project_list(request):
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def project_form(request, pk=None):
-    org = get_request_organization(request)
-    if org is None:
-        messages.error(request, 'Pick a client first.')
-        return redirect('psa:project_list')
-    item = get_object_or_404(Project, pk=pk, organization=org) if pk else None
+    from core.models import Organization
+    if pk:
+        item = get_object_or_404(Project, pk=pk)
+        org = item.organization
+    else:
+        item = None
+        org = get_request_organization(request)
+
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
+    def _render(selected_org_id=None):
+        return render(request, 'psa/project_form.html', {
+            'item': item,
+            'client_orgs': client_orgs,
+            'status_choices': Project.STATUS_CHOICES,
+            'selected_client_org_id': selected_org_id if selected_org_id is not None
+                                       else (item.organization_id if item else (org.pk if org else None)),
+        })
 
     if request.method == 'POST':
+        posted_org_id = (request.POST.get('client_org_id') or '').strip()
+        if posted_org_id:
+            try:
+                item_org = Organization.objects.get(pk=int(posted_org_id), is_active=True)
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid client.')
+                return _render()
+        else:
+            item_org = org
+
+        if item_org is None:
+            messages.error(request, 'Please choose a client for this project.')
+            return _render()
+
         name = (request.POST.get('name') or '').strip()
         if not name:
             messages.error(request, 'Name is required.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
         if item is None:
-            item = Project(organization=org, name=name)
+            item = Project(organization=item_org, name=name)
         else:
+            item.organization = item_org
             item.name = name
         item.description = (request.POST.get('description') or '').strip()
         item.status = request.POST.get('status') or 'planning'
@@ -1497,7 +1541,6 @@ def project_form(request, pk=None):
             item.estimated_hours = None
         client_org_id = request.POST.get('client_org') or ''
         if client_org_id:
-            from core.models import Organization
             item.client_org = Organization.objects.filter(pk=client_org_id).first()
         else:
             item.client_org = None
@@ -1507,7 +1550,7 @@ def project_form(request, pk=None):
 
         AuditLog.log(
             user=request.user, action='update' if pk else 'create',
-            organization=org,
+            organization=item_org,
             object_type='psa.Project', object_id=item.pk,
             object_repr=item.name,
             description=f'{"Updated" if pk else "Created"} PSA project "{item.name}"',
@@ -1516,12 +1559,7 @@ def project_form(request, pk=None):
         messages.success(request, f'Saved "{item.name}".')
         return redirect('psa:project_detail', pk=item.pk)
 
-    from core.models import Organization
-    return render(request, 'psa/project_form.html', {
-        'item': item,
-        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
-        'status_choices': Project.STATUS_CHOICES,
-    })
+    return _render()
 
 
 @login_required
@@ -1563,22 +1601,49 @@ def recurring_list(request):
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def recurring_form(request, pk=None):
-    org = get_request_organization(request)
-    if org is None:
-        messages.error(request, 'Pick a client first.')
-        return redirect('psa:recurring_list')
-    item = get_object_or_404(RecurringTicketSchedule, pk=pk, organization=org) if pk else None
+    from core.models import Organization
+    if pk:
+        item = get_object_or_404(RecurringTicketSchedule, pk=pk)
+        org = item.organization
+    else:
+        item = None
+        org = get_request_organization(request)
 
     queues = Queue.objects.filter(is_active=True)
     priorities = TicketPriority.objects.all()
     types = TicketType.objects.all()
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
+    def _render(selected_org_id=None):
+        return render(request, 'psa/recurring_form.html', {
+            'item': item,
+            'queues': queues, 'priorities': priorities, 'types': types,
+            'frequency_choices': RecurringTicketSchedule.FREQUENCY_CHOICES,
+            'client_orgs': client_orgs,
+            'selected_client_org_id': selected_org_id if selected_org_id is not None
+                                       else (item.organization_id if item else (org.pk if org else None)),
+        })
 
     if request.method == 'POST':
+        posted_org_id = (request.POST.get('client_org_id') or '').strip()
+        if posted_org_id:
+            try:
+                item_org = Organization.objects.get(pk=int(posted_org_id), is_active=True)
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid client.')
+                return _render()
+        else:
+            item_org = org
+
+        if item_org is None:
+            messages.error(request, 'Please choose a client for this schedule.')
+            return _render()
+
         name = (request.POST.get('name') or '').strip()
         subject = (request.POST.get('template_subject') or '').strip()
         if not name or not subject:
             messages.error(request, 'Name and template subject are required.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
         try:
             queue = queues.get(pk=request.POST.get('queue'))
             priority = priorities.get(pk=request.POST.get('priority'))
@@ -1586,16 +1651,17 @@ def recurring_form(request, pk=None):
         except (Queue.DoesNotExist, TicketPriority.DoesNotExist,
                 TicketType.DoesNotExist, ValueError):
             messages.error(request, 'Pick a valid queue / priority / type.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
 
         if item is None:
             item = RecurringTicketSchedule(
-                organization=org,
+                organization=item_org,
                 queue=queue, priority=priority, ticket_type=ticket_type,
                 next_run_at=timezone.now(),
                 created_by=request.user,
             )
         else:
+            item.organization = item_org
             item.queue = queue
             item.priority = priority
             item.ticket_type = ticket_type
@@ -1621,7 +1687,6 @@ def recurring_form(request, pk=None):
 
         client_org_id = request.POST.get('client_org') or ''
         if client_org_id:
-            from core.models import Organization
             item.client_org = Organization.objects.filter(pk=client_org_id).first()
         else:
             item.client_org = None
@@ -1630,13 +1695,7 @@ def recurring_form(request, pk=None):
         messages.success(request, f'Saved schedule "{item.name}".')
         return redirect('psa:recurring_list')
 
-    from core.models import Organization
-    return render(request, 'psa/recurring_form.html', {
-        'item': item,
-        'queues': queues, 'priorities': priorities, 'types': types,
-        'frequency_choices': RecurringTicketSchedule.FREQUENCY_CHOICES,
-        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
-    })
+    return _render()
 
 
 @login_required
@@ -1785,30 +1844,58 @@ def contract_list(request):
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def contract_form(request, pk=None):
-    org = get_request_organization(request)
-    if org is None:
-        messages.error(request, 'Pick a client first.')
-        return redirect('psa:contract_list')
-    item = get_object_or_404(Contract, pk=pk, organization=org) if pk else None
-
     from core.models import Organization
+    if pk:
+        item = get_object_or_404(Contract, pk=pk)
+        org = item.organization
+    else:
+        item = None
+        org = get_request_organization(request)
+
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
+    def _render(selected_org_id=None):
+        return render(request, 'psa/contract_form.html', {
+            'item': item,
+            'client_orgs': client_orgs,
+            'contract_types': Contract.CONTRACT_TYPES,
+            'status_choices': Contract.STATUS_CHOICES,
+            'priorities': TicketPriority.objects.all().order_by('sort_order'),
+            'selected_client_org_id': selected_org_id if selected_org_id is not None
+                                       else (item.organization_id if item else (org.pk if org else None)),
+        })
 
     if request.method == 'POST':
+        posted_org_id = (request.POST.get('client_org_id') or '').strip()
+        if posted_org_id:
+            try:
+                item_org = Organization.objects.get(pk=int(posted_org_id), is_active=True)
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid client.')
+                return _render()
+        else:
+            item_org = org
+
+        if item_org is None:
+            messages.error(request, 'Please choose a client for this contract.')
+            return _render()
+
         name = (request.POST.get('name') or '').strip()
         client_org_id = request.POST.get('client_org')
         if not name or not client_org_id:
             messages.error(request, 'Name and client are required.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
         try:
             client_org = Organization.objects.get(pk=client_org_id)
         except Organization.DoesNotExist:
             messages.error(request, 'Client not found.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
 
         if item is None:
-            item = Contract(organization=org, client_org=client_org, name=name,
+            item = Contract(organization=item_org, client_org=client_org, name=name,
                             created_by=request.user, start_date=timezone.now().date())
         else:
+            item.organization = item_org
             item.client_org = client_org
             item.name = name
         item.contract_type = request.POST.get('contract_type') or 'block_hours'
@@ -1850,7 +1937,7 @@ def contract_form(request, pk=None):
 
         AuditLog.log(
             user=request.user, action='update' if pk else 'create',
-            organization=org,
+            organization=item_org,
             object_type='psa.Contract', object_id=item.pk,
             object_repr=str(item),
             description=f'{"Updated" if pk else "Created"} contract "{item.name}"',
@@ -1859,13 +1946,7 @@ def contract_form(request, pk=None):
         messages.success(request, f'Saved "{item.name}".')
         return redirect('psa:contract_list')
 
-    return render(request, 'psa/contract_form.html', {
-        'item': item,
-        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
-        'contract_types': Contract.CONTRACT_TYPES,
-        'status_choices': Contract.STATUS_CHOICES,
-        'priorities': TicketPriority.objects.all().order_by('sort_order'),
-    })
+    return _render()
 
 
 @login_required
@@ -1887,24 +1968,50 @@ def email_config_list(request):
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def email_config_form(request, pk=None):
-    org = get_request_organization(request)
-    if org is None:
-        messages.error(request, 'Pick a client first.')
-        return redirect('psa:email_config_list')
-    item = get_object_or_404(EmailIngestionConfig, pk=pk, organization=org) if pk else None
+    from core.models import Organization
+    if pk:
+        item = get_object_or_404(EmailIngestionConfig, pk=pk)
+        org = item.organization
+    else:
+        item = None
+        org = get_request_organization(request)
 
     queues = Queue.objects.filter(is_active=True)
     priorities = TicketPriority.objects.all()
     types = TicketType.objects.all()
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
+    def _render(selected_org_id=None):
+        return render(request, 'psa/email_config_form.html', {
+            'item': item,
+            'queues': queues, 'priorities': priorities, 'types': types,
+            'client_orgs': client_orgs,
+            'selected_client_org_id': selected_org_id if selected_org_id is not None
+                                       else (item.organization_id if item else (org.pk if org else None)),
+        })
 
     if request.method == 'POST':
+        posted_org_id = (request.POST.get('client_org_id') or '').strip()
+        if posted_org_id:
+            try:
+                item_org = Organization.objects.get(pk=int(posted_org_id), is_active=True)
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid client.')
+                return _render()
+        else:
+            item_org = org
+
+        if item_org is None:
+            messages.error(request, 'Please choose a client for this email config.')
+            return _render()
+
         name = (request.POST.get('name') or '').strip()
         host = (request.POST.get('imap_host') or '').strip()
         username = (request.POST.get('username') or '').strip()
         password = request.POST.get('password') or ''
         if not name or not host or not username:
             messages.error(request, 'Name, host, username are required.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
         try:
             port = int(request.POST.get('imap_port') or 993)
         except ValueError:
@@ -1916,12 +2023,13 @@ def email_config_form(request, pk=None):
             ticket_type = types.get(pk=request.POST.get('default_type'))
         except (Queue.DoesNotExist, TicketPriority.DoesNotExist, TicketType.DoesNotExist, ValueError):
             messages.error(request, 'Pick valid defaults.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
 
         if item is None:
-            item = EmailIngestionConfig(organization=org, default_queue=queue,
+            item = EmailIngestionConfig(organization=item_org, default_queue=queue,
                                         default_priority=priority, default_type=ticket_type)
         else:
+            item.organization = item_org
             item.default_queue = queue
             item.default_priority = priority
             item.default_type = ticket_type
@@ -1944,10 +2052,7 @@ def email_config_form(request, pk=None):
         messages.success(request, f'Saved "{item.name}".')
         return redirect('psa:email_config_list')
 
-    return render(request, 'psa/email_config_form.html', {
-        'item': item,
-        'queues': queues, 'priorities': priorities, 'types': types,
-    })
+    return _render()
 
 
 # ---------------------------------------------------------------------------
@@ -1978,30 +2083,60 @@ def quote_list(request):
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
 def quote_form(request, pk=None):
-    org = get_request_organization(request)
-    if org is None:
-        messages.error(request, 'Pick a client first.')
-        return redirect('psa:quote_list')
-    item = get_object_or_404(Quote, pk=pk, organization=org) if pk else None
+    from core.models import Organization, SystemSetting
+    if pk:
+        item = get_object_or_404(Quote, pk=pk)
+        org = item.organization
+    else:
+        item = None
+        org = get_request_organization(request)
 
-    from core.models import Organization
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
+    def _render(selected_org_id=None):
+        settings = SystemSetting.get_settings()
+        default_tax_rate = settings.psa_default_tax_rate if not item else item.tax_rate
+        return render(request, 'psa/quote_form.html', {
+            'item': item,
+            'client_orgs': client_orgs,
+            'status_choices': Quote.STATUS_CHOICES,
+            'line_items': item.line_items.all() if item else [],
+            'default_tax_rate': default_tax_rate,
+            'selected_client_org_id': selected_org_id if selected_org_id is not None
+                                       else (item.organization_id if item else (org.pk if org else None)),
+        })
 
     if request.method == 'POST':
+        posted_org_id = (request.POST.get('client_org_id') or '').strip()
+        if posted_org_id:
+            try:
+                item_org = Organization.objects.get(pk=int(posted_org_id), is_active=True)
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid client.')
+                return _render()
+        else:
+            item_org = org
+
+        if item_org is None:
+            messages.error(request, 'Please choose a client for this quote.')
+            return _render()
+
         title = (request.POST.get('title') or '').strip()
         client_org_id = request.POST.get('client_org')
         if not title or not client_org_id:
             messages.error(request, 'Title and client are required.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
         try:
             client_org = Organization.objects.get(pk=client_org_id)
         except Organization.DoesNotExist:
             messages.error(request, 'Client not found.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
 
         if item is None:
-            item = Quote(organization=org, client_org=client_org, title=title,
+            item = Quote(organization=item_org, client_org=client_org, title=title,
                          created_by=request.user)
         else:
+            item.organization = item_org
             item.client_org = client_org
             item.title = title
         item.description = (request.POST.get('description') or '').strip()
@@ -2036,16 +2171,7 @@ def quote_form(request, pk=None):
         messages.success(request, f'Saved "{item.quote_number}".')
         return redirect('psa:quote_list')
 
-    from core.models import SystemSetting
-    settings = SystemSetting.get_settings()
-    default_tax_rate = settings.psa_default_tax_rate if not item else item.tax_rate
-    return render(request, 'psa/quote_form.html', {
-        'item': item,
-        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
-        'status_choices': Quote.STATUS_CHOICES,
-        'line_items': item.line_items.all() if item else [],
-        'default_tax_rate': default_tax_rate,
-    })
+    return _render()
 
 
 @login_required
@@ -2427,30 +2553,63 @@ def invoice_detail(request, pk):
 @require_http_methods(['GET', 'POST'])
 def invoice_form(request, pk=None):
     from .models import Invoice, InvoiceLineItem
-    from core.models import Organization
+    from core.models import Organization, SystemSetting
     from datetime import date as _date
-    org = get_request_organization(request)
-    if org is None:
-        messages.error(request, 'Pick a client first.')
-        return redirect('psa:invoice_list')
-    item = get_object_or_404(Invoice, pk=pk, organization=org) if pk else None
+    if pk:
+        item = get_object_or_404(Invoice, pk=pk)
+        org = item.organization
+    else:
+        item = None
+        org = get_request_organization(request)
+
+    client_orgs = Organization.objects.filter(is_active=True).order_by('name')
+
+    def _render(selected_org_id=None):
+        settings = SystemSetting.get_settings()
+        default_tax_rate = settings.psa_default_tax_rate if not item else item.tax_rate
+        default_currency = settings.psa_default_currency if not item else item.currency
+        return render(request, 'psa/invoice_form.html', {
+            'item': item,
+            'client_orgs': client_orgs,
+            'status_choices': Invoice.STATUS_CHOICES,
+            'line_items': item.line_items.all() if item else [],
+            'default_tax_rate': default_tax_rate,
+            'default_currency': default_currency,
+            'selected_client_org_id': selected_org_id if selected_org_id is not None
+                                       else (item.organization_id if item else (org.pk if org else None)),
+        })
 
     if request.method == 'POST':
+        posted_org_id = (request.POST.get('client_org_id') or '').strip()
+        if posted_org_id:
+            try:
+                item_org = Organization.objects.get(pk=int(posted_org_id), is_active=True)
+            except (Organization.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Invalid client.')
+                return _render()
+        else:
+            item_org = org
+
+        if item_org is None:
+            messages.error(request, 'Please choose a client for this invoice.')
+            return _render()
+
         title = (request.POST.get('title') or '').strip()
         client_org_id = request.POST.get('client_org')
         if not title or not client_org_id:
             messages.error(request, 'Title and client are required.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
         try:
             client_org = Organization.objects.get(pk=client_org_id)
         except Organization.DoesNotExist:
             messages.error(request, 'Client not found.')
-            return redirect(request.path)
+            return _render(selected_org_id=item_org.pk)
 
         if item is None:
-            item = Invoice(organization=org, client_org=client_org, title=title,
+            item = Invoice(organization=item_org, client_org=client_org, title=title,
                            invoice_date=_date.today(), created_by=request.user)
         else:
+            item.organization = item_org
             item.client_org = client_org
             item.title = title
         item.description = (request.POST.get('description') or '').strip()
@@ -2486,7 +2645,7 @@ def invoice_form(request, pk=None):
         item.recompute_totals()
         AuditLog.log(
             user=request.user, action='update' if pk else 'create',
-            organization=org,
+            organization=item_org,
             object_type='psa.Invoice', object_id=item.pk,
             object_repr=item.invoice_number,
             description=f'{"Updated" if pk else "Created"} invoice {item.invoice_number}',
@@ -2495,18 +2654,7 @@ def invoice_form(request, pk=None):
         messages.success(request, f'Saved {item.invoice_number}.')
         return redirect('psa:invoice_detail', pk=item.pk)
 
-    from core.models import SystemSetting
-    settings = SystemSetting.get_settings()
-    default_tax_rate = settings.psa_default_tax_rate if not item else item.tax_rate
-    default_currency = settings.psa_default_currency if not item else item.currency
-    return render(request, 'psa/invoice_form.html', {
-        'item': item,
-        'client_orgs': Organization.objects.filter(is_active=True).order_by('name'),
-        'status_choices': Invoice.STATUS_CHOICES,
-        'line_items': item.line_items.all() if item else [],
-        'default_tax_rate': default_tax_rate,
-        'default_currency': default_currency,
-    })
+    return _render()
 
 
 @login_required
