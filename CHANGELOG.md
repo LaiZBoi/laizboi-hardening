@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.114] - 2026-04-29
+
+### Added — Quick Actions wizard on the dashboard
+A prominent row of 8 large icon tiles at the top of the dashboard for the most-used create flows: **New Ticket / Add Asset / New Password / Add Document / Scan Receipt / Run Workflow / New Quote / New Invoice**. Themed via existing CSS variables (works in light + all dark themes), tiles have hover lift + tooltip, and PSA/Vehicle tiles are gated by `psa_enabled` / `vehicles_enabled` so they only appear when those features are on. The legacy small "Quick Actions" card at the bottom of the dashboard was removed (superseded).
+
+### Changed — ~30% page-density reduction site-wide
+Single-file CSS layer at the bottom of `static/css/custom.css` reducing vertical padding/margin on cards, headings, containers, form rows, tables (`.table.table > tbody > tr > td` etc — doubled-class to win specificity vs the existing `.table tbody td` rule), buttons, inputs, breadcrumbs (incl. the higher-specificity `nav[aria-label="breadcrumb"]:not(.card *) > .breadcrumb` rule), nav tabs, and list groups. ~30% less whitespace; readable on phones because mobile is in the same cascade. Reversible by deleting the marked block at the bottom of `custom.css`.
+
+### Changed — Global KB navbar link is now PSA-aware
+The "Global KB" link in the primary navbar is hidden when **Internal PSA is enabled** (it lives under PSA → KB at that point) and stays visible when PSA is disabled — so non-PSA installs don't lose access. Gated by the existing `psa_enabled` context variable.
+
 ## [3.17.113] - 2026-04-29
 
 ### Fixed — Dark-mode contrast across PSA + portal pages

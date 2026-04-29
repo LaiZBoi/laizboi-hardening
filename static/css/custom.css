@@ -1576,3 +1576,96 @@ nav[aria-label="breadcrumb"]:not(.card *) > .breadcrumb {
     border-color: #495057;
     color: #ffffff;
 }
+
+/* ========================================================================
+   COMPACT DENSITY (v3.17.x — 2026-04-29)
+   ~30% reduction in vertical padding/margin across cards, forms, tables,
+   buttons, headings. Single-file site-wide override.
+   ======================================================================== */
+
+/* 1. Card bodies */
+.card-body {
+    padding: 0.85rem 1rem;
+}
+
+/* 2. Card headers / footers */
+.card-header,
+.card-footer {
+    padding: 0.55rem 0.85rem;
+}
+
+/* 3. Heading bottom margins */
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    margin-bottom: 0.5rem;
+}
+
+/* 4. Container vertical padding */
+.container,
+.container-fluid {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+/* 5. Form rows / form groups (Bootstrap utility classes use !important) */
+.mb-3,
+.mb-4 {
+    margin-bottom: 0.75rem !important;
+}
+
+.row.g-3,
+.row.g-4 {
+    --bs-gutter-y: 0.75rem;
+}
+
+/* 6. Tables — site-wide table-sm-equivalent density */
+.table.table > tbody > tr > td,
+.table.table > thead > tr > th,
+.table.table > tfoot > tr > td,
+.table.table > tfoot > tr > th {
+    padding: 0.4rem 0.5rem;
+}
+
+/* 7. Buttons (leave .btn-lg and .btn-sm alone) */
+.btn:not(.btn-lg):not(.btn-sm) {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.92rem;
+}
+
+/* 8. Input controls (leave .form-control-lg and .form-control-sm alone) */
+.form-control:not(.form-control-lg):not(.form-control-sm),
+.form-select:not(.form-select-lg):not(.form-select-sm) {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.92rem;
+}
+
+/* 10. Breadcrumbs */
+.breadcrumb {
+    margin-bottom: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.88rem;
+}
+
+/* 10b. Standalone breadcrumbs — override higher-specificity rule at line ~1095 */
+nav[aria-label="breadcrumb"]:not(.card *) > .breadcrumb {
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.88rem;
+}
+
+/* 11. Nav tabs */
+.nav-tabs .nav-link {
+    padding: 0.4rem 0.75rem;
+}
+
+/* 12. List groups */
+.list-group-item {
+    padding: 0.55rem 0.85rem;
+}
+
+/* 13. Dashboard stat-card display numbers */
+.card .display-4,
+.card .display-5,
+.card .display-6 {
+    margin-bottom: 0.25rem;
+}
