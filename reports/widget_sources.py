@@ -201,6 +201,20 @@ def hours_split_pie(params):
     return {'labels': ['Billable', 'Non-billable'], 'data': [round(bill, 1), round(nonbill, 1)]}
 
 
+def sla_breach_trend(params):
+    """30d response-breach trend per priority (line chart, top 3 priorities only)."""
+    from reports.queries import sla_trend_by_priority
+    end = date.today()
+    start = end - timedelta(days=29)
+    data = sla_trend_by_priority(start, end, bucket='day')
+    labels = data['buckets']
+    series = []
+    for p in ['P1', 'P2', 'P3']:  # only top 3 priorities for the widget
+        rows = data['series'].get(p, [])
+        series.append({'name': p, 'data': [r['response_pct'] for r in rows]})
+    return {'labels': labels, 'series': series}
+
+
 # ---- Registry --------------------------------------------------------------
 
 REGISTRY = {
@@ -219,6 +233,7 @@ REGISTRY = {
     'revenue_trend_30d': revenue_trend_30d,
     'tickets_opened_30d': tickets_opened_30d,
     'hours_split_pie': hours_split_pie,
+    'sla_breach_trend': sla_breach_trend,
 }
 
 DATA_SOURCE_CHOICES = [
@@ -235,6 +250,7 @@ DATA_SOURCE_CHOICES = [
     ('revenue_trend_30d', 'Revenue trend 30d (bar chart)', 'chart_bar'),
     ('tickets_opened_30d', 'Tickets opened 30d (line chart)', 'chart_line'),
     ('hours_split_pie', 'Billable vs non-billable (pie chart)', 'chart_pie'),
+    ('sla_breach_trend', 'SLA breach trend 30d (line chart)', 'chart_line'),
 ]
 
 

@@ -66,5 +66,9 @@ urlpatterns = [
          name='psa_effective_hourly_rate'),
     path('psa/revenue-leakage/', views.psa_revenue_leakage,
          name='psa_revenue_leakage'),
+    # Phase 3.4 — SLA trends + Margin analytics by service line
+    path('psa/sla-trends/', views.psa_sla_trends, name='psa_sla_trends'),
+    path('psa/margin-analytics/', views.psa_margin_analytics,
+         name='psa_margin_analytics'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

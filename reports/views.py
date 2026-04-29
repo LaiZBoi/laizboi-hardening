@@ -1292,3 +1292,182 @@ def psa_revenue_leakage(request):
         'end_date': end_date,
         'stale_days': stale_days,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.4 — SLA trends + Margin analytics by service line
+# ---------------------------------------------------------------------------
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def psa_sla_trends(request):
+    """
+    SLA breach trend report — per-priority response + resolution breach %
+    over a bucketed window (day / week / month). Side panel lists the
+    top-N clients by ticket volume with their breach %.
+    CSV via ?format=csv&tab=summary|by_client.
+    """
+    from .queries import sla_trend_by_priority, sla_trend_by_client
+
+    today = date.today()
+    default_start = today - timedelta(days=89)  # last 90 days inclusive
+    start_date = _parse_date(request.GET.get('start'), default_start)
+    end_date = _parse_date(request.GET.get('end'), today)
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    bucket = (request.GET.get('bucket') or 'week').lower()
+    if bucket not in ('day', 'week', 'month'):
+        bucket = 'week'
+
+    trend = sla_trend_by_priority(start_date, end_date, bucket=bucket)
+    top_clients = sla_trend_by_client(start_date, end_date, top_n=10)
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        tab = (request.GET.get('tab') or 'summary').lower()
+        if tab == 'by_client':
+            return _csv_response(
+                f'sla-trend-by-client-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+                ['Client', 'Tickets', 'Response Breaches', 'Resolution Breaches',
+                 'Response %', 'Resolution %'],
+                [[
+                    r['client_name'], r['tickets'],
+                    r['response_breaches'], r['resolution_breaches'],
+                    f"{r['response_pct']:.1f}", f"{r['resolution_pct']:.1f}",
+                ] for r in top_clients],
+            )
+        # Default: per-priority summary
+        return _csv_response(
+            f'sla-trend-summary-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+            ['Priority', 'Tickets', 'Response Breaches', 'Resolution Breaches',
+             'Response %', 'Resolution %'],
+            [[
+                p,
+                trend['totals_by_priority'][p]['tickets'],
+                trend['totals_by_priority'][p]['response_breaches'],
+                trend['totals_by_priority'][p]['resolution_breaches'],
+                f"{trend['totals_by_priority'][p]['response_pct']:.1f}",
+                f"{trend['totals_by_priority'][p]['resolution_pct']:.1f}",
+            ] for p in trend['priorities']],
+        )
+
+    # Pre-encode chart payloads as JSON for safe embedding in <script>.
+    response_chart = {
+        'labels': trend['buckets'],
+        'series': [
+            {
+                'name': p,
+                'data': [row['response_pct'] for row in trend['series'][p]],
+            }
+            for p in trend['priorities']
+        ],
+    }
+    resolution_chart = {
+        'labels': trend['buckets'],
+        'series': [
+            {
+                'name': p,
+                'data': [row['resolution_pct'] for row in trend['series'][p]],
+            }
+            for p in trend['priorities']
+        ],
+    }
+    response_chart_json = json.dumps(response_chart).replace('</', '<\\/')
+    resolution_chart_json = json.dumps(resolution_chart).replace('</', '<\\/')
+
+    # Build a totals list ordered by the priorities list for the template.
+    totals_rows = [
+        {
+            'priority': p,
+            **trend['totals_by_priority'][p],
+        }
+        for p in trend['priorities']
+    ]
+
+    return render(request, 'reports/psa_sla_trends.html', {
+        'start_date': start_date,
+        'end_date': end_date,
+        'bucket': bucket,
+        'priorities': trend['priorities'],
+        'totals_rows': totals_rows,
+        'top_clients': top_clients,
+        'response_chart_json': response_chart_json,
+        'resolution_chart_json': resolution_chart_json,
+        'has_buckets': bool(trend['buckets']),
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def psa_margin_analytics(request):
+    """
+    Margin grouped by service-line dimension — ticket_type / closure_category
+    / queue. Bar chart + sortable table + CSV export.
+    """
+    from .queries import margin_analytics_by_service_line
+
+    today = date.today()
+    default_start = today - timedelta(days=30)
+    start_date = _parse_date(request.GET.get('start'), default_start)
+    end_date = _parse_date(request.GET.get('end'), today)
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    dimension = (request.GET.get('dimension') or 'ticket_type').lower()
+    if dimension not in ('ticket_type', 'closure_category', 'queue'):
+        dimension = 'ticket_type'
+
+    rows = margin_analytics_by_service_line(start_date, end_date,
+                                            dimension=dimension)
+
+    total_revenue = sum(r['revenue'] for r in rows)
+    total_cost = sum(r['cost'] for r in rows)
+    total_margin = total_revenue - total_cost
+    blended_margin_pct = (total_margin / total_revenue * 100) if total_revenue else 0.0
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        return _csv_response(
+            f'margin-analytics-{dimension}-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+            [dimension.replace('_', ' ').title(), 'Tickets', 'Hours',
+             'Revenue', 'Cost', 'Margin', 'Margin %'],
+            [[
+                r['label'], r['tickets'], f"{r['hours']:.2f}",
+                f"{r['revenue']:.2f}", f"{r['cost']:.2f}",
+                f"{r['margin']:.2f}", f"{r['margin_pct']:.1f}",
+            ] for r in rows],
+            totals_row=[
+                'TOTAL', '', '',
+                f"{total_revenue:.2f}", f"{total_cost:.2f}",
+                f"{total_margin:.2f}", f"{round(blended_margin_pct, 1):.1f}",
+            ],
+        )
+
+    chart_payload = {
+        'labels': [r['label'] for r in rows],
+        'series': [
+            {'name': 'Revenue', 'data': [r['revenue'] for r in rows]},
+            {'name': 'Cost', 'data': [r['cost'] for r in rows]},
+        ],
+    }
+    chart_json = json.dumps(chart_payload).replace('</', '<\\/')
+
+    dimension_choices = [
+        ('ticket_type', 'Ticket Type'),
+        ('closure_category', 'Closure Category'),
+        ('queue', 'Queue'),
+    ]
+
+    return render(request, 'reports/psa_margin_analytics.html', {
+        'rows': rows,
+        'start_date': start_date,
+        'end_date': end_date,
+        'dimension': dimension,
+        'dimension_choices': dimension_choices,
+        'chart_json': chart_json,
+        'total_revenue': total_revenue,
+        'total_cost': total_cost,
+        'total_margin': total_margin,
+        'blended_margin_pct': round(blended_margin_pct, 1),
+    })

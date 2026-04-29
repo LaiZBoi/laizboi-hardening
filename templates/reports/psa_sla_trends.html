@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}SLA Trends (PSA){% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+            <li class="breadcrumb-item active">SLA Trends</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0"><i class="fas fa-chart-line me-2"></i>SLA Trends</h2>
+            <small class="text-muted">
+                Per-priority response &amp; resolution breach rate over time. A breach is a
+                ticket whose actual time crossed the SLA target. Open tickets count as a
+                breach if the due time has already passed without action.
+            </small>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&bucket={{ bucket }}&format=csv&tab=summary"
+               class="btn btn-outline-secondary">
+                <i class="fas fa-file-csv me-1"></i>Export Summary CSV
+            </a>
+            <a href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&bucket={{ bucket }}&format=csv&tab=by_client"
+               class="btn btn-outline-secondary">
+                <i class="fas fa-file-csv me-1"></i>By-Client CSV
+            </a>
+        </div>
+    </div>
+
+    {# ---------- Filter bar ---------- #}
+    <form method="get" class="card mb-3" id="filter-form">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Start date</label>
+                    <input type="date" name="start" id="filter-start"
+                           class="form-control form-control-sm"
+                           value="{{ start_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">End date</label>
+                    <input type="date" name="end" id="filter-end"
+                           class="form-control form-control-sm"
+                           value="{{ end_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">Bucket</label>
+                    <div class="btn-group btn-group-sm w-100" role="group">
+                        <input type="radio" class="btn-check" name="bucket"
+                               id="bucket-day" value="day" autocomplete="off"
+                               {% if bucket == 'day' %}checked{% endif %}>
+                        <label class="btn btn-outline-secondary" for="bucket-day">Day</label>
+                        <input type="radio" class="btn-check" name="bucket"
+                               id="bucket-week" value="week" autocomplete="off"
+                               {% if bucket == 'week' %}checked{% endif %}>
+                        <label class="btn btn-outline-secondary" for="bucket-week">Week</label>
+                        <input type="radio" class="btn-check" name="bucket"
+                               id="bucket-month" value="month" autocomplete="off"
+                               {% if bucket == 'month' %}checked{% endif %}>
+                        <label class="btn btn-outline-secondary" for="bucket-month">Month</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Apply</button>
+                </div>
+                <div class="col-md-3 text-end">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Quick range">
+                        <button type="button" class="btn btn-outline-secondary" data-range="7">7d</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="30">30d</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="90">90d</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="ytd">YTD</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="card mb-3">
+                <div class="card-header py-2">
+                    <h6 class="mb-0"><i class="fas fa-bolt me-1 text-warning"></i>Response breach % over time</h6>
+                </div>
+                <div class="card-body">
+                    {% if has_buckets %}
+                        <div style="position:relative; height:280px;">
+                            <canvas id="response-chart"></canvas>
+                        </div>
+                    {% else %}
+                        <p class="text-muted small mb-0 text-center py-4">No buckets in window.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header py-2">
+                    <h6 class="mb-0"><i class="fas fa-flag-checkered me-1 text-danger"></i>Resolution breach % over time</h6>
+                </div>
+                <div class="card-body">
+                    {% if has_buckets %}
+                        <div style="position:relative; height:280px;">
+                            <canvas id="resolution-chart"></canvas>
+                        </div>
+                    {% else %}
+                        <p class="text-muted small mb-0 text-center py-4">No buckets in window.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header py-2">
+                    <h6 class="mb-0"><i class="fas fa-list me-1"></i>Per-priority totals (window)</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Priority</th>
+                                <th class="text-end">Tickets</th>
+                                <th class="text-end">Resp. Breaches</th>
+                                <th class="text-end">Res. Breaches</th>
+                                <th class="text-end">Resp. %</th>
+                                <th class="text-end">Res. %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in totals_rows %}
+                            <tr>
+                                <td><strong>{{ r.priority }}</strong></td>
+                                <td class="text-end">{{ r.tickets }}</td>
+                                <td class="text-end">{{ r.response_breaches }}</td>
+                                <td class="text-end">{{ r.resolution_breaches }}</td>
+                                <td class="text-end">
+                                    {% if r.response_pct >= 25 %}
+                                        <span class="badge bg-danger">{{ r.response_pct|floatformat:1 }}%</span>
+                                    {% elif r.response_pct >= 10 %}
+                                        <span class="badge bg-warning text-dark">{{ r.response_pct|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="badge bg-success">{{ r.response_pct|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if r.resolution_pct >= 25 %}
+                                        <span class="badge bg-danger">{{ r.resolution_pct|floatformat:1 }}%</span>
+                                    {% elif r.resolution_pct >= 10 %}
+                                        <span class="badge bg-warning text-dark">{{ r.resolution_pct|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="badge bg-success">{{ r.resolution_pct|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header py-2">
+                    <h6 class="mb-0"><i class="fas fa-building me-1"></i>Top clients (by ticket volume)</h6>
+                </div>
+                <div class="card-body p-0">
+                    {% if top_clients %}
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Client</th>
+                                <th class="text-end">Tk</th>
+                                <th class="text-end">Resp %</th>
+                                <th class="text-end">Res %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in top_clients %}
+                            <tr>
+                                <td class="text-truncate" style="max-width: 200px;" title="{{ r.client_name }}">{{ r.client_name }}</td>
+                                <td class="text-end">{{ r.tickets }}</td>
+                                <td class="text-end">
+                                    {% if r.response_pct >= 25 %}
+                                        <span class="text-danger">{{ r.response_pct|floatformat:1 }}</span>
+                                    {% elif r.response_pct >= 10 %}
+                                        <span class="text-warning">{{ r.response_pct|floatformat:1 }}</span>
+                                    {% else %}
+                                        <span class="text-success">{{ r.response_pct|floatformat:1 }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if r.resolution_pct >= 25 %}
+                                        <span class="text-danger">{{ r.resolution_pct|floatformat:1 }}</span>
+                                    {% elif r.resolution_pct >= 10 %}
+                                        <span class="text-warning">{{ r.resolution_pct|floatformat:1 }}</span>
+                                    {% else %}
+                                        <span class="text-success">{{ r.resolution_pct|floatformat:1 }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                        <p class="text-muted small mb-0 text-center py-4">No client data in window.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="response-chart-data">{{ response_chart_json|safe }}</script>
+<script type="application/json" id="resolution-chart-data">{{ resolution_chart_json|safe }}</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    // Quick-range chips
+    document.querySelectorAll('[data-range]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var range = btn.getAttribute('data-range');
+            var today = new Date();
+            var end = today.toISOString().slice(0, 10);
+            var start;
+            if (range === 'ytd') {
+                start = today.getFullYear() + '-01-01';
+            } else {
+                var d = new Date(today);
+                d.setDate(d.getDate() - parseInt(range, 10));
+                start = d.toISOString().slice(0, 10);
+            }
+            document.getElementById('filter-start').value = start;
+            document.getElementById('filter-end').value = end;
+            document.getElementById('filter-form').submit();
+        });
+    });
+
+    function readJson(id) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        try { return JSON.parse(el.textContent); } catch (e) { return null; }
+    }
+
+    // P1 red, P2 orange, P3 amber, P4 blue, P5 grey
+    var palette = {
+        'P1': '#dc3545',
+        'P2': '#fd7e14',
+        'P3': '#ffc107',
+        'P4': '#0d6efd',
+        'P5': '#6c757d',
+    };
+
+    function buildChart(canvasId, dataId, yLabel) {
+        var canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        var data = readJson(dataId);
+        if (!data) return;
+        var datasets = (data.series || []).map(function(s) {
+            var color = palette[s.name] || '#0dcaf0';
+            return {
+                label: s.name,
+                data: s.data,
+                backgroundColor: color,
+                borderColor: color,
+                borderWidth: 2,
+                tension: 0.25,
+                fill: false,
+                pointRadius: 2,
+            };
+        });
+        new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: { labels: data.labels || [], datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': ' + ctx.parsed.y + '%';
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } },
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: yLabel },
+                        ticks: { callback: function(v) { return v + '%'; } },
+                    },
+                },
+            },
+        });
+    }
+
+    buildChart('response-chart', 'response-chart-data', 'Response breach %');
+    buildChart('resolution-chart', 'resolution-chart-data', 'Resolution breach %');
+})();
+</script>
+{% endblock %}

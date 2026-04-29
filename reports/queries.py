@@ -14,7 +14,7 @@ Conventions:
 """
 from datetime import date, timedelta
 from decimal import Decimal
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, F
 from django.contrib.auth.models import User
 
 
@@ -935,3 +935,251 @@ def revenue_leakage(start_date, end_date, organization=None,
         'totals': totals,
         'stale_days': stale_days,
     }
+
+
+# ---- Phase 3.4: SLA trends + Margin analytics by service line --------------
+
+def sla_trend_by_priority(start_date, end_date, organization=None, bucket='week'):
+    """
+    Per-priority SLA breach rate over time.
+
+    Buckets the period into ``bucket='day'|'week'|'month'`` slots. For each
+    bucket × priority, computes:
+      - tickets_in_bucket: # of tickets with created_at falling in bucket
+      - response_breaches: # whose first_response_at > first_response_due_at
+                           (or never responded + due has passed)
+      - resolution_breaches: # closed tickets where closed_at >
+                             resolution_due_at
+      - response_breach_pct, resolution_breach_pct
+
+    Returns chart-friendly parallel arrays keyed by priority code.
+    """
+    from django.utils import timezone
+    from psa.models import Ticket
+
+    # Build buckets: list of (label, start_date, end_date)
+    buckets = []
+    if bucket == 'day':
+        cur = start_date
+        while cur <= end_date:
+            buckets.append((cur.strftime('%m/%d'), cur, cur))
+            cur += timedelta(days=1)
+    elif bucket == 'month':
+        cur = start_date.replace(day=1)
+        while cur <= end_date:
+            if cur.month == 12:
+                next_start = date(cur.year + 1, 1, 1)
+            else:
+                next_start = date(cur.year, cur.month + 1, 1)
+            end = min(end_date, next_start - timedelta(days=1))
+            label = cur.strftime('%Y-%m')
+            buckets.append((label, max(cur, start_date), end))
+            cur = next_start
+    else:  # week (ISO Mon-Sun)
+        cur = start_date - timedelta(days=start_date.weekday())  # Mon
+        while cur <= end_date:
+            week_end = cur + timedelta(days=6)
+            label = cur.strftime('%m/%d')
+            buckets.append((label, max(cur, start_date), min(week_end, end_date)))
+            cur += timedelta(days=7)
+
+    priorities = ['P1', 'P2', 'P3', 'P4', 'P5']
+    now = timezone.now()
+    series = {p: [] for p in priorities}
+    totals = {p: {'tickets': 0, 'response_breaches': 0, 'resolution_breaches': 0}
+              for p in priorities}
+
+    for label, b_start, b_end in buckets:
+        for p in priorities:
+            qs = Ticket.objects.filter(
+                priority__code=p,
+                created_at__date__gte=b_start,
+                created_at__date__lte=b_end,
+            )
+            if organization is not None:
+                qs = qs.filter(organization=organization)
+            cnt = qs.count()
+
+            # Response breaches: first_response_due_at exists, AND either
+            #   first_response_at > first_response_due_at, OR no first_response
+            #   yet AND now() > first_response_due_at
+            resp_breach = qs.exclude(first_response_due_at__isnull=True).filter(
+                Q(first_response_at__gt=F('first_response_due_at'))
+                | Q(first_response_at__isnull=True,
+                    first_response_due_at__lt=now)
+            ).count()
+
+            # Resolution breaches: only on tickets that have closed
+            res_breach = qs.exclude(resolution_due_at__isnull=True).filter(
+                closed_at__gt=F('resolution_due_at')
+            ).count()
+
+            row = {
+                'bucket': label,
+                'tickets': cnt,
+                'response_breaches': resp_breach,
+                'resolution_breaches': res_breach,
+                'response_pct': round((resp_breach / cnt * 100), 1) if cnt else 0.0,
+                'resolution_pct': round((res_breach / cnt * 100), 1) if cnt else 0.0,
+            }
+            series[p].append(row)
+            totals[p]['tickets'] += cnt
+            totals[p]['response_breaches'] += resp_breach
+            totals[p]['resolution_breaches'] += res_breach
+
+    # Compute summary pcts
+    for p, t in totals.items():
+        t['response_pct'] = round((t['response_breaches'] / t['tickets'] * 100), 1) if t['tickets'] else 0.0
+        t['resolution_pct'] = round((t['resolution_breaches'] / t['tickets'] * 100), 1) if t['tickets'] else 0.0
+
+    return {
+        'buckets': [b[0] for b in buckets],
+        'priorities': priorities,
+        'series': series,
+        'totals_by_priority': totals,
+    }
+
+
+def sla_trend_by_client(start_date, end_date, organization=None, top_n=10):
+    """
+    Per-client breach rate summary over the window. Returns top N clients
+    by ticket volume so the chart doesn't blow up for installs with 100s.
+
+    Returns: list of {'client_id', 'client_name', 'tickets',
+    'response_breaches', 'resolution_breaches', 'response_pct',
+    'resolution_pct'} sorted by tickets desc.
+    """
+    from django.utils import timezone
+    from psa.models import Ticket
+    qs = Ticket.objects.filter(
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+    ).select_related('organization')
+    if organization is not None:
+        qs = qs.filter(organization=organization)
+
+    by_client = {}
+    now = timezone.now()
+    for t in qs:
+        if not t.organization_id:
+            continue
+        row = by_client.setdefault(t.organization_id, {
+            'client_id': t.organization_id,
+            'client_name': t.organization.name,
+            'tickets': 0,
+            'response_breaches': 0,
+            'resolution_breaches': 0,
+        })
+        row['tickets'] += 1
+        if t.first_response_due_at:
+            if (t.first_response_at and t.first_response_at > t.first_response_due_at) or \
+               (not t.first_response_at and t.first_response_due_at < now):
+                row['response_breaches'] += 1
+        if t.resolution_due_at and t.closed_at and t.closed_at > t.resolution_due_at:
+            row['resolution_breaches'] += 1
+
+    rows = list(by_client.values())
+    for r in rows:
+        r['response_pct'] = round((r['response_breaches'] / r['tickets'] * 100), 1) if r['tickets'] else 0.0
+        r['resolution_pct'] = round((r['resolution_breaches'] / r['tickets'] * 100), 1) if r['tickets'] else 0.0
+    rows.sort(key=lambda r: r['tickets'], reverse=True)
+    return rows[:top_n]
+
+
+def margin_analytics_by_service_line(start_date, end_date, organization=None,
+                                     dimension='ticket_type'):
+    """
+    Margin grouped by 'service line' — either Ticket.ticket_type,
+    Ticket.closure_category, or Ticket.queue. Useful for seeing which
+    buckets of work are profitable vs. which are loss leaders.
+
+    Revenue attribution per TicketTimeEntry:
+      `billable_minutes / 60 × ticket.contract.hourly_rate`
+      (or DEFAULT_BILL_RATE = $150 if no active contract).
+    Cost = billable_minutes / 60 × TechCostRate.rate_for(user, midpoint).
+
+    dimension: 'ticket_type' | 'closure_category' | 'queue'
+    """
+    from psa.models import TicketTimeEntry, Contract
+    from resourcing.models import TechCostRate
+
+    DEFAULT_BILL_RATE = Decimal('150')
+    midpoint = _period_midpoint(start_date, end_date)
+
+    qs = TicketTimeEntry.objects.filter(
+        is_billable=True,
+        started_at__date__gte=start_date,
+        started_at__date__lte=end_date,
+    ).select_related(
+        'ticket__ticket_type', 'ticket__queue',
+        'ticket__organization', 'user',
+    )
+    if organization is not None:
+        qs = qs.filter(ticket__organization=organization)
+
+    out = {}
+    contract_cache = {}
+    rate_cache = {}
+
+    for te in qs:
+        ticket = te.ticket
+        if dimension == 'ticket_type':
+            key = ticket.ticket_type_id or 0
+            label = ticket.ticket_type.name if ticket.ticket_type_id else '—'
+        elif dimension == 'closure_category':
+            key = ticket.closure_category or '_unset'
+            label = ticket.get_closure_category_display() if ticket.closure_category else 'Unset'
+        elif dimension == 'queue':
+            key = ticket.queue_id or 0
+            label = ticket.queue.name if ticket.queue_id else '—'
+        else:
+            key = '_unknown'
+            label = 'Unknown'
+
+        # Resolve revenue rate — active contract on ticket org
+        org_id = ticket.organization_id
+        if org_id not in contract_cache:
+            c = Contract.objects.filter(
+                client_org_id=org_id, status='active',
+            ).first()
+            contract_cache[org_id] = c.hourly_rate if c and c.hourly_rate else None
+        rev_rate = contract_cache.get(org_id) or DEFAULT_BILL_RATE
+
+        # Cost rate per tech (cached)
+        if te.user_id not in rate_cache:
+            try:
+                rate_cache[te.user_id] = float(TechCostRate.rate_for(te.user, midpoint)) if te.user_id else 0.0
+            except Exception:
+                rate_cache[te.user_id] = 0.0
+        cost_rate = rate_cache[te.user_id]
+
+        hours = Decimal(te.duration_minutes or 0) / Decimal(60)
+        revenue = float(hours * Decimal(str(rev_rate)))
+        cost = float(hours * Decimal(str(cost_rate)))
+
+        row = out.setdefault(key, {
+            'key': str(key), 'label': label,
+            'tickets': set(), 'hours': 0.0,
+            'revenue': 0.0, 'cost': 0.0,
+        })
+        row['tickets'].add(ticket.id)
+        row['hours'] += float(hours)
+        row['revenue'] += revenue
+        row['cost'] += cost
+
+    rows = []
+    for r in out.values():
+        ticket_count = len(r['tickets'])
+        margin = r['revenue'] - r['cost']
+        margin_pct = (margin / r['revenue'] * 100) if r['revenue'] else 0.0
+        rows.append({
+            'key': r['key'], 'label': r['label'],
+            'tickets': ticket_count,
+            'hours': round(r['hours'], 2),
+            'revenue': round(r['revenue'], 2),
+            'cost': round(r['cost'], 2),
+            'margin': round(margin, 2),
+            'margin_pct': round(margin_pct, 1),
+        })
+    rows.sort(key=lambda r: r['revenue'], reverse=True)
+    return rows

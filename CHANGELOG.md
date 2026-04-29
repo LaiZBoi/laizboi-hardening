@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.143] - 2026-04-29
+
+### Added — Phase 3.4: SLA trend report + Margin analytics by service line
+- `reports.queries.sla_trend_by_priority(start, end, org, bucket)` — bucketed (day/week/month) SLA breach rates per priority. Returns chart-friendly parallel arrays.
+- `reports.queries.sla_trend_by_client(start, end, org, top_n)` — top-N clients by ticket volume with their response + resolution breach %.
+- `reports.queries.margin_analytics_by_service_line(start, end, org, dimension)` — revenue vs cost grouped by `ticket_type` / `closure_category` / `queue`.
+- New report `/reports/psa/sla-trends/` — two stacked line charts (response + resolution breach %) + per-priority summary + top-clients side panel + CSV export.
+- New report `/reports/psa/margin-analytics/` — tabbed by dimension; bar chart + sortable table with color-coded margin column.
+- New dashboard widget: 'SLA breach trend 30d' (chart_line). Available in the widget data-source dropdown.
+- 4 new tests in `reports.tests`.
+
+Phase 3 sub-phases left: 3.6 (scheduled reports / wallboard / executive scorecard / client-health score).
+
 ## [3.17.142] - 2026-04-29
 
 ### Added — Custom Dashboards: actual widgets (closes empty-state placeholder)

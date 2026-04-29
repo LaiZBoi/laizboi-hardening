@@ -708,3 +708,85 @@ class DashboardWidgetCRUDTests(TestCase):
         self.assertEqual(
             DashboardWidget.objects.filter(dashboard=self.dash).count(), 1
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.4 — SLA trend report + Margin analytics by service line
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class SLATrendQueryTests(TestCase):
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from core.models import Organization
+        from psa.models import (
+            Queue, TicketStatus, TicketPriority, TicketType, Ticket,
+        )
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        self.org = Organization.objects.create(name='SLA Co', slug='sla-co')
+        self.queue = Queue.objects.first()
+        self.status_resolved = TicketStatus.objects.filter(is_terminal=True).first()
+        self.p1 = TicketPriority.objects.filter(code='P1').first()
+        self.tt = TicketType.objects.first()
+        # Fixture: P1 ticket created 2 days ago; resolution_due 1 day ago;
+        # closed today → resolution breach. Response landed before due.
+        # NOTE: Ticket.created_at is auto_now_add=True, so we can't backdate
+        # the create timestamp. The window we use in the assertion includes
+        # today, so created_at=now still falls in the bucket.
+        now = timezone.now()
+        self.t = Ticket.objects.create(
+            organization=self.org, subject='X',
+            queue=self.queue, status=self.status_resolved,
+            priority=self.p1, ticket_type=self.tt,
+            resolution_due_at=now - timedelta(days=1),
+            first_response_due_at=now + timedelta(hours=2),
+            first_response_at=now + timedelta(hours=1),  # before due → on time
+            closed_at=now,
+        )
+
+    def test_sla_trend_by_priority_buckets(self):
+        from datetime import date, timedelta
+        from reports.queries import sla_trend_by_priority
+        result = sla_trend_by_priority(
+            date.today() - timedelta(days=7), date.today(), bucket='week'
+        )
+        # P1 totals should reflect 1 ticket with 1 resolution breach,
+        # 0 response breach.
+        p1 = result['totals_by_priority']['P1']
+        self.assertEqual(p1['tickets'], 1)
+        self.assertEqual(p1['resolution_breaches'], 1)
+        self.assertEqual(p1['response_breaches'], 0)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class MarginAnalyticsTests(TestCase):
+    def test_dimension_grouping(self):
+        from datetime import date
+        from reports.queries import margin_analytics_by_service_line
+        rows = margin_analytics_by_service_line(date.today(), date.today())
+        # Empty period — list returns empty
+        self.assertIsInstance(rows, list)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class SLATrendsViewTests(TestCase):
+    def test_renders_for_staff(self):
+        from django.contrib.auth.models import User
+        u = User.objects.create_user('admin', 'a@x.com', 'pw',
+                                     is_staff=True, is_superuser=True)
+        self.client.force_login(u)
+        r = self.client.get('/reports/psa/sla-trends/')
+        self.assertEqual(r.status_code, 200)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class MarginAnalyticsViewTests(TestCase):
+    def test_renders_for_staff(self):
+        from django.contrib.auth.models import User
+        u = User.objects.create_user('admin', 'a@x.com', 'pw',
+                                     is_staff=True, is_superuser=True)
+        self.client.force_login(u)
+        r = self.client.get('/reports/psa/margin-analytics/')
+        self.assertEqual(r.status_code, 200)

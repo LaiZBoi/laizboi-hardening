@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Margin Analytics by Service Line (PSA){% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+            <li class="breadcrumb-item active">Margin Analytics</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0"><i class="fas fa-layer-group me-2"></i>Margin Analytics by Service Line</h2>
+            <small class="text-muted">
+                Revenue attributed at active contract hourly rate (or $150/hr fallback).
+                Cost from per-tech TechCostRate at the period midpoint.
+            </small>
+        </div>
+        <a href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&dimension={{ dimension }}&format=csv"
+           class="btn btn-outline-secondary">
+            <i class="fas fa-file-csv me-1"></i>Export CSV
+        </a>
+    </div>
+
+    {# ---------- Filter bar ---------- #}
+    <form method="get" class="card mb-3" id="filter-form">
+        <div class="card-body py-3">
+            <input type="hidden" name="dimension" value="{{ dimension }}" id="filter-dimension">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Start date</label>
+                    <input type="date" name="start" id="filter-start"
+                           class="form-control form-control-sm"
+                           value="{{ start_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">End date</label>
+                    <input type="date" name="end" id="filter-end"
+                           class="form-control form-control-sm"
+                           value="{{ end_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Apply</button>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Quick range">
+                        <button type="button" class="btn btn-outline-secondary" data-range="7">7d</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="30">30d</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="90">90d</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="ytd">YTD</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {# ---------- Summary cards ---------- #}
+    <div class="row mb-3">
+        <div class="col-md-3 mb-2">
+            <div class="card border-success h-100"><div class="card-body">
+                <h6 class="text-muted mb-1">Total Revenue</h6>
+                <h3 class="mb-0">${{ total_revenue|floatformat:2 }}</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-warning h-100"><div class="card-body">
+                <h6 class="text-muted mb-1">Total Cost</h6>
+                <h3 class="mb-0">${{ total_cost|floatformat:2 }}</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-primary h-100"><div class="card-body">
+                <h6 class="text-muted mb-1">Total Margin</h6>
+                <h3 class="mb-0">${{ total_margin|floatformat:2 }}</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-info h-100"><div class="card-body">
+                <h6 class="text-muted mb-1">Blended Margin %</h6>
+                <h3 class="mb-0">{{ blended_margin_pct|floatformat:1 }}%</h3>
+            </div></div>
+        </div>
+    </div>
+
+    {# ---------- Tabs (dimension switcher) ---------- #}
+    <ul class="nav nav-tabs mb-0">
+        {% for k, label in dimension_choices %}
+        <li class="nav-item">
+            <a class="nav-link {% if dimension == k %}active{% endif %}"
+               href="?dimension={{ k }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">
+                {{ label }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <div class="card border-top-0 rounded-0 mb-3">
+        <div class="card-body">
+            {% if rows %}
+                <div style="position:relative; height:320px;">
+                    <canvas id="margin-chart"></canvas>
+                </div>
+            {% else %}
+                <p class="text-muted small mb-0 text-center py-4">No billable time entries in the selected window.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+        {% if rows %}
+        <table class="table table-hover mb-0" id="margin-table">
+            <thead class="table-light">
+                <tr>
+                    <th class="sortable">{{ dimension|title }}</th>
+                    <th class="text-end sortable">Tickets</th>
+                    <th class="text-end sortable">Hours</th>
+                    <th class="text-end sortable">Revenue</th>
+                    <th class="text-end sortable">Cost</th>
+                    <th class="text-end sortable">Margin</th>
+                    <th class="text-end sortable">Margin %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.label }}</td>
+                    <td class="text-end">{{ r.tickets }}</td>
+                    <td class="text-end">{{ r.hours|floatformat:2 }}</td>
+                    <td class="text-end">${{ r.revenue|floatformat:2 }}</td>
+                    <td class="text-end text-muted">${{ r.cost|floatformat:2 }}</td>
+                    <td class="text-end">
+                        {% if r.margin < 0 %}
+                            <span class="text-danger fw-bold">${{ r.margin|floatformat:2 }}</span>
+                        {% else %}
+                            <span class="text-success">${{ r.margin|floatformat:2 }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if r.margin_pct < 0 %}
+                            <span class="badge bg-danger">{{ r.margin_pct|floatformat:1 }}%</span>
+                        {% elif r.margin_pct < 25 %}
+                            <span class="badge bg-warning text-dark">{{ r.margin_pct|floatformat:1 }}%</span>
+                        {% elif r.margin_pct < 50 %}
+                            <span class="badge bg-success">{{ r.margin_pct|floatformat:1 }}%</span>
+                        {% else %}
+                            <span class="badge bg-info">{{ r.margin_pct|floatformat:1 }}%</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="table-light fw-bold">
+                    <td>TOTAL</td>
+                    <td class="text-end"></td>
+                    <td class="text-end"></td>
+                    <td class="text-end">${{ total_revenue|floatformat:2 }}</td>
+                    <td class="text-end">${{ total_cost|floatformat:2 }}</td>
+                    <td class="text-end">${{ total_margin|floatformat:2 }}</td>
+                    <td class="text-end">{{ blended_margin_pct|floatformat:1 }}%</td>
+                </tr>
+            </tfoot>
+        </table>
+        {% else %}
+        <p class="text-muted small mb-0 text-center py-4">No data.</p>
+        {% endif %}
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="margin-chart-data">{{ chart_json|safe }}</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    // Quick-range chips
+    document.querySelectorAll('[data-range]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var range = btn.getAttribute('data-range');
+            var today = new Date();
+            var end = today.toISOString().slice(0, 10);
+            var start;
+            if (range === 'ytd') {
+                start = today.getFullYear() + '-01-01';
+            } else {
+                var d = new Date(today);
+                d.setDate(d.getDate() - parseInt(range, 10));
+                start = d.toISOString().slice(0, 10);
+            }
+            document.getElementById('filter-start').value = start;
+            document.getElementById('filter-end').value = end;
+            document.getElementById('filter-form').submit();
+        });
+    });
+
+    function readJson(id) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        try { return JSON.parse(el.textContent); } catch (e) { return null; }
+    }
+
+    var canvas = document.getElementById('margin-chart');
+    if (canvas) {
+        var data = readJson('margin-chart-data');
+        if (data) {
+            var palette = ['#198754', '#dc3545'];
+            var datasets = (data.series || []).map(function(s, i) {
+                return {
+                    label: s.name,
+                    data: s.data,
+                    backgroundColor: palette[i % palette.length],
+                    borderColor: palette[i % palette.length],
+                    borderWidth: 1,
+                };
+            });
+            new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: { labels: data.labels || [], datasets: datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        x: { ticks: { maxRotation: 30, autoSkip: false } },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: function(v) { return '$' + v.toLocaleString(); } },
+                        },
+                    },
+                },
+            });
+        }
+    }
+
+    // Sortable table
+    var table = document.getElementById('margin-table');
+    if (!table) return;
+    var headers = table.querySelectorAll('th.sortable');
+    headers.forEach(function(h, idx) {
+        h.style.cursor = 'pointer';
+        h.addEventListener('click', function() {
+            var asc = h.getAttribute('data-asc') !== 'true';
+            headers.forEach(function(x) { x.removeAttribute('data-asc'); });
+            h.setAttribute('data-asc', asc ? 'true' : 'false');
+            var tbody = table.querySelector('tbody');
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+            rows.sort(function(a, b) {
+                var av = a.children[idx].innerText.trim();
+                var bv = b.children[idx].innerText.trim();
+                var an = parseFloat(av.replace(/[$,%]/g, ''));
+                var bn = parseFloat(bv.replace(/[$,%]/g, ''));
+                if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+                return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+            });
+            rows.forEach(function(r) { tbody.appendChild(r); });
+        });
+    });
+})();
+</script>
+{% endblock %}
