@@ -138,6 +138,16 @@
                                 <i class="fas fa-project-diagram me-2"></i>Profitability by Project
                             </a>
                         </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'reports:psa_effective_hourly_rate' %}" class="btn btn-outline-success w-100">
+                                <i class="fas fa-tachometer-alt me-2"></i>Effective Hourly Rate
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'reports:psa_revenue_leakage' %}" class="btn btn-outline-success w-100">
+                                <i class="fas fa-faucet-drip me-2"></i>Revenue Leakage
+                            </a>
+                        </div>
                         {% endif %}
                         {% endif %}
                     </div>

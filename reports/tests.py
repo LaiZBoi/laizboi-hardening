@@ -354,3 +354,307 @@ class ProfitabilityPivotViewTests(TestCase):
         self.client.force_login(self.regular)
         r = self.client.get('/reports/psa/profitability-by-tech/')
         self.assertIn(r.status_code, [302, 403])
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.3 — Effective hourly rate + Revenue leakage
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class EffectiveRateTests(TestCase):
+    """v3.17.141: effective_hourly_rate_by_client + by_tech."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from decimal import Decimal
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from core.models import Organization
+        from psa.models import (
+            Queue, TicketStatus, TicketPriority, TicketType, Ticket,
+            TicketTimeEntry, Contract, Invoice,
+        )
+        from resourcing.models import TechCostRate
+        call_command('psa_seed_defaults', verbosity=0)
+        self.msp = Organization.objects.create(name='MSPRate', slug='msp-rate')
+        self.client_org = Organization.objects.create(name='RateClient',
+                                                      slug='rate-client')
+        self.user = User.objects.create_user('alice', 'a@x.com', 'pw')
+        self.today = date.today()
+        # Active contract so attributed revenue uses $150/hr
+        self.contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            name='Rate Block', contract_type='block_hours', status='active',
+            start_date=self.today - timedelta(days=30),
+            end_date=self.today + timedelta(days=30),
+            total_hours=Decimal('50'), hourly_rate=Decimal('150'),
+        )
+        self.t = Ticket.objects.create(
+            organization=self.client_org, subject='Work',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+        # 4 billable hours
+        TicketTimeEntry.objects.create(
+            ticket=self.t, user=self.user,
+            started_at=self.today, duration_minutes=240, is_billable=True,
+        )
+        Invoice.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            invoice_number='INV-RATE-1', title='Test',
+            invoice_date=self.today, due_date=self.today,
+            total=Decimal('600'), amount_paid=0, status='sent',
+            subtotal=Decimal('600'), tax_amount=0, currency='USD',
+        )
+        # Cost rate $50/hr → effective $150 ÷ 50 cost = 300% realization
+        # for the tech tab (which uses contract hourly_rate × hours = 600
+        # attributed revenue ÷ 4h billable = $150 effective).
+        TechCostRate.objects.create(user=self.user,
+                                    rate_per_hour=Decimal('50'),
+                                    effective_from=self.today)
+
+    def test_effective_rate_basic(self):
+        """4h billable + $600 invoiced → effective rate $150/hr."""
+        from reports.queries import effective_hourly_rate_by_client
+        rows = effective_hourly_rate_by_client(self.today, self.today)
+        match = [r for r in rows if r['client_id'] == self.client_org.id]
+        self.assertEqual(len(match), 1)
+        r = match[0]
+        self.assertEqual(r['billable_hours'], 4.0)
+        self.assertAlmostEqual(r['revenue'], 600.0, places=1)
+        self.assertAlmostEqual(r['effective_rate'], 150.0, places=1)
+
+    def test_effective_rate_by_tech_has_realization(self):
+        """Per-tech rate uses attributed revenue ÷ billable hours."""
+        from reports.queries import effective_hourly_rate_by_tech
+        rows = effective_hourly_rate_by_tech(self.today, self.today)
+        self.assertGreaterEqual(len(rows), 1)
+        r = rows[0]
+        # Attributed revenue = 4h × $150 contract rate = $600
+        # Effective rate = $600 / 4h = $150/hr
+        # Cost rate = $50/hr
+        # Realization % = 150 / 50 × 100 = 300%
+        self.assertAlmostEqual(r['effective_rate'], 150.0, places=1)
+        self.assertAlmostEqual(r['cost_rate'], 50.0, places=1)
+        self.assertAlmostEqual(r['realization_pct'], 300.0, places=0)
+
+    def test_effective_rate_zero_when_no_billable_hours(self):
+        """Client with revenue but no time → effective_rate = 0."""
+        from datetime import date as _date
+        from decimal import Decimal
+        from core.models import Organization
+        from psa.models import Invoice
+        from reports.queries import effective_hourly_rate_by_client
+        ghost = Organization.objects.create(name='GhostCo', slug='ghost-co')
+        Invoice.objects.create(
+            organization=self.msp, client_org=ghost,
+            invoice_number='INV-GHOST-1', title='G',
+            invoice_date=self.today, due_date=self.today,
+            total=Decimal('200'), amount_paid=0, status='sent',
+            subtotal=Decimal('200'), tax_amount=0, currency='USD',
+        )
+        rows = effective_hourly_rate_by_client(self.today, self.today)
+        match = [r for r in rows if r['client_id'] == ghost.id]
+        self.assertEqual(len(match), 1)
+        self.assertEqual(match[0]['billable_hours'], 0)
+        self.assertEqual(match[0]['effective_rate'], 0.0)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class RevenueLeakageTests(TestCase):
+    """v3.17.141: revenue_leakage surfaces stale unbilled, expired blocks,
+    stuck drafts."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from decimal import Decimal
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from django.utils import timezone
+        from core.models import Organization
+        from psa.models import (
+            Queue, TicketStatus, TicketPriority, TicketType, Ticket,
+            TicketTimeEntry, Contract, Invoice,
+        )
+        call_command('psa_seed_defaults', verbosity=0)
+        self.msp = Organization.objects.create(name='MSPLeak', slug='msp-leak')
+        self.client_org = Organization.objects.create(name='LeakClient',
+                                                      slug='leak-client')
+        self.user = User.objects.create_user('bob', 'b@x.com', 'pw')
+        self.today = date.today()
+        self.t = Ticket.objects.create(
+            organization=self.client_org, subject='LeakTest',
+            queue=Queue.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+        )
+        # Stale unbilled entry: 60 days ago, billable, 2h
+        old_dt = timezone.now() - timedelta(days=60)
+        TicketTimeEntry.objects.create(
+            ticket=self.t, user=self.user,
+            started_at=old_dt, ended_at=old_dt + timedelta(hours=2),
+            duration_minutes=120, is_billable=True,
+        )
+        # Expired contract: 10h total, 0 used, $200/hr
+        self.expired_contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            name='Old Block', contract_type='block_hours', status='expired',
+            start_date=self.today - timedelta(days=400),
+            end_date=self.today - timedelta(days=30),
+            total_hours=Decimal('10'),
+            hours_used_minutes=0,
+            hourly_rate=Decimal('200'),
+        )
+        # Stuck draft: 30 days old, $750
+        self.draft_invoice = Invoice.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            invoice_number='INV-STUCK-1', title='Stuck Draft',
+            invoice_date=self.today - timedelta(days=30),
+            due_date=self.today, status='draft',
+            total=Decimal('750'), amount_paid=0,
+            subtotal=Decimal('750'), tax_amount=0, currency='USD',
+        )
+
+    def test_stale_unbilled_picks_up_old_billable_entries(self):
+        from reports.queries import revenue_leakage
+        data = revenue_leakage(self.today, self.today, stale_days=30)
+        match = [r for r in data['stale_unbilled']
+                 if r['client_id'] == self.client_org.id]
+        self.assertEqual(len(match), 1)
+        self.assertEqual(match[0]['entry_count'], 1)
+        self.assertAlmostEqual(match[0]['hours_at_risk'], 2.0, places=1)
+        self.assertGreater(match[0]['amount_at_risk'], 0)
+
+    def test_stuck_drafts_are_old_drafts(self):
+        from reports.queries import revenue_leakage
+        data = revenue_leakage(self.today, self.today)
+        match = [r for r in data['stuck_drafts']
+                 if r['invoice_id'] == self.draft_invoice.id]
+        self.assertEqual(len(match), 1)
+        self.assertAlmostEqual(match[0]['amount'], 750.0, places=1)
+        self.assertGreaterEqual(match[0]['days_stuck'], 14)
+
+    def test_expired_block_with_unused_hours(self):
+        from reports.queries import revenue_leakage
+        data = revenue_leakage(self.today, self.today)
+        match = [r for r in data['expired_blocks']
+                 if r['contract_id'] == self.expired_contract.id]
+        self.assertEqual(len(match), 1)
+        self.assertAlmostEqual(match[0]['unused_hours'], 10.0, places=1)
+        # 10h × $200 = $2000
+        self.assertAlmostEqual(match[0]['unused_value'], 2000.0, places=1)
+
+    def test_grand_total_sums(self):
+        from reports.queries import revenue_leakage
+        data = revenue_leakage(self.today, self.today)
+        t = data['totals']
+        self.assertAlmostEqual(
+            t['grand_total'],
+            t['stale'] + t['expired_blocks'] + t['stuck'],
+            places=1,
+        )
+        # Should at least include our stuck $750 and expired $2000
+        self.assertGreaterEqual(t['grand_total'], 2750.0)
+
+    def test_billed_entries_are_excluded_from_stale(self):
+        """An entry whose pk is referenced by a non-void InvoiceLineItem
+        must not appear under stale_unbilled."""
+        from datetime import timedelta
+        from decimal import Decimal
+        from django.utils import timezone
+        from psa.models import TicketTimeEntry, Invoice, InvoiceLineItem
+        from reports.queries import revenue_leakage
+
+        # New billable entry 60 days ago that IS on an invoice
+        old_dt = timezone.now() - timedelta(days=60)
+        te = TicketTimeEntry.objects.create(
+            ticket=self.t, user=self.user,
+            started_at=old_dt, ended_at=old_dt + timedelta(hours=1),
+            duration_minutes=60, is_billable=True,
+        )
+        inv = Invoice.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            invoice_number='INV-BILLED-1', title='Billed',
+            invoice_date=self.today, due_date=self.today,
+            total=Decimal('150'), amount_paid=0, status='sent',
+            subtotal=Decimal('150'), tax_amount=0, currency='USD',
+        )
+        InvoiceLineItem.objects.create(
+            invoice=inv, description='Time', quantity=1,
+            unit_price=Decimal('150'), source='time', source_id=str(te.pk),
+        )
+
+        data = revenue_leakage(self.today, self.today, stale_days=30)
+        # Confirm only the original 2h-stale entry is counted, not the
+        # new 1h billed one — the row for our client should still report
+        # entry_count=1 (the un-invoiced one), not 2.
+        match = [r for r in data['stale_unbilled']
+                 if r['client_id'] == self.client_org.id]
+        self.assertEqual(len(match), 1)
+        self.assertEqual(match[0]['entry_count'], 1)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class EffectiveRateViewTests(TestCase):
+    """Phase 3.3 view auth + CSV export."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.staff = User.objects.create_user('admin1', 'a@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        self.regular = User.objects.create_user('reg', 'r@x.com', 'pw')
+
+    def test_renders_for_staff(self):
+        self.client.force_login(self.staff)
+        r = self.client.get('/reports/psa/effective-hourly-rate/')
+        self.assertEqual(r.status_code, 200)
+
+    def test_non_staff_redirected(self):
+        self.client.force_login(self.regular)
+        r = self.client.get('/reports/psa/effective-hourly-rate/')
+        self.assertIn(r.status_code, [302, 403])
+
+    def test_csv_export(self):
+        self.client.force_login(self.staff)
+        r = self.client.get('/reports/psa/effective-hourly-rate/?format=csv')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'].split(';')[0].strip(), 'text/csv')
+        self.assertIn(b'Effective Rate', r.content)
+
+    def test_tech_tab_csv_export(self):
+        self.client.force_login(self.staff)
+        r = self.client.get('/reports/psa/effective-hourly-rate/?format=csv&tab=tech')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'Realization', r.content)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class RevenueLeakageViewTests(TestCase):
+    """Phase 3.3 leakage view auth + CSV combined export."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.staff = User.objects.create_user('admin1', 'a@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        self.regular = User.objects.create_user('reg', 'r@x.com', 'pw')
+
+    def test_renders_for_staff(self):
+        self.client.force_login(self.staff)
+        r = self.client.get('/reports/psa/revenue-leakage/')
+        self.assertEqual(r.status_code, 200)
+
+    def test_non_staff_redirected(self):
+        self.client.force_login(self.regular)
+        r = self.client.get('/reports/psa/revenue-leakage/')
+        self.assertIn(r.status_code, [302, 403])
+
+    def test_csv_export_combines_sections(self):
+        self.client.force_login(self.staff)
+        r = self.client.get('/reports/psa/revenue-leakage/?format=csv')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'].split(';')[0].strip(), 'text/csv')
+        # The single-CSV combined export uses a Section column
+        self.assertIn(b'Section', r.content)

@@ -53,5 +53,10 @@ urlpatterns = [
          name='psa_profitability_by_contract'),
     path('psa/profitability-by-project/', views.psa_profitability_by_project,
          name='psa_profitability_by_project'),
+    # Phase 3.3 — Effective hourly rate + Revenue leakage
+    path('psa/effective-hourly-rate/', views.psa_effective_hourly_rate,
+         name='psa_effective_hourly_rate'),
+    path('psa/revenue-leakage/', views.psa_revenue_leakage,
+         name='psa_revenue_leakage'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

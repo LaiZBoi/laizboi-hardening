@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.141] - 2026-04-29
+
+### Added — Phase 3.3: Effective hourly rate + Revenue leakage reports
+- New `effective_hourly_rate_by_client` and `effective_hourly_rate_by_tech` query functions in `reports/queries.py`. Per-tech version computes **realization %** (effective rate ÷ cost rate × 100, target ≥ 200%).
+- New `/reports/psa/effective-hourly-rate/` page with tabbed By Client / By Tech views, summary cards (avg / highest / lowest / median), color-coded rate column. CSV export.
+- New `revenue_leakage(start, end, org, stale_days)` query function — three categories: stale unbilled time, expired contract blocks, stuck draft invoices.
+- New `/reports/psa/revenue-leakage/` page — single-screen view with $N grand total, three sub-tables, deep-link buttons to drill into each leak. Stale-days input. CSV export merges all three sections.
+- Both reports staff/superuser only. Linked from Reports Home.
+- Tests in `reports.tests` cover query math + view auth + CSV.
+
+Phase 3 sub-phases left: 3.4 SLA trends + margin analytics; 3.5 dashboards / scheduled reports / wallboard / scorecard / client-health.
+
 ## [3.17.140] - 2026-04-29
 
 ### Added — Phase 3.2: Per-tech cost rates + profitability by tech / contract / project

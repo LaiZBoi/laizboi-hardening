@@ -698,3 +698,240 @@ def profitability_by_tech(start_date, end_date, organization=None,
             'utilization_pct': round(util, 1),
         })
     return sorted(rows, key=lambda r: r['attributed_revenue'], reverse=True)
+
+
+# ---- Phase 3.3: Effective hourly rate + Revenue leakage --------------------
+
+def effective_hourly_rate_by_client(start_date, end_date, organization=None):
+    """
+    Per-client effective hourly rate = revenue / billable_hours.
+
+    Returns: list of {'client_id', 'client_name', 'revenue',
+    'billable_hours', 'nonbillable_hours', 'effective_rate',
+    'utilization_ratio'} dicts.
+    `effective_rate` is 0.0 when billable_hours = 0 (no work logged).
+    `utilization_ratio` = billable_minutes / total_minutes (signals giveaway).
+    """
+    rev = {r['client_id']: r for r in revenue_by_client(start_date, end_date, organization)}
+    hrs = {r['client_id']: r for r in hours_minutes_by_client(start_date, end_date, organization)}
+    client_ids = set(rev.keys()) | set(hrs.keys())
+
+    out = []
+    for cid in client_ids:
+        r = rev.get(cid, {})
+        h = hrs.get(cid, {})
+        revenue = r.get('invoiced', 0.0)
+        billable_min = h.get('billable_minutes', 0)
+        nonbillable_min = h.get('nonbillable_minutes', 0)
+        total_min = h.get('total_minutes', 0)
+        billable_hours = billable_min / 60.0
+        eff_rate = (revenue / billable_hours) if billable_hours else 0.0
+        util_ratio = (billable_min / total_min) if total_min else 0.0
+        out.append({
+            'client_id': cid,
+            'client_name': r.get('client_name') or h.get('client_name') or '?',
+            'revenue': revenue,
+            'billable_hours': round(billable_hours, 2),
+            'nonbillable_hours': round(nonbillable_min / 60.0, 2),
+            'effective_rate': round(eff_rate, 2),
+            'utilization_ratio': round(util_ratio, 3),
+        })
+    return sorted(out, key=lambda r: r['effective_rate'], reverse=True)
+
+
+def effective_hourly_rate_by_tech(start_date, end_date, organization=None):
+    """
+    Per-tech effective hourly rate = (attributed revenue) / billable_hours.
+
+    Reuses `profitability_by_tech` which already computes attributed revenue
+    + billable minutes per tech. Looks up each tech's TechCostRate at the
+    period midpoint to compute realization %.
+
+    Returns: list of {'tech_id', 'tech_username', 'attributed_revenue',
+    'billable_hours', 'effective_rate', 'cost_rate', 'realization_pct'}
+    where realization_pct = effective_rate / cost_rate × 100 (target ≥ 200%).
+    """
+    from resourcing.models import TechCostRate
+
+    rows = profitability_by_tech(start_date, end_date, organization=organization)
+    midpoint = _period_midpoint(start_date, end_date)
+
+    out = []
+    for r in rows:
+        billable_min = r.get('billable_minutes', 0) or 0
+        billable_hours = billable_min / 60.0
+        revenue = r.get('attributed_revenue', 0.0) or 0.0
+        eff_rate = (revenue / billable_hours) if billable_hours else 0.0
+
+        # Cost rate via TechCostRate; falls back to DEFAULT_LOADED_RATE
+        try:
+            user = User.objects.get(pk=r['tech_id'])
+            cost_rate = float(TechCostRate.rate_for(user, midpoint))
+        except User.DoesNotExist:
+            cost_rate = float(DEFAULT_LOADED_RATE)
+
+        realization = (eff_rate / cost_rate * 100) if cost_rate else 0.0
+        out.append({
+            'tech_id': r['tech_id'],
+            'tech_username': r['tech_username'],
+            'attributed_revenue': round(revenue, 2),
+            'billable_hours': round(billable_hours, 2),
+            'effective_rate': round(eff_rate, 2),
+            'cost_rate': round(cost_rate, 2),
+            'realization_pct': round(realization, 1),
+        })
+    return sorted(out, key=lambda r: r['effective_rate'], reverse=True)
+
+
+def revenue_leakage(start_date, end_date, organization=None,
+                    stale_days=30):
+    """
+    Three categories of leakage:
+      1. **Stale unbilled time** — billable TicketTimeEntry rows ≥
+         `stale_days` old that aren't on any invoice. TicketTimeEntry has
+         no direct `invoice` FK; we use `InvoiceLineItem.source='time'` +
+         `source_id=str(entry.pk)` as the heuristic linkage. An entry is
+         considered "billed" if any non-void invoice line points at it.
+      2. **Expired contract blocks** — Contract rows with `status='expired'`
+         where `hours_used < total_hours` (paid for hours never used —
+         these aren't recoverable but they signal client churn risk).
+      3. **Stuck draft invoices** — `Invoice` rows in `draft` status whose
+         `invoice_date` is older than 14 days. Money that should've been
+         sent.
+
+    `start_date` / `end_date` here are accepted for parity with sibling
+    queries; for stale-unbilled the cutoff is `today - stale_days` (we
+    look back FROM today, not at the bounded window). Expired blocks are
+    not date-windowed — once expired they stay leaky regardless of when.
+    Stuck drafts are bounded by the `start_date` lower bound to avoid
+    showing ancient junk drafts.
+
+    Returns dict:
+      {
+        'stale_unbilled': [...],
+        'expired_blocks': [...],
+        'stuck_drafts':   [...],
+        'totals': {'stale': float, 'expired_blocks': float,
+                   'stuck': float, 'grand_total': float},
+        'stale_days': int,
+      }
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from psa.models import TicketTimeEntry, Contract, Invoice, InvoiceLineItem
+
+    today = timezone.now().date()
+    stale_cutoff = today - timedelta(days=stale_days)
+    stuck_cutoff = today - timedelta(days=14)
+
+    # --- 1. Stale unbilled time ---------------------------------------------
+    # TicketTimeEntry has no direct Invoice FK. We use the heuristic
+    # InvoiceLineItem.source='time' + source_id=str(entry.pk), filtering
+    # out void invoices.
+    billed_entry_ids = set(
+        int(sid) for sid in InvoiceLineItem.objects.filter(
+            source='time',
+        ).exclude(invoice__status='void').values_list('source_id', flat=True)
+        if sid and str(sid).isdigit()
+    )
+
+    te_qs = TicketTimeEntry.objects.filter(
+        is_billable=True,
+        started_at__date__lte=stale_cutoff,
+    ).select_related('ticket__organization', 'user')
+    if organization is not None:
+        te_qs = te_qs.filter(ticket__organization=organization)
+
+    stale_rows = {}
+    for te in te_qs:
+        if te.id in billed_entry_ids:
+            continue  # already on an invoice
+        client = te.ticket.organization
+        if not client:
+            continue
+        row = stale_rows.setdefault(client.id, {
+            'client_id': client.id, 'client_name': client.name,
+            'oldest_at': te.started_at, 'entry_count': 0,
+            'minutes': 0,
+        })
+        row['entry_count'] += 1
+        row['minutes'] += (te.duration_minutes or 0)
+        if te.started_at < row['oldest_at']:
+            row['oldest_at'] = te.started_at
+
+    DEFAULT_BILL_RATE = Decimal('150')
+    stale_out = []
+    for cid, row in stale_rows.items():
+        # Best-effort representative rate: active contract's hourly_rate
+        contract = Contract.objects.filter(
+            client_org_id=cid, status='active',
+        ).first()
+        rate = (contract.hourly_rate
+                if contract and contract.hourly_rate
+                else DEFAULT_BILL_RATE) or DEFAULT_BILL_RATE
+        amount = float(Decimal(str(row['minutes'])) / Decimal('60') * Decimal(str(rate)))
+        stale_out.append({
+            'client_id': row['client_id'],
+            'client_name': row['client_name'],
+            'oldest_at': row['oldest_at'].isoformat() if row['oldest_at'] else None,
+            'entry_count': row['entry_count'],
+            'hours_at_risk': round(row['minutes'] / 60.0, 2),
+            'amount_at_risk': round(amount, 2),
+        })
+    stale_out.sort(key=lambda r: r['amount_at_risk'], reverse=True)
+
+    # --- 2. Expired contract blocks ----------------------------------------
+    expired_qs = Contract.objects.filter(status='expired').select_related('client_org')
+    if organization is not None:
+        expired_qs = expired_qs.filter(organization=organization)
+    expired_out = []
+    for c in expired_qs:
+        if not c.total_hours or c.hours_used >= float(c.total_hours):
+            continue
+        unused = float(c.total_hours) - c.hours_used
+        rate = float(c.hourly_rate or 0)
+        expired_out.append({
+            'client_id': c.client_org_id,
+            'client_name': c.client_org.name if c.client_org else '?',
+            'contract_id': c.id,
+            'contract_name': c.name,
+            'unused_hours': round(unused, 2),
+            'unused_value': round(unused * rate, 2),
+        })
+    expired_out.sort(key=lambda r: r['unused_value'], reverse=True)
+
+    # --- 3. Stuck drafts ----------------------------------------------------
+    stuck_qs = Invoice.objects.filter(
+        status='draft', invoice_date__lte=stuck_cutoff,
+    ).select_related('client_org')
+    if organization is not None:
+        stuck_qs = stuck_qs.filter(organization=organization)
+    stuck_out = []
+    for inv in stuck_qs:
+        days_stuck = (today - inv.invoice_date).days
+        stuck_out.append({
+            'invoice_id': inv.id,
+            'invoice_number': inv.invoice_number,
+            'client_id': inv.client_org_id,
+            'client_name': inv.client_org.name if inv.client_org else '?',
+            'amount': float(inv.total or 0),
+            'days_stuck': days_stuck,
+        })
+    stuck_out.sort(key=lambda r: r['amount'], reverse=True)
+
+    totals = {
+        'stale': round(sum(r['amount_at_risk'] for r in stale_out), 2),
+        'expired_blocks': round(sum(r['unused_value'] for r in expired_out), 2),
+        'stuck': round(sum(r['amount'] for r in stuck_out), 2),
+    }
+    totals['grand_total'] = round(
+        totals['stale'] + totals['expired_blocks'] + totals['stuck'], 2
+    )
+
+    return {
+        'stale_unbilled': stale_out,
+        'expired_blocks': expired_out,
+        'stuck_drafts': stuck_out,
+        'totals': totals,
+        'stale_days': stale_days,
+    }

@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Revenue Leakage (PSA){% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+            <li class="breadcrumb-item active">Revenue Leakage</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0"><i class="fas fa-faucet-drip me-2"></i>Revenue Leakage</h2>
+            <small class="text-muted">
+                Money you should have collected but didn't &mdash; stale unbilled time,
+                unused contract block hours, and stuck draft invoices.
+            </small>
+        </div>
+        <a href="?stale_days={{ stale_days }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&format=csv"
+           class="btn btn-outline-secondary">
+            <i class="fas fa-file-csv me-1"></i>Export CSV
+        </a>
+    </div>
+
+    {# ---------- Filter bar ---------- #}
+    <form method="get" class="card mb-3">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Start date</label>
+                    <input type="date" name="start"
+                           class="form-control form-control-sm"
+                           value="{{ start_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">End date</label>
+                    <input type="date" name="end"
+                           class="form-control form-control-sm"
+                           value="{{ end_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Stale threshold (days)</label>
+                    <input type="number" name="stale_days" min="1"
+                           class="form-control form-control-sm"
+                           value="{{ stale_days }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Apply</button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {# ---------- Grand total + chips ---------- #}
+    <div class="card border-danger mb-3">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <div class="text-muted small mb-1">Total potential revenue at risk</div>
+                    <h1 class="display-5 mb-0 text-danger">
+                        ${{ data.totals.grand_total|floatformat:2 }}
+                    </h1>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <span class="badge bg-warning text-dark fs-6 me-1">
+                        <i class="fas fa-clock me-1"></i>Stale: ${{ data.totals.stale|floatformat:2 }}
+                    </span>
+                    <span class="badge bg-secondary fs-6 me-1">
+                        <i class="fas fa-hourglass-end me-1"></i>Expired: ${{ data.totals.expired_blocks|floatformat:2 }}
+                    </span>
+                    <span class="badge bg-info fs-6">
+                        <i class="fas fa-file-invoice me-1"></i>Stuck: ${{ data.totals.stuck|floatformat:2 }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ---------- Stale unbilled time ---------- #}
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-clock text-warning me-2"></i>Stale unbilled time
+                <small class="text-muted ms-2">(billable entries &ge; {{ stale_days }} days old, not on any invoice)</small>
+            </h5>
+            <span class="badge bg-warning text-dark fs-6">${{ data.totals.stale|floatformat:2 }}</span>
+        </div>
+        <div class="card-body p-0">
+            {% if data.stale_unbilled %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Client</th>
+                        <th class="text-end">Entries</th>
+                        <th class="text-end">Hours at risk</th>
+                        <th>Oldest entry</th>
+                        <th class="text-end">Amount at risk</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in data.stale_unbilled %}
+                    <tr>
+                        <td>{{ r.client_name }}</td>
+                        <td class="text-end">{{ r.entry_count }}</td>
+                        <td class="text-end">{{ r.hours_at_risk|floatformat:2 }}</td>
+                        <td><small class="text-muted">{{ r.oldest_at }}</small></td>
+                        <td class="text-end">
+                            {% if r.amount_at_risk >= 1000 %}
+                                <span class="badge bg-danger">${{ r.amount_at_risk|floatformat:2 }}</span>
+                            {% elif r.amount_at_risk >= 250 %}
+                                <span class="badge bg-warning text-dark">${{ r.amount_at_risk|floatformat:2 }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary">${{ r.amount_at_risk|floatformat:2 }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'psa:invoice_list' %}?client={{ r.client_id }}"
+                               class="btn btn-sm btn-outline-primary"
+                               title="Generate invoice for {{ r.client_name }}">
+                                <i class="fas fa-file-invoice-dollar me-1"></i>Generate invoice
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="fas fa-check-circle text-success me-1"></i>
+                No stale unbilled time. Nice.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ---------- Expired contract blocks ---------- #}
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-hourglass-end text-secondary me-2"></i>Expired contract blocks (signal)
+                <small class="text-muted ms-2">(client paid for hours never used &mdash; churn risk)</small>
+            </h5>
+            <span class="badge bg-secondary fs-6">${{ data.totals.expired_blocks|floatformat:2 }}</span>
+        </div>
+        <div class="card-body p-0">
+            {% if data.expired_blocks %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Client</th>
+                        <th>Contract</th>
+                        <th class="text-end">Unused hours</th>
+                        <th class="text-end">Unused value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in data.expired_blocks %}
+                    <tr>
+                        <td>{{ r.client_name }}</td>
+                        <td>{{ r.contract_name }}</td>
+                        <td class="text-end">{{ r.unused_hours|floatformat:2 }}</td>
+                        <td class="text-end">
+                            {% if r.unused_value >= 1000 %}
+                                <span class="badge bg-danger">${{ r.unused_value|floatformat:2 }}</span>
+                            {% elif r.unused_value >= 250 %}
+                                <span class="badge bg-warning text-dark">${{ r.unused_value|floatformat:2 }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary">${{ r.unused_value|floatformat:2 }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="fas fa-check-circle text-success me-1"></i>
+                No expired contracts with unused hours.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ---------- Stuck draft invoices ---------- #}
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-file-invoice text-info me-2"></i>Stuck draft invoices
+                <small class="text-muted ms-2">(draft &gt; 14 days old)</small>
+            </h5>
+            <span class="badge bg-info fs-6">${{ data.totals.stuck|floatformat:2 }}</span>
+        </div>
+        <div class="card-body p-0">
+            {% if data.stuck_drafts %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Invoice</th>
+                        <th>Client</th>
+                        <th class="text-end">Days stuck</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in data.stuck_drafts %}
+                    <tr>
+                        <td><strong>{{ r.invoice_number }}</strong></td>
+                        <td>{{ r.client_name }}</td>
+                        <td class="text-end">{{ r.days_stuck }}</td>
+                        <td class="text-end">
+                            {% if r.amount >= 1000 %}
+                                <span class="badge bg-danger">${{ r.amount|floatformat:2 }}</span>
+                            {% elif r.amount >= 250 %}
+                                <span class="badge bg-warning text-dark">${{ r.amount|floatformat:2 }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary">${{ r.amount|floatformat:2 }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'psa:invoice_detail' r.invoice_id %}"
+                               class="btn btn-sm btn-outline-primary"
+                               title="Open invoice {{ r.invoice_number }}">
+                                <i class="fas fa-external-link-alt me-1"></i>Open invoice
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="fas fa-check-circle text-success me-1"></i>
+                No stuck drafts. Nice.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

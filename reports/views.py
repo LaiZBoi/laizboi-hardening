@@ -1020,3 +1020,167 @@ def psa_profitability_by_project(request):
         'total_margin': total_margin,
         'blended_margin_pct': round(blended_margin_pct, 1),
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.3 — Effective hourly rate + Revenue leakage (PSA)
+# ---------------------------------------------------------------------------
+
+def _median(vals):
+    if not vals:
+        return 0.0
+    s = sorted(vals)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 1:
+        return float(s[mid])
+    return float((s[mid - 1] + s[mid]) / 2.0)
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def psa_effective_hourly_rate(request):
+    """
+    Effective hourly rate report — `revenue ÷ billable_hours` per client
+    (default tab) or per tech. Two tabs share the same date-range picker.
+    CSV export per tab via `?format=csv&tab=client|tech`.
+    """
+    from .queries import (
+        effective_hourly_rate_by_client,
+        effective_hourly_rate_by_tech,
+    )
+
+    today = date.today()
+    default_start = today - timedelta(days=30)
+    start_date = _parse_date(request.GET.get('start'), default_start)
+    end_date = _parse_date(request.GET.get('end'), today)
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    tab = (request.GET.get('tab') or 'client').lower()
+    if tab not in ('client', 'tech'):
+        tab = 'client'
+
+    client_rows = effective_hourly_rate_by_client(start_date, end_date)
+    tech_rows = effective_hourly_rate_by_tech(start_date, end_date)
+
+    # Summary stats are computed on the active tab's rates (excluding
+    # zero-rates from rows with no billable hours so they don't drag
+    # avg/median to zero).
+    active_rows = client_rows if tab == 'client' else tech_rows
+    rate_vals = [r['effective_rate'] for r in active_rows
+                 if r['effective_rate'] > 0]
+    avg_rate = round(sum(rate_vals) / len(rate_vals), 2) if rate_vals else 0.0
+    highest = max(rate_vals) if rate_vals else 0.0
+    lowest = min(rate_vals) if rate_vals else 0.0
+    median = round(_median(rate_vals), 2)
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        if tab == 'tech':
+            return _csv_response(
+                f'effective-rate-by-tech-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+                ['Tech', 'Billable Hours', 'Attributed Revenue',
+                 'Effective Rate ($/hr)', 'Cost Rate ($/hr)', 'Realization %'],
+                [[
+                    r['tech_username'],
+                    f"{r['billable_hours']:.2f}",
+                    f"{r['attributed_revenue']:.2f}",
+                    f"{r['effective_rate']:.2f}",
+                    f"{r['cost_rate']:.2f}",
+                    f"{r['realization_pct']:.1f}",
+                ] for r in tech_rows],
+            )
+        return _csv_response(
+            f'effective-rate-by-client-{start_date.isoformat()}-{end_date.isoformat()}.csv',
+            ['Client', 'Revenue', 'Billable Hours', 'Non-billable Hours',
+             'Effective Rate ($/hr)', 'Utilization Ratio'],
+            [[
+                r['client_name'],
+                f"{r['revenue']:.2f}",
+                f"{r['billable_hours']:.2f}",
+                f"{r['nonbillable_hours']:.2f}",
+                f"{r['effective_rate']:.2f}",
+                f"{r['utilization_ratio']:.3f}",
+            ] for r in client_rows],
+        )
+
+    return render(request, 'reports/psa_effective_hourly_rate.html', {
+        'tab': tab,
+        'client_rows': client_rows,
+        'tech_rows': tech_rows,
+        'start_date': start_date,
+        'end_date': end_date,
+        'avg_rate': avg_rate,
+        'highest': highest,
+        'lowest': lowest,
+        'median': median,
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def psa_revenue_leakage(request):
+    """
+    Revenue leakage report — three categories of "money you should have
+    collected but didn't" on one page. Stale-days input + CSV export
+    that combines all three sections with a section column.
+    """
+    from .queries import revenue_leakage
+
+    today = date.today()
+    default_start = today - timedelta(days=180)
+    start_date = _parse_date(request.GET.get('start'), default_start)
+    end_date = _parse_date(request.GET.get('end'), today)
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    try:
+        stale_days = max(1, int(request.GET.get('stale_days') or 30))
+    except (TypeError, ValueError):
+        stale_days = 30
+
+    data = revenue_leakage(start_date, end_date, stale_days=stale_days)
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = (
+            f'attachment; filename="revenue-leakage-'
+            f'{start_date.isoformat()}-{end_date.isoformat()}.csv"'
+        )
+        writer = _csv.writer(response)
+        writer.writerow([
+            'Section', 'Client', 'Detail', 'Quantity', 'Amount',
+        ])
+        for r in data['stale_unbilled']:
+            writer.writerow([
+                'Stale Unbilled', r['client_name'],
+                f"oldest {r['oldest_at']}, {r['entry_count']} entries",
+                f"{r['hours_at_risk']:.2f} h",
+                f"{r['amount_at_risk']:.2f}",
+            ])
+        for r in data['expired_blocks']:
+            writer.writerow([
+                'Expired Block', r['client_name'], r['contract_name'],
+                f"{r['unused_hours']:.2f} h unused",
+                f"{r['unused_value']:.2f}",
+            ])
+        for r in data['stuck_drafts']:
+            writer.writerow([
+                'Stuck Draft', r['client_name'], r['invoice_number'],
+                f"{r['days_stuck']} days stuck",
+                f"{r['amount']:.2f}",
+            ])
+        writer.writerow([
+            'TOTAL', '', '', '',
+            f"{data['totals']['grand_total']:.2f}",
+        ])
+        return response
+
+    return render(request, 'reports/psa_revenue_leakage.html', {
+        'data': data,
+        'start_date': start_date,
+        'end_date': end_date,
+        'stale_days': stale_days,
+    })

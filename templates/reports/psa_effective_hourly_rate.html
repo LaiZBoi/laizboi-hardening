@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Effective Hourly Rate (PSA){% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+            <li class="breadcrumb-item active">Effective Hourly Rate</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>Effective Hourly Rate</h2>
+            <small class="text-muted">
+                Effective rate = revenue invoiced &divide; billable hours logged.
+                Realization % = effective rate &divide; tech cost rate &times; 100.
+                Industry target &ge; 200%.
+            </small>
+        </div>
+        <a href="?tab={{ tab }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&format=csv"
+           class="btn btn-outline-secondary">
+            <i class="fas fa-file-csv me-1"></i>Export CSV
+        </a>
+    </div>
+
+    {# ---------- Filter bar ---------- #}
+    <form method="get" class="card mb-3" id="filter-form">
+        <div class="card-body py-3">
+            <input type="hidden" name="tab" value="{{ tab }}" id="filter-tab">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Start date</label>
+                    <input type="date" name="start" id="filter-start"
+                           class="form-control form-control-sm"
+                           value="{{ start_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">End date</label>
+                    <input type="date" name="end" id="filter-end"
+                           class="form-control form-control-sm"
+                           value="{{ end_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Apply</button>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Quick range">
+                        <button type="button" class="btn btn-outline-secondary" data-range="7">7 days</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="30">30 days</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="90">90 days</button>
+                        <button type="button" class="btn btn-outline-secondary" data-range="ytd">YTD</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {# ---------- Summary cards ---------- #}
+    <div class="row mb-3">
+        <div class="col-md-3 mb-2">
+            <div class="card border-primary h-100"><div class="card-body">
+                <h6 class="text-muted mb-1">Avg Effective Rate</h6>
+                <h3 class="mb-0">${{ avg_rate|floatformat:2 }}</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-success h-100"><div class="card-body">
+                <h6 class="text-muted mb-1">Highest</h6>
+                <h3 class="mb-0">${{ highest|floatformat:2 }}</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-warning h-100"><div class="card-body">
+                <h6 class="text-muted mb-1">Lowest</h6>
+                <h3 class="mb-0">${{ lowest|floatformat:2 }}</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card border-info h-100"><div class="card-body">
+                <h6 class="text-muted mb-1">Median</h6>
+                <h3 class="mb-0">${{ median|floatformat:2 }}</h3>
+            </div></div>
+        </div>
+    </div>
+
+    {# ---------- Tabs ---------- #}
+    <ul class="nav nav-tabs mb-0">
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'client' %}active{% endif %}"
+               href="?tab=client&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">
+                <i class="fas fa-building me-1"></i>By Client
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'tech' %}active{% endif %}"
+               href="?tab=tech&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">
+                <i class="fas fa-user-tie me-1"></i>By Tech
+            </a>
+        </li>
+    </ul>
+
+    <div class="card border-top-0 rounded-0">
+        <div class="card-body p-0">
+        {% if tab == 'client' %}
+            {% if client_rows %}
+            <table class="table table-hover mb-0" id="rate-table">
+                <thead class="table-light">
+                    <tr>
+                        <th class="sortable">Client</th>
+                        <th class="text-end sortable">Revenue</th>
+                        <th class="text-end sortable">Billable Hours</th>
+                        <th class="text-end sortable">Non-billable Hours</th>
+                        <th class="text-end sortable">Effective Rate</th>
+                        <th class="text-end sortable">Utilization</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in client_rows %}
+                    <tr>
+                        <td>{{ r.client_name }}</td>
+                        <td class="text-end">${{ r.revenue|floatformat:2 }}</td>
+                        <td class="text-end">{{ r.billable_hours|floatformat:2 }}</td>
+                        <td class="text-end text-muted">{{ r.nonbillable_hours|floatformat:2 }}</td>
+                        <td class="text-end">
+                            {% if r.effective_rate < 75 %}
+                                <span class="badge bg-danger">${{ r.effective_rate|floatformat:2 }}/hr</span>
+                            {% elif r.effective_rate < 125 %}
+                                <span class="badge bg-warning text-dark">${{ r.effective_rate|floatformat:2 }}/hr</span>
+                            {% elif r.effective_rate < 200 %}
+                                <span class="badge bg-success">${{ r.effective_rate|floatformat:2 }}/hr</span>
+                            {% else %}
+                                <span class="badge bg-info">${{ r.effective_rate|floatformat:2 }}/hr</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ r.utilization_ratio|floatformat:3 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="fas fa-info-circle me-1"></i>
+                No client data for the selected window.
+            </div>
+            {% endif %}
+        {% else %}
+            {% if tech_rows %}
+            <table class="table table-hover mb-0" id="rate-table">
+                <thead class="table-light">
+                    <tr>
+                        <th class="sortable">Tech</th>
+                        <th class="text-end sortable">Billable Hours</th>
+                        <th class="text-end sortable">Attributed Revenue</th>
+                        <th class="text-end sortable">Effective Rate</th>
+                        <th class="text-end sortable">Cost Rate</th>
+                        <th class="text-end sortable">Realization %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in tech_rows %}
+                    <tr>
+                        <td><code>{{ r.tech_username }}</code></td>
+                        <td class="text-end">{{ r.billable_hours|floatformat:2 }}</td>
+                        <td class="text-end">${{ r.attributed_revenue|floatformat:2 }}</td>
+                        <td class="text-end">
+                            {% if r.effective_rate < 75 %}
+                                <span class="badge bg-danger">${{ r.effective_rate|floatformat:2 }}/hr</span>
+                            {% elif r.effective_rate < 125 %}
+                                <span class="badge bg-warning text-dark">${{ r.effective_rate|floatformat:2 }}/hr</span>
+                            {% elif r.effective_rate < 200 %}
+                                <span class="badge bg-success">${{ r.effective_rate|floatformat:2 }}/hr</span>
+                            {% else %}
+                                <span class="badge bg-info">${{ r.effective_rate|floatformat:2 }}/hr</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-muted">${{ r.cost_rate|floatformat:2 }}/hr</td>
+                        <td class="text-end">
+                            {% if r.realization_pct < 150 %}
+                                <span class="badge bg-danger">{{ r.realization_pct|floatformat:1 }}%</span>
+                            {% elif r.realization_pct < 200 %}
+                                <span class="badge bg-warning text-dark">{{ r.realization_pct|floatformat:1 }}%</span>
+                            {% elif r.realization_pct < 300 %}
+                                <span class="badge bg-success">{{ r.realization_pct|floatformat:1 }}%</span>
+                            {% else %}
+                                <span class="badge bg-info">{{ r.realization_pct|floatformat:1 }}%</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="fas fa-info-circle me-1"></i>
+                No tech time entries for the selected window.
+            </div>
+            {% endif %}
+        {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    document.querySelectorAll('[data-range]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var range = btn.getAttribute('data-range');
+            var today = new Date();
+            var end = today.toISOString().slice(0, 10);
+            var start;
+            if (range === 'ytd') { start = today.getFullYear() + '-01-01'; }
+            else { var d = new Date(today); d.setDate(d.getDate() - parseInt(range, 10)); start = d.toISOString().slice(0, 10); }
+            document.getElementById('filter-start').value = start;
+            document.getElementById('filter-end').value = end;
+            document.getElementById('filter-form').submit();
+        });
+    });
+    var table = document.getElementById('rate-table');
+    if (!table) return;
+    var headers = table.querySelectorAll('th.sortable');
+    headers.forEach(function(h, idx) {
+        h.style.cursor = 'pointer';
+        h.addEventListener('click', function() {
+            var asc = h.getAttribute('data-asc') !== 'true';
+            headers.forEach(function(x) { x.removeAttribute('data-asc'); });
+            h.setAttribute('data-asc', asc ? 'true' : 'false');
+            var tbody = table.querySelector('tbody');
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+            rows.sort(function(a, b) {
+                var av = a.children[idx].innerText.trim();
+                var bv = b.children[idx].innerText.trim();
+                var an = parseFloat(av.replace(/[$,%/hr ]/g, ''));
+                var bn = parseFloat(bv.replace(/[$,%/hr ]/g, ''));
+                if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+                return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+            });
+            rows.forEach(function(r) { tbody.appendChild(r); });
+        });
+    });
+})();
+</script>
+{% endblock %}
