@@ -5,6 +5,13 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.120] - 2026-04-29
+
+### Added — Attach a workflow at ticket creation
+- The **New Ticket** form (`/psa/new/`) now has an "Attach a workflow" picker (above the Submit button). Pick any global or client-scoped workflow template to spawn the matching `ProcessExecution` immediately on save — the ticket detail page opens with the embedded checklist + sign-off history already in place.
+- Optional. Existing flows still work: leave it on "— No workflow —" to create a plain ticket and use the **Launch workflow** button on the ticket page later.
+- Picker shows only **published, non-archived** templates. When the form has a pre-selected client, the picker is filtered to that client's templates plus global ones; otherwise only global templates show.
+
 ## [3.17.119] - 2026-04-29
 
 ### Fixed

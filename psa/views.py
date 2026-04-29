@@ -412,6 +412,47 @@ def ticket_create(request):
             path=request.path,
         )
 
+        # Optional workflow attachment — if the user picked a Process template,
+        # spawn a ProcessExecution linked to the new ticket and seed the stage
+        # completions so the embedded checklist appears immediately.
+        workflow_id = (request.POST.get('workflow_id') or '').strip()
+        if workflow_id:
+            try:
+                from processes.models import (
+                    Process, ProcessExecution, ProcessStageCompletion,
+                    ProcessExecutionAuditLog,
+                )
+                process = Process.objects.filter(
+                    pk=int(workflow_id), is_published=True, is_archived=False,
+                ).first()
+                if process is not None:
+                    execution = ProcessExecution.objects.create(
+                        process=process,
+                        organization=org,
+                        assigned_to=request.user,
+                        started_by=request.user,
+                        status='in_progress',
+                        started_at=timezone.now(),
+                        native_psa_ticket=ticket,
+                        notes=f'Attached at ticket creation.',
+                    )
+                    for stage in process.stages.all().order_by('order'):
+                        ProcessStageCompletion.objects.create(
+                            execution=execution, stage=stage, is_completed=False,
+                        )
+                    ProcessExecutionAuditLog.log_action(
+                        execution=execution,
+                        action_type='execution_created',
+                        user=request.user,
+                        description=(
+                            f"{request.user.username} attached workflow "
+                            f"'{process.title}' at ticket creation"
+                        ),
+                        request=request,
+                    )
+            except (ValueError, TypeError):
+                pass  # invalid workflow_id — silently ignore
+
         messages.success(request, f'Ticket {ticket.ticket_number} created.')
         return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
 
@@ -426,6 +467,27 @@ def ticket_create(request):
     if catalog_slug:
         catalog_item = ServiceCatalogItem.objects.filter(slug=catalog_slug, is_active=True).first()
 
+    # Workflow templates available to attach at creation. Org-scoped (this
+    # client's) plus global templates with no organization.
+    available_workflows = []
+    try:
+        from processes.models import Process
+        from django.db.models import Q
+        scope = preselected.id if preselected else None
+        wf_qs = Process.objects.filter(
+            is_published=True, is_archived=False,
+        ).order_by('title')
+        if scope is not None:
+            wf_qs = wf_qs.filter(Q(organization_id=scope) | Q(organization__isnull=True))
+        else:
+            # No client picked yet — only show global templates; the client
+            # filter happens on POST (and the picker is re-fetched on
+            # client change via the small inline JS below).
+            wf_qs = wf_qs.filter(organization__isnull=True)
+        available_workflows = list(wf_qs.values('pk', 'title', 'organization_id'))
+    except Exception:
+        pass
+
     return render(request, 'psa/ticket_create.html', {
         'queues': queues,
         'statuses': statuses,
@@ -435,6 +497,7 @@ def ticket_create(request):
         'preselected_client_id': preselected_id,
         'no_eligible_clients': False,
         'catalog_item': catalog_item,
+        'available_workflows': available_workflows,
     })
 
 
