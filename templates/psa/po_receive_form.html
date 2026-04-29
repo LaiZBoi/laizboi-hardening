@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Receive — {{ po.po_number }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:po_list' %}">Purchase Orders</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:po_detail' po.pk %}">{{ po.po_number }}</a></li>
+        <li class="breadcrumb-item active">Receive</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="fas fa-truck-loading"></i> Receive — {{ po.po_number }}</h2>
+    <a href="{% url 'psa:po_detail' po.pk %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left"></i> Back to PO</a>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><strong>PO Summary</strong></div>
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">PO Number</dt><dd class="col-sm-3">{{ po.po_number }}</dd>
+            <dt class="col-sm-3">Vendor</dt><dd class="col-sm-3">{{ po.vendor_name }}</dd>
+            <dt class="col-sm-3">Expected delivery</dt><dd class="col-sm-3">{{ po.expected_delivery_date|default:'—' }}</dd>
+            <dt class="col-sm-3">Status</dt><dd class="col-sm-3">{{ po.get_status_display }}</dd>
+            <dt class="col-sm-3">Drop-ship</dt><dd class="col-sm-3">{% if po.is_drop_ship %}<span class="badge text-bg-info">Yes — to {{ po.client_org.name|default:'client' }}</span>{% else %}No{% endif %}</dd>
+            {% if po.client_org %}
+            <dt class="col-sm-3">Client</dt><dd class="col-sm-3">{{ po.client_org.name }}</dd>
+            {% endif %}
+        </dl>
+    </div>
+</div>
+
+<form method="post" action="{% url 'psa:po_receive' po.pk %}">
+    {% csrf_token %}
+
+    <div class="card mb-3">
+        <div class="card-header"><strong>Shipment details</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Carrier</label>
+                    <input type="text" name="carrier" class="form-control" placeholder="UPS, FedEx, DHL, USPS, ...">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Tracking number</label>
+                    <input type="text" name="tracking_number" class="form-control" placeholder="1Z...">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Notes</label>
+                    <input type="text" name="notes" class="form-control" placeholder="Optional notes for this receipt">
+                </div>
+                {% if po.is_drop_ship %}
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="is_drop_ship_confirmed" id="is_drop_ship_confirmed">
+                        <label class="form-check-label" for="is_drop_ship_confirmed">
+                            Drop-ship confirmed by client
+                        </label>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><strong>Line items</strong></div>
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Description</th>
+                    <th>SKU</th>
+                    <th class="text-end">Ordered</th>
+                    <th class="text-end">Already received</th>
+                    <th class="text-end">Outstanding</th>
+                    <th>Qty receiving now</th>
+                    <th>Serial numbers</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for li in line_items %}
+                <tr>
+                    <td>{{ li.description }}</td>
+                    <td><code>{{ li.sku|default:'—' }}</code></td>
+                    <td class="text-end">{{ li.quantity }}</td>
+                    <td class="text-end">{{ li.received_quantity }}</td>
+                    <td class="text-end">
+                        <span class="text-muted small">{{ li.quantity }} − {{ li.received_quantity }}</span>
+                    </td>
+                    <td style="min-width: 100px;">
+                        <input type="number" min="0" step="0.01" name="qty_line_{{ li.pk }}" class="form-control form-control-sm" placeholder="0">
+                    </td>
+                    <td style="min-width: 220px;">
+                        <textarea name="serials_line_{{ li.pk }}" rows="1" class="form-control form-control-sm" placeholder="One per line or comma-separated"></textarea>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted">No line items.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mb-4">
+        <a href="{% url 'psa:po_detail' po.pk %}" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Record receipt</button>
+    </div>
+</form>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Receipt history</strong>
+        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#receiptHistory">
+            Toggle
+        </button>
+    </div>
+    <div class="collapse show" id="receiptHistory">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>By</th>
+                    <th>Carrier</th>
+                    <th>Tracking</th>
+                    <th>Lines</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in prior_receipts %}
+                <tr>
+                    <td>{{ r.received_at|date:'Y-m-d H:i' }}</td>
+                    <td>{{ r.received_by.username|default:'—' }}</td>
+                    <td>{{ r.carrier|default:'—' }}</td>
+                    <td><code>{{ r.tracking_number|default:'—' }}</code></td>
+                    <td>
+                        {% for rl in r.lines.all %}
+                            <div class="small">
+                                +{{ rl.quantity_received }} × {{ rl.po_line.description }}
+                                {% if rl.serial_numbers %}
+                                    <span class="text-muted">[{{ rl.serial_numbers|length }} S/N]</span>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </td>
+                    <td class="small">{{ r.notes|default:'—' }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted">No prior receipts.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

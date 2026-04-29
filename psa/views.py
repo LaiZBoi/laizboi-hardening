@@ -4333,8 +4333,11 @@ def po_detail(request, pk):
     return render(request, 'psa/po_detail.html', {
         'item': item,
         'line_items': item.line_items.all(),
+        'receipts': item.receipts.all().select_related('received_by').prefetch_related('lines__po_line'),
+        'open_back_orders': item.back_orders.filter(status='open').select_related('po_line'),
         'can_edit_po': user_has_perm(request.user, 'procurement_create_po'),
         'can_send_po': user_has_perm(request.user, 'procurement_send_po'),
+        'can_receive': user_has_perm(request.user, 'procurement_view'),
     })
 
 
@@ -4500,3 +4503,225 @@ def po_send(request, pk):
     else:
         messages.error(request, 'Email send returned 0 recipients.')
     return redirect('psa:po_detail', pk=po.pk)
+
+
+# ---------------------------------------------------------------------------
+# Procurement (Phase 4.2) — Receiving + back-orders + serial-number capture
+# ---------------------------------------------------------------------------
+
+def _recompute_po_status(po):
+    """Set PO status to draft / partial / received based on line aggregates."""
+    if po.status in ('cancelled', 'void', 'draft'):
+        return
+    total_qty = sum((l.quantity or 0) for l in po.line_items.all())
+    received_qty = sum((l.received_quantity or 0) for l in po.line_items.all())
+    if total_qty == 0:
+        return
+    if received_qty == 0:
+        # Don't downgrade from sent/acknowledged
+        return
+    if received_qty < total_qty:
+        po.status = 'partial'
+    else:
+        po.status = 'received'
+        # Close any open back-orders
+        po.back_orders.filter(status='open').update(
+            status='filled', closed_at=timezone.now(),
+        )
+    po.save(update_fields=['status'])
+
+
+def _maybe_create_assets_from_serials(line, serials, receipt, user):
+    """When serial numbers are captured, optionally create assets.Asset rows
+    so the inventory chain is complete. Skips silently if assets app or
+    Asset model has incompatible signature."""
+    if not serials:
+        return
+    try:
+        from assets.models import Asset
+    except Exception:
+        return
+    org = line.po.client_org or line.po.organization
+    for sn in serials:
+        # Skip duplicates
+        if Asset.objects.filter(serial_number=sn).exists():
+            continue
+        try:
+            Asset.objects.create(
+                organization=org,
+                name=f'{line.description} ({sn})'[:200],
+                serial_number=sn,
+                notes=f'Auto-created from PO {line.po.po_number} receipt #{receipt.pk}',
+                # status default; let model defaults handle the rest
+            )
+        except Exception:
+            # Some Asset models require asset_type or other FKs we can't infer.
+            # In that case we just skip — the receipt + serial captures still
+            # land in POReceiptLine.serial_numbers as the audit trail.
+            continue
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+@require_http_methods(['GET', 'POST'])
+def po_receive(request, pk):
+    """
+    GET: render receiving form for an open PO (one row per line item with
+    a 'qty received' input, optional serial-numbers comma-separated
+    textarea, carrier + tracking inputs).
+    POST: create POReceipt + POReceiptLine rows, roll up
+    PurchaseOrderLineItem.received_quantity, recompute PO status,
+    create POBackOrder rows for shorted lines, optionally create
+    assets.Asset rows from captured serial numbers, audit-log.
+    """
+    from .models import (
+        PurchaseOrder, POReceipt, POReceiptLine, POBackOrder,
+    )
+    org = get_request_organization(request)
+    qs = PurchaseOrder.objects.select_related('client_org', 'organization')
+    if org is not None:
+        qs = qs.filter(organization=org)
+    po = get_object_or_404(qs, pk=pk)
+
+    if request.method == 'POST':
+        from decimal import Decimal
+        from django.db import transaction
+
+        carrier = (request.POST.get('carrier') or '').strip()[:80]
+        tracking = (request.POST.get('tracking_number') or '').strip()[:120]
+        notes = (request.POST.get('notes') or '').strip()
+        is_drop_ship_confirmed = (request.POST.get('is_drop_ship_confirmed') == 'on')
+
+        with transaction.atomic():
+            receipt = POReceipt.objects.create(
+                po=po, received_by=request.user,
+                carrier=carrier, tracking_number=tracking,
+                notes=notes, is_drop_ship_confirmed=is_drop_ship_confirmed,
+            )
+            for line in po.line_items.all():
+                qty_str = (request.POST.get(f'qty_line_{line.pk}') or '').strip()
+                if not qty_str:
+                    continue
+                try:
+                    qty = Decimal(qty_str)
+                except Exception:
+                    continue
+                if qty <= 0:
+                    continue
+                # Cap qty at remaining
+                remaining = (line.quantity or Decimal('0')) - (line.received_quantity or Decimal('0'))
+                if qty > remaining:
+                    qty = remaining
+                if qty <= 0:
+                    continue
+
+                serials_raw = (request.POST.get(f'serials_line_{line.pk}') or '').strip()
+                serials = [s.strip() for s in serials_raw.replace('\n', ',').split(',') if s.strip()]
+
+                POReceiptLine.objects.create(
+                    receipt=receipt, po_line=line,
+                    quantity_received=qty, serial_numbers=serials,
+                )
+                # Roll up cumulative
+                line.received_quantity = (line.received_quantity or Decimal('0')) + qty
+                line.save(update_fields=['received_quantity'])
+
+                # Optional: auto-create Asset rows from serials
+                _maybe_create_assets_from_serials(line, serials, receipt, request.user)
+
+                # Back-order if still short
+                still_short = (line.quantity or Decimal('0')) - (line.received_quantity or Decimal('0'))
+                if still_short > 0:
+                    POBackOrder.objects.create(
+                        po=po, po_line=line, quantity_outstanding=still_short,
+                    )
+
+            # Recompute PO status
+            _recompute_po_status(po)
+
+            # If a full receipt occurred against any line that had a prior
+            # open back-order, fill it.
+            for line in po.line_items.all():
+                remaining = (line.quantity or Decimal('0')) - (line.received_quantity or Decimal('0'))
+                if remaining <= 0:
+                    line.back_orders.filter(status='open').update(
+                        status='filled', closed_at=timezone.now(),
+                    )
+
+            # Audit log
+            try:
+                AuditLog.log(
+                    user=request.user, action='update',
+                    organization=po.organization,
+                    object_type='psa.PurchaseOrder',
+                    object_id=po.pk,
+                    object_repr=po.po_number,
+                    description=f'Received against {po.po_number} (receipt #{receipt.pk})',
+                    ip_address=_client_ip(request), path=request.path,
+                )
+            except Exception:
+                pass
+
+        messages.success(request, f'Receipt #{receipt.pk} recorded.')
+        return redirect('psa:po_detail', pk=po.pk)
+
+    return render(request, 'psa/po_receive_form.html', {
+        'po': po,
+        'line_items': po.line_items.all(),
+        'prior_receipts': po.receipts.all().select_related('received_by').prefetch_related('lines__po_line'),
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+def back_order_list(request):
+    from .models import POBackOrder
+    org = get_request_organization(request)
+    status = (request.GET.get('status') or 'open').strip()
+    qs = POBackOrder.objects.select_related('po', 'po_line', 'po__client_org', 'po__organization')
+    if org is not None:
+        qs = qs.filter(po__organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    if status != 'all':
+        qs = qs.filter(status=status)
+    from accounts.permission_utils import user_has_perm
+    return render(request, 'psa/back_order_list.html', {
+        'back_orders': qs.order_by('-created_at')[:300],
+        'status_filter': status,
+        'can_cancel': user_has_perm(request.user, 'procurement_create_po'),
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_create_po')
+@require_http_methods(['POST'])
+def back_order_cancel(request, pk):
+    from .models import POBackOrder
+    org = get_request_organization(request)
+    qs = POBackOrder.objects.select_related('po')
+    if org is not None:
+        qs = qs.filter(po__organization=org)
+    bo = get_object_or_404(qs, pk=pk)
+    if bo.status == 'open':
+        bo.status = 'cancelled'
+        bo.closed_at = timezone.now()
+        bo.save(update_fields=['status', 'closed_at'])
+        try:
+            AuditLog.log(
+                user=request.user, action='update',
+                organization=bo.po.organization,
+                object_type='psa.POBackOrder', object_id=bo.pk,
+                object_repr=str(bo),
+                description=f'Cancelled back-order on {bo.po.po_number}',
+                ip_address=_client_ip(request), path=request.path,
+            )
+        except Exception:
+            pass
+        messages.success(request, 'Back-order cancelled.')
+    else:
+        messages.info(request, 'Back-order is not open; nothing changed.')
+    return redirect('psa:back_order_list')

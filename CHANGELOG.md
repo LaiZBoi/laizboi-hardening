@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.149] - 2026-04-29
+
+### Added — Phase 4.2: PO Receiving + back-orders + serial capture
+- New `psa.POReceipt` model — one row per receiving event (carrier, tracking number, drop-ship confirmation flag).
+- New `psa.POReceiptLine` model — per-line received quantity + JSON serial-numbers array.
+- New `psa.POBackOrder` model — auto-created when a receipt is short. Auto-fills (status='filled') when the remaining quantity is finally received. Cancellable.
+- Receive flow at `/psa/purchase-orders/<id>/receive/` — staff form with qty + serials per line + carrier + tracking. Receiving rolls up `PurchaseOrderLineItem.received_quantity` and recomputes PO status (sent → partial → received).
+- Quantity capped at outstanding so over-receiving is impossible.
+- Captured serial numbers auto-create `assets.Asset` rows (silently skipped if Asset model signature doesn't accept the inference).
+- New `/psa/back-orders/` page — open back-orders across all POs with cancel action.
+- "Receive Items" button on PO detail (when status is sent / acknowledged / partial).
+- Receipts + back-orders cards on PO detail.
+- 7 new tests in `psa.tests.POReceivingTests`.
+
+### Migration
+`psa.0020_pobackorder_poreceipt_poreceiptline`.
+
 ## [3.17.148] - 2026-04-29
 
 ### Added — Phase 4.1: Procurement foundation (PR → PO + branded PDF + email)

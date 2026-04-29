@@ -119,6 +119,7 @@
                             <li><h6 class="dropdown-header">{% trans "Procurement" %}</h6></li>
                             <li><a class="dropdown-item" href="{% url 'psa:requisition_list' %}"><i class="fas fa-clipboard-list"></i> {% trans "Requisitions" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'psa:po_list' %}"><i class="fas fa-file-invoice"></i> {% trans "Purchase Orders" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'psa:back_order_list' %}"><i class="fas fa-hourglass-half"></i> {% trans "Back-orders" %}</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'psa:workflow_rule_list' %}"><i class="fas fa-bolt"></i> {% trans "Workflow Rules" %}</a></li>
                             <li><a class="dropdown-item" href="{% url 'psa:canned_reply_list' %}"><i class="fas fa-magic"></i> {% trans "Canned Replies" %}</a></li>

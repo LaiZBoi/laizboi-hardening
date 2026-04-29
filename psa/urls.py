@@ -112,4 +112,9 @@ urlpatterns = [
     path('purchase-orders/<int:pk>/edit/', views.po_form, name='po_edit'),
     path('purchase-orders/<int:pk>/pdf/', views.po_pdf, name='po_pdf'),
     path('purchase-orders/<int:pk>/send/', views.po_send, name='po_send'),
+
+    # Procurement (Phase 4.2) — Receiving + back-orders
+    path('purchase-orders/<int:pk>/receive/', views.po_receive, name='po_receive'),
+    path('back-orders/', views.back_order_list, name='back_order_list'),
+    path('back-orders/<int:pk>/cancel/', views.back_order_cancel, name='back_order_cancel'),
 ]

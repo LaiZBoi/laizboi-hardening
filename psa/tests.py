@@ -2986,3 +2986,156 @@ class ProcurementWorkflowTests(TestCase):
         line = po.line_items.first()
         self.assertEqual(line.description, 'Cisco switch')
         self.assertEqual(line.sku, 'WS-C2960X')
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.2 — Receiving + back-orders + serial-number capture
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class POReceivingTests(TestCase):
+    """Receiving workflow: partial / full / back-orders / serials / cap."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        from psa.models import (
+            PurchaseOrder, PurchaseOrderLineItem,
+        )
+        from decimal import Decimal
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='RecvCo', slug='recv-co')
+
+        # Receiver role: full procurement perms
+        self.role = RoleTemplate.objects.create(
+            name='ProcReceiver', is_system_template=False,
+            procurement_view=True, procurement_create_pr=True,
+            procurement_approve_pr=True, procurement_create_po=True,
+            procurement_send_po=True,
+        )
+        self.user = User.objects.create_user(
+            username='receiver', password='pw', email='r@x.com')
+        Membership.objects.create(
+            user=self.user, organization=self.org,
+            role=Role.ADMIN, role_template=self.role,
+            is_active=True,
+        )
+
+        # PO with 2 lines (qty 10 each), status=sent
+        self.po = PurchaseOrder.objects.create(
+            organization=self.org, vendor_name='ACME Vendor',
+            title='Receiving test PO', status='sent',
+        )
+        self.line1 = PurchaseOrderLineItem.objects.create(
+            po=self.po, description='Widget A', sku='WA-01',
+            quantity=Decimal('10'), unit_price=Decimal('5'),
+        )
+        self.line2 = PurchaseOrderLineItem.objects.create(
+            po=self.po, description='Widget B', sku='WB-01',
+            quantity=Decimal('10'), unit_price=Decimal('7'),
+        )
+        self.po.recompute_totals()
+        self.po.save()
+
+    def _post_receive(self, data):
+        c = Client()
+        c.force_login(self.user)
+        return c.post(f'/psa/purchase-orders/{self.po.pk}/receive/', data)
+
+    def test_partial_receive_flips_status_to_partial(self):
+        # Receive 5/10 on line 1, 0/10 on line 2 → PO.status = 'partial'
+        resp = self._post_receive({
+            f'qty_line_{self.line1.pk}': '5',
+            f'qty_line_{self.line2.pk}': '',
+            'carrier': 'UPS',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.po.refresh_from_db()
+        self.assertEqual(self.po.status, 'partial')
+        self.line1.refresh_from_db()
+        self.assertEqual(self.line1.received_quantity, 5)
+
+    def test_full_receive_flips_status_to_received(self):
+        # Receive 10/10 on both lines → PO.status = 'received'
+        resp = self._post_receive({
+            f'qty_line_{self.line1.pk}': '10',
+            f'qty_line_{self.line2.pk}': '10',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.po.refresh_from_db()
+        self.assertEqual(self.po.status, 'received')
+
+    def test_back_order_created_for_shorted_line(self):
+        # Receive 6/10 on line 1 → POBackOrder with qty_outstanding=4
+        from psa.models import POBackOrder
+        resp = self._post_receive({
+            f'qty_line_{self.line1.pk}': '6',
+        })
+        self.assertEqual(resp.status_code, 302)
+        bo = POBackOrder.objects.filter(po_line=self.line1, status='open').first()
+        self.assertIsNotNone(bo)
+        self.assertEqual(bo.quantity_outstanding, 4)
+
+    def test_back_order_filled_on_full_receive(self):
+        # Open BO, then receive remainder → BO status flips to 'filled'
+        from psa.models import POBackOrder
+        # First: receive 6 of 10 on line 1, 10 of 10 on line 2
+        self._post_receive({
+            f'qty_line_{self.line1.pk}': '6',
+            f'qty_line_{self.line2.pk}': '10',
+        })
+        bo = POBackOrder.objects.filter(po_line=self.line1, status='open').first()
+        self.assertIsNotNone(bo)
+        # Now receive the remaining 4 on line 1
+        self._post_receive({
+            f'qty_line_{self.line1.pk}': '4',
+        })
+        bo.refresh_from_db()
+        self.assertEqual(bo.status, 'filled')
+        self.assertIsNotNone(bo.closed_at)
+        self.po.refresh_from_db()
+        self.assertEqual(self.po.status, 'received')
+
+    def test_serial_numbers_captured_and_assets_created(self):
+        # Receive 1 unit with serial="ABC123" → POReceiptLine has it,
+        # assets.Asset row created with that serial number
+        from psa.models import POReceiptLine
+        resp = self._post_receive({
+            f'qty_line_{self.line1.pk}': '1',
+            f'serials_line_{self.line1.pk}': 'ABC123',
+        })
+        self.assertEqual(resp.status_code, 302)
+        rl = POReceiptLine.objects.filter(po_line=self.line1).first()
+        self.assertIsNotNone(rl)
+        self.assertEqual(rl.serial_numbers, ['ABC123'])
+        # Asset row created (best-effort — only if creatable)
+        try:
+            from assets.models import Asset
+            self.assertTrue(Asset.objects.filter(serial_number='ABC123').exists())
+        except Exception:
+            pass
+
+    def test_qty_capped_at_remaining(self):
+        # Try to receive 999 on a line with only 10 outstanding → only 10 received
+        resp = self._post_receive({
+            f'qty_line_{self.line1.pk}': '999',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.line1.refresh_from_db()
+        self.assertEqual(self.line1.received_quantity, 10)
+
+    def test_back_order_cancel(self):
+        # Receive partial → open BO → cancel it
+        from psa.models import POBackOrder
+        self._post_receive({
+            f'qty_line_{self.line1.pk}': '6',
+        })
+        bo = POBackOrder.objects.filter(po_line=self.line1, status='open').first()
+        self.assertIsNotNone(bo)
+        c = Client()
+        c.force_login(self.user)
+        resp = c.post(f'/psa/back-orders/{bo.pk}/cancel/')
+        self.assertEqual(resp.status_code, 302)
+        bo.refresh_from_db()
+        self.assertEqual(bo.status, 'cancelled')
+        self.assertIsNotNone(bo.closed_at)

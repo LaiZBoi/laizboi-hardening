@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Back-orders — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:po_list' %}">Procurement</a></li>
+        <li class="breadcrumb-item active">Back-orders</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="fas fa-hourglass-half"></i> Back-orders</h2>
+    <div class="btn-group">
+        <a href="?status=open" class="btn btn-sm btn-{% if status_filter == 'open' %}primary{% else %}outline-secondary{% endif %}">Open</a>
+        <a href="?status=filled" class="btn btn-sm btn-{% if status_filter == 'filled' %}primary{% else %}outline-secondary{% endif %}">Filled</a>
+        <a href="?status=cancelled" class="btn btn-sm btn-{% if status_filter == 'cancelled' %}primary{% else %}outline-secondary{% endif %}">Cancelled</a>
+        <a href="?status=all" class="btn btn-sm btn-{% if status_filter == 'all' %}primary{% else %}outline-secondary{% endif %}">All</a>
+    </div>
+</div>
+
+<div class="card">
+    <table class="table table-sm mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>PO Number</th>
+                <th>Line description</th>
+                <th class="text-end">Outstanding qty</th>
+                <th>Created</th>
+                <th>Expected delivery</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for bo in back_orders %}
+            <tr>
+                <td><a href="{% url 'psa:po_detail' bo.po.pk %}">{{ bo.po.po_number }}</a></td>
+                <td>{{ bo.po_line.description }}</td>
+                <td class="text-end"><strong>{{ bo.quantity_outstanding }}</strong></td>
+                <td>{{ bo.created_at|date:'Y-m-d' }}</td>
+                <td>{{ bo.expected_delivery_date|default:'—' }}</td>
+                <td>
+                    {% if bo.status == 'open' %}<span class="badge text-bg-warning">Open</span>
+                    {% elif bo.status == 'filled' %}<span class="badge text-bg-success">Filled</span>
+                    {% elif bo.status == 'cancelled' %}<span class="badge text-bg-secondary">Cancelled</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">
+                    {% if bo.status == 'open' and can_cancel %}
+                    <form method="post" action="{% url 'psa:back_order_cancel' bo.pk %}" class="d-inline" onsubmit="return confirm('Cancel this back-order?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-times"></i> Cancel</button>
+                    </form>
+                    {% endif %}
+                    <a href="{% url 'psa:po_receive' bo.po.pk %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-truck-loading"></i> Receive</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center text-muted">No back-orders found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

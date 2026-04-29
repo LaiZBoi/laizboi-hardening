@@ -27,6 +27,14 @@
         {% if can_send_po %}
             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#emailPOModal"><i class="fas fa-envelope"></i> Send to vendor</button>
         {% endif %}
+        {% if can_receive %}
+            {% if item.status == 'sent' or item.status == 'acknowledged' or item.status == 'partial' %}
+                <a href="{% url 'psa:po_receive' item.pk %}" class="btn btn-success"><i class="fas fa-truck-loading"></i> Receive Items</a>
+            {% endif %}
+        {% endif %}
+        {% if open_back_orders %}
+            <span class="badge text-bg-warning align-self-center ms-2">{{ open_back_orders|length }} open back-order{{ open_back_orders|length|pluralize }}</span>
+        {% endif %}
     </div>
 </div>
 
@@ -90,9 +98,74 @@
             </table>
         </div>
         {% if item.notes %}
-        <div class="card">
+        <div class="card mb-3">
             <div class="card-header"><strong>Notes</strong></div>
             <div class="card-body small">{{ item.notes|linebreaksbr }}</div>
+        </div>
+        {% endif %}
+
+        {% if receipts %}
+        <div class="card mb-3">
+            <div class="card-header"><strong>Receipts</strong></div>
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>By</th>
+                        <th>Carrier</th>
+                        <th>Tracking</th>
+                        <th>Lines</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for r in receipts %}
+                    <tr>
+                        <td>{{ r.received_at|date:'Y-m-d H:i' }}</td>
+                        <td>{{ r.received_by.username|default:'—' }}</td>
+                        <td>{{ r.carrier|default:'—' }}</td>
+                        <td><code>{{ r.tracking_number|default:'—' }}</code></td>
+                        <td>
+                            {% for rl in r.lines.all %}
+                                <div class="small">
+                                    +{{ rl.quantity_received }} × {{ rl.po_line.description }}
+                                    {% if rl.serial_numbers %}
+                                        <span class="text-muted">[S/N: {{ rl.serial_numbers|join:", " }}]</span>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </td>
+                        <td class="small">{{ r.notes|default:'—' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if open_back_orders %}
+        <div class="card mb-3 border-warning">
+            <div class="card-header bg-warning-subtle"><strong><i class="fas fa-hourglass-half"></i> Open back-orders</strong></div>
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Line</th>
+                        <th class="text-end">Outstanding qty</th>
+                        <th>Created</th>
+                        <th>Expected</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for bo in open_back_orders %}
+                    <tr>
+                        <td>{{ bo.po_line.description }}</td>
+                        <td class="text-end"><strong>{{ bo.quantity_outstanding }}</strong></td>
+                        <td>{{ bo.created_at|date:'Y-m-d' }}</td>
+                        <td>{{ bo.expected_delivery_date|default:'—' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
         </div>
         {% endif %}
     </div>

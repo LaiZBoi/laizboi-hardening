@@ -2297,3 +2297,98 @@ class PurchaseOrderLineItem(models.Model):
     def line_total(self):
         from decimal import Decimal
         return (self.quantity or Decimal('0')) * (self.unit_price or Decimal('0'))
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.2 — Receiving + back-orders + serial-number capture
+# ---------------------------------------------------------------------------
+
+class POReceipt(models.Model):
+    """
+    A single receiving event against a PurchaseOrder. Multiple receipts
+    per PO support partial deliveries — the model captures the moment
+    of arrival, not the cumulative state (cumulative state is on
+    PurchaseOrderLineItem.received_quantity).
+    """
+    po = models.ForeignKey(
+        PurchaseOrder, on_delete=models.CASCADE, related_name='receipts'
+    )
+    received_at = models.DateTimeField(auto_now_add=True)
+    received_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    carrier = models.CharField(max_length=80, blank=True)
+    tracking_number = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    is_drop_ship_confirmed = models.BooleanField(
+        default=False,
+        help_text='When the PO is drop-ship and the client confirmed delivery.',
+    )
+
+    class Meta:
+        db_table = 'psa_po_receipts'
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f'{self.po.po_number} receipt @ {self.received_at:%Y-%m-%d}'
+
+
+class POReceiptLine(models.Model):
+    """
+    Per-line receive record. quantity_received MAY be less than the
+    PO line's quantity (partial receive). The view that creates
+    POReceipt rolls up these into PurchaseOrderLineItem.received_quantity
+    so the PO's status flips to partial / received automatically.
+    """
+    receipt = models.ForeignKey(
+        POReceipt, on_delete=models.CASCADE, related_name='lines'
+    )
+    po_line = models.ForeignKey(
+        PurchaseOrderLineItem, on_delete=models.CASCADE, related_name='receipt_lines'
+    )
+    quantity_received = models.DecimalField(max_digits=10, decimal_places=2)
+    serial_numbers = models.JSONField(
+        default=list, blank=True,
+        help_text='List of serial numbers captured at receive time. '
+                  'Auto-create assets.Asset rows when set.',
+    )
+    notes = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        db_table = 'psa_po_receipt_lines'
+
+    def __str__(self):
+        return f'{self.po_line.description}: +{self.quantity_received}'
+
+
+class POBackOrder(models.Model):
+    """
+    Tracks the un-received remainder when a partial receipt happens.
+    Created automatically from the receiving view when a PO line is
+    short. Cleared when the back-order is later filled.
+    """
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('filled', 'Filled'),
+        ('cancelled', 'Cancelled'),
+    ]
+    po = models.ForeignKey(
+        PurchaseOrder, on_delete=models.CASCADE, related_name='back_orders'
+    )
+    po_line = models.ForeignKey(
+        PurchaseOrderLineItem, on_delete=models.CASCADE, related_name='back_orders'
+    )
+    quantity_outstanding = models.DecimalField(max_digits=10, decimal_places=2)
+    expected_delivery_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        db_table = 'psa_po_back_orders'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.po.po_number} back-order: {self.po_line.description} ({self.quantity_outstanding})'
