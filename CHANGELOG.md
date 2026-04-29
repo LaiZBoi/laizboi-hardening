@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.110] - 2026-04-29
+
+### Fixed — Proper Advanced-setup CodeQL workflow
+The Default-setup CodeQL has a cached language list that includes `java-kotlin` and `c-cpp` (set when those files existed in the repo, before v3.17.108 untracked them). Even with zero source files for those languages now, Default keeps trying to scan them and fails with "Extraction failed: No source files found." — see `CODE_SCANNING_IS_STEADY_STATE_DEFAULT_SETUP: true` in the run env.
+
+Adding a properly-formatted Advanced-setup `codeql.yml` (this time `paths-ignore` is correctly nested inside the `config:` block, not a top-level input). After this lands and you switch to Advanced setup in the GitHub UI, only `python` / `javascript-typescript` / `actions` will run — all of which already pass.
+
+**Manual one-click step needed:** Repo → **Security** tab → **Code scanning** → CodeQL row → kebab `⋮` → **Switch to advanced** (or **Disable** the Default setup). After that one click, Default stops running and the new workflow takes over.
+
 ## [3.17.109] - 2026-04-29
 
 ### Fixed — CodeQL workflow file removed (was broken + now redundant)

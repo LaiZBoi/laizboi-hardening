@@ -1,0 +1,60 @@
+name: CodeQL
+
+# Advanced-setup CodeQL — covers only the languages we actually have
+# code for: Python (Django app), JavaScript (templates + scripts),
+# and the GitHub Actions YAML in this repo.
+#
+# This file replaces the repo's "Default setup" config. After this
+# lands, switch to "Advanced setup" in the GitHub UI:
+#   Repo → Security → Code scanning → CodeQL → "Switch to advanced"
+# (or click the kebab menu and "Disable" the Default setup row).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 4 * * 1'  # weekly Monday 04:00 UTC
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript, actions]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # paths-ignore lives inside the `config` block, not as a
+          # top-level input (that mistake broke v3.17.108).
+          config: |
+            paths-ignore:
+              - 'mobile-app/**'
+              - 'staticfiles/**'
+              - 'venv/**'
+              - 'docs/screenshots/**'
+              - '**/__pycache__/**'
+              - '**/*.min.js'
+              - '**/*.min.css'
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'
