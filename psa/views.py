@@ -239,7 +239,9 @@ def ticket_detail(request, ticket_number):
     workflow_executions = []
     try:
         from django.db.models import Prefetch
-        from processes.models import ProcessExecution, ProcessStageCompletion
+        from processes.models import (
+            ProcessExecution, ProcessStageCompletion, ProcessExecutionAuditLog,
+        )
         workflow_executions = list(
             ProcessExecution.objects.filter(native_psa_ticket=ticket)
             .select_related('process', 'assigned_to', 'started_by')
@@ -254,7 +256,16 @@ def ticket_detail(request, ticket_number):
                         'stage__linked_asset',
                         'completed_by',
                     ).order_by('stage__order'),
-                )
+                ),
+                # Recent audit-log entries (sign-off history) so the ticket
+                # detail page can render an inline timeline of stage events.
+                Prefetch(
+                    'audit_logs',
+                    queryset=ProcessExecutionAuditLog.objects
+                    .select_related('user', 'stage')
+                    .order_by('-created_at')[:25],
+                    to_attr='recent_audit_logs',
+                ),
             )
             .order_by('-created_at')[:10]
         )

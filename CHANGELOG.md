@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.118] - 2026-04-29
+
+### Added — Inline workflow sign-off history on tickets
+- The PSA ticket detail page now shows a **Sign-off history** timeline below each workflow checklist — a chronological list of every audit-log event for that workflow execution (stage completed / uncompleted / created / completed / cancelled / failed) with the username, stage title, and time-ago.
+- Each event has a coloured icon (green check for completion, amber undo for uncompletion, blue play for launch, etc.) so techs can scan who signed off on what at a glance.
+- The full audit log is still one click away via "View full audit log →" — same `processes:execution_audit_log` URL as before.
+- "Launch workflow" button on the ticket page is unchanged — attaches an existing workflow template to this specific ticket exactly like before.
+
 ## [3.17.117] - 2026-04-29
 
 ### Changed — Workflows now live inside PSA tickets

@@ -542,6 +542,38 @@
                     {% else %}
                     <div class="small text-muted">No stages defined for this workflow.</div>
                     {% endif %}
+
+                    {# Inline sign-off / audit timeline #}
+                    {% if ex.recent_audit_logs %}
+                    <details class="mt-2 workflow-audit-timeline">
+                        <summary class="small text-muted" style="cursor: pointer;">
+                            <i class="fas fa-history me-1"></i>Sign-off history
+                            <span class="text-muted">({{ ex.recent_audit_logs|length }} event{{ ex.recent_audit_logs|length|pluralize }})</span>
+                        </summary>
+                        <ul class="list-unstyled small mt-2 mb-0 ps-3 border-start">
+                            {% for log in ex.recent_audit_logs %}
+                            <li class="mb-1">
+                                {% if log.action_type == 'stage_completed' %}<i class="fas fa-check-circle text-success me-1"></i>
+                                {% elif log.action_type == 'stage_uncompleted' %}<i class="fas fa-undo text-warning me-1"></i>
+                                {% elif log.action_type == 'execution_completed' %}<i class="fas fa-flag-checkered text-success me-1"></i>
+                                {% elif log.action_type == 'execution_created' %}<i class="fas fa-play-circle text-primary me-1"></i>
+                                {% elif log.action_type == 'execution_cancelled' %}<i class="fas fa-ban text-secondary me-1"></i>
+                                {% elif log.action_type == 'execution_failed' %}<i class="fas fa-times-circle text-danger me-1"></i>
+                                {% else %}<i class="fas fa-circle-info text-muted me-1"></i>{% endif %}
+                                <strong>{{ log.username|default:'system' }}</strong>
+                                {% if log.stage_title %} — <span class="text-muted">{{ log.stage_title }}</span>{% endif %}
+                                <span class="text-muted">· {{ log.created_at|timesince }} ago</span>
+                                {% if log.description %}
+                                <div class="text-muted ms-3" style="font-size:.78rem;">{{ log.description }}</div>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        <a href="{% url 'processes:execution_audit_log' ex.pk %}" class="small text-decoration-none">
+                            View full audit log →
+                        </a>
+                    </details>
+                    {% endif %}
                 </div>
                 {% endwith %}
                 {% endwith %}
