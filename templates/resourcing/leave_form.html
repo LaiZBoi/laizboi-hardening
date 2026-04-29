@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'resourcing:my_leave' %}">My Leave</a></li>
+        <li class="breadcrumb-item active">{{ title }}</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="fas fa-umbrella-beach"></i> {{ title }}</h1>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card mb-4">
+        <div class="card-body">
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Leave type</label>
+                    {{ form.leave_type }}
+                    {{ form.leave_type.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Start date</label>
+                    {{ form.start_date }}
+                    {{ form.start_date.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">End date</label>
+                    {{ form.end_date }}
+                    {{ form.end_date.errors }}
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        {{ form.is_half_day }}
+                        <label class="form-check-label" for="{{ form.is_half_day.id_for_label }}">
+                            Half day <small class="text-muted">(only when start and end are the same date)</small>
+                        </label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notes <small class="text-muted">(optional)</small></label>
+                    {{ form.notes }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Submit</button>
+    <a href="{% url 'resourcing:my_leave' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

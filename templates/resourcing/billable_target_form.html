@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Billable Target{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'resourcing:my_resourcing' %}{% if target.id != request.user.id %}?user={{ target.id }}{% endif %}">My Resources</a></li>
+        <li class="breadcrumb-item active">Billable Target</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="fas fa-bullseye"></i> Billable Target
+    {% if target.id != request.user.id %}<small class="text-muted">— {{ target.username }}</small>{% endif %}
+</h1>
+
+{% if messages %}
+{% for m in messages %}
+<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+{% endfor %}
+{% endif %}
+
+{% if view_only %}
+<div class="card mb-4">
+    <div class="card-body">
+        {% if billable_target %}
+        <dl class="row mb-0">
+            <dt class="col-sm-4">Target hours per week</dt>
+            <dd class="col-sm-8"><strong>{{ billable_target.target_hours_per_week }}</strong> h/wk</dd>
+
+            <dt class="col-sm-4">Status</dt>
+            <dd class="col-sm-8">
+                {% if billable_target.is_active %}
+                    <span class="badge bg-success">Active</span>
+                {% else %}
+                    <span class="badge bg-secondary">Inactive</span>
+                {% endif %}
+            </dd>
+
+            <dt class="col-sm-4">Notes</dt>
+            <dd class="col-sm-8">{{ billable_target.notes|default:"—" }}</dd>
+        </dl>
+        {% else %}
+        <div class="text-muted">
+            <p class="mb-2">No billable target set yet.</p>
+            <p class="small mb-0">Default is <strong>32 h/wk</strong> until you set one.</p>
+        </div>
+        {% endif %}
+    </div>
+    {% if can_edit %}
+    <div class="card-footer">
+        <a href="{% url 'resourcing:billable_target_edit' target.id %}" class="btn btn-primary">
+            <i class="fas fa-edit"></i> {% if billable_target %}Edit{% else %}Set{% endif %} Target
+        </a>
+        <a href="{% url 'resourcing:my_resourcing' %}{% if target.id != request.user.id %}?user={{ target.id }}{% endif %}" class="btn btn-secondary">Back</a>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<form method="post">
+    {% csrf_token %}
+    <div class="card mb-4">
+        <div class="card-body">
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Target hours per week</label>
+                    {{ form.target_hours_per_week }}
+                    {{ form.target_hours_per_week.errors }}
+                    <small class="text-muted">Hours per week the tech should bill against client work.</small>
+                </div>
+                <div class="col-md-6 d-flex align-items-center">
+                    <div class="form-check">
+                        {{ form.is_active }}
+                        <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Active</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    {{ form.notes }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save</button>
+    <a href="{% url 'resourcing:my_billable_target' %}{% if target.id != request.user.id %}?user={{ target.id }}{% endif %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endif %}
+{% endblock %}

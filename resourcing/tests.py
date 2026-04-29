@@ -18,7 +18,10 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import UserCertification, UserSkill, WorkingHours
+from .models import (
+    BillableTarget, Holiday, LeaveRequest,
+    UserCertification, UserSkill, WorkingHours, working_days_in_period,
+)
 
 User = get_user_model()
 
@@ -141,3 +144,86 @@ class TechRosterAccessTests(TestCase):
         # ended at the 2FA setup page — both prove staff is not blocked by
         # @user_passes_test.
         self.assertEqual(resp_final.status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.2 — Holiday + LeaveRequest + BillableTarget tests
+# ---------------------------------------------------------------------------
+
+class HolidayTests(TestCase):
+    def test_global_holiday_matches_any_org(self):
+        from resourcing.models import Holiday
+        from datetime import date
+        Holiday.objects.create(name='New Year', date=date(2026, 1, 1), is_recurring_yearly=True)
+        self.assertTrue(Holiday.is_holiday(date(2026, 1, 1)))
+        self.assertTrue(Holiday.is_holiday(date(2027, 1, 1)))  # recurring yearly
+        self.assertFalse(Holiday.is_holiday(date(2026, 1, 2)))
+
+
+class LeaveRequestTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user('alice', 'a@x.com', 'pw')
+
+    def test_clean_rejects_inverted_dates(self):
+        from resourcing.models import LeaveRequest
+        from datetime import date
+        from django.core.exceptions import ValidationError
+        lr = LeaveRequest(user=self.user, leave_type='vacation',
+                          start_date=date(2026, 5, 10), end_date=date(2026, 5, 5))
+        with self.assertRaises(ValidationError):
+            lr.clean()
+
+    def test_total_days_handles_half_day(self):
+        from resourcing.models import LeaveRequest
+        from datetime import date
+        lr = LeaveRequest(user=self.user, leave_type='sick',
+                          start_date=date(2026, 5, 10), end_date=date(2026, 5, 10),
+                          is_half_day=True)
+        self.assertEqual(lr.total_days, 0.5)
+
+    def test_is_user_on_leave_only_approved(self):
+        from resourcing.models import LeaveRequest
+        from datetime import date
+        LeaveRequest.objects.create(user=self.user, leave_type='vacation',
+            start_date=date(2026, 6, 1), end_date=date(2026, 6, 5), status='approved')
+        self.assertTrue(LeaveRequest.is_user_on_leave(self.user, date(2026, 6, 3)))
+        # Pending doesn't count
+        u2 = self._make_user('bob')
+        LeaveRequest.objects.create(user=u2, leave_type='vacation',
+            start_date=date(2026, 6, 1), end_date=date(2026, 6, 5), status='pending')
+        self.assertFalse(LeaveRequest.is_user_on_leave(u2, date(2026, 6, 3)))
+
+    def _make_user(self, username):
+        from django.contrib.auth.models import User
+        return User.objects.create_user(username, f'{username}@x.com', 'pw')
+
+
+class WorkingDaysTests(TestCase):
+    def test_excludes_holidays_and_leave(self):
+        from django.contrib.auth.models import User
+        from resourcing.models import Holiday, LeaveRequest, WorkingHours, working_days_in_period
+        from datetime import date, time
+        u = User.objects.create_user('charlie', 'c@x.com', 'pw')
+        # 5 weekday WorkingHours rows
+        for wd in range(5):
+            WorkingHours.objects.create(user=u, weekday=wd,
+                                         start_time=time(9, 0), end_time=time(17, 0))
+        # Period: Mon 2026-05-04 → Fri 2026-05-08 (5 working days base)
+        # Holiday on Wed
+        Holiday.objects.create(name='Mid-week', date=date(2026, 5, 6))
+        # Approved leave Thu-Fri
+        LeaveRequest.objects.create(user=u, leave_type='vacation',
+            start_date=date(2026, 5, 7), end_date=date(2026, 5, 8), status='approved')
+        days = working_days_in_period(u, date(2026, 5, 4), date(2026, 5, 8))
+        # Mon + Tue only = 2 working days
+        self.assertEqual(days, 2)
+
+
+class BillableTargetTests(TestCase):
+    def test_default_32_hours(self):
+        from django.contrib.auth.models import User
+        from resourcing.models import BillableTarget
+        u = User.objects.create_user('dana', 'd@x.com', 'pw')
+        bt = BillableTarget.objects.create(user=u)
+        self.assertEqual(float(bt.target_hours_per_week), 32.0)

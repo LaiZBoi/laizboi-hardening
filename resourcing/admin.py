@@ -1,6 +1,9 @@
 from django.contrib import admin
 
-from .models import UserSkill, UserCertification, WorkingHours
+from .models import (
+    BillableTarget, Holiday, LeaveRequest,
+    UserSkill, UserCertification, WorkingHours,
+)
 
 
 @admin.register(UserSkill)
@@ -37,3 +40,36 @@ class WorkingHoursAdmin(admin.ModelAdmin):
     search_fields = ('user__username', 'user__first_name', 'user__last_name')
     autocomplete_fields = ('user',)
     list_editable = ('is_active',)
+
+
+@admin.register(Holiday)
+class HolidayAdmin(admin.ModelAdmin):
+    list_display = ('name', 'date', 'organization', 'is_recurring_yearly', 'updated_at')
+    list_filter = ('is_recurring_yearly', 'organization')
+    search_fields = ('name', 'notes')
+    autocomplete_fields = ('organization',)
+    date_hierarchy = 'date'
+    ordering = ('date',)
+
+
+@admin.register(LeaveRequest)
+class LeaveRequestAdmin(admin.ModelAdmin):
+    list_display = ('user', 'leave_type', 'start_date', 'end_date',
+                    'status', 'approver', 'decided_at')
+    list_filter = ('status', 'leave_type')
+    search_fields = (
+        'user__username', 'user__first_name', 'user__last_name',
+        'notes', 'decision_note',
+    )
+    autocomplete_fields = ('user', 'approver')
+    date_hierarchy = 'start_date'
+    readonly_fields = ('created_at', 'updated_at', 'decided_at')
+
+
+@admin.register(BillableTarget)
+class BillableTargetAdmin(admin.ModelAdmin):
+    list_display = ('user', 'target_hours_per_week', 'is_active', 'updated_at')
+    list_filter = ('is_active',)
+    search_fields = ('user__username', 'user__first_name', 'user__last_name')
+    autocomplete_fields = ('user',)
+    list_editable = ('target_hours_per_week', 'is_active')

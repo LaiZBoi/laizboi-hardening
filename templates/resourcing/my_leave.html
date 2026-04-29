@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}My Leave{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1"><i class="fas fa-umbrella-beach"></i> My Leave</h1>
+        <p class="text-muted mb-0">Submit, track, and cancel your time-off requests.</p>
+    </div>
+    <div>
+        {% if request.user.is_staff or request.user.is_superuser %}
+        <a href="{% url 'resourcing:leave_approvals' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-tasks"></i> Approvals Queue
+        </a>
+        {% endif %}
+        <a href="{% url 'resourcing:leave_request_add' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Request Leave
+        </a>
+    </div>
+</div>
+
+{% if messages %}
+{% for m in messages %}
+<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+{% endfor %}
+{% endif %}
+
+<div class="row g-4">
+
+<!-- Pending requests -->
+<div class="col-lg-6">
+    <div class="card h-100">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-hourglass-half"></i> Pending
+                <span class="badge bg-warning text-dark">{{ pending|length }}</span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            {% if pending %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Type</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Days</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lr in pending %}
+                    <tr>
+                        <td>{{ lr.get_leave_type_display }}</td>
+                        <td>{{ lr.start_date|date:"Y-m-d" }}</td>
+                        <td>{{ lr.end_date|date:"Y-m-d" }}</td>
+                        <td>{{ lr.total_days }}{% if lr.is_half_day %} <small class="text-muted">(half)</small>{% endif %}</td>
+                        <td class="text-end">
+                            <form method="post" action="{% url 'resourcing:leave_request_cancel' lr.pk %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Cancel this leave request?');">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-hourglass-half fa-2x mb-2"></i>
+                <p class="mb-0">No pending leave requests.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Upcoming approved -->
+<div class="col-lg-6">
+    <div class="card h-100">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-calendar-check"></i> Upcoming Approved
+                <span class="badge bg-success">{{ upcoming|length }}</span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            {% if upcoming %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Type</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Days</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lr in upcoming %}
+                    <tr>
+                        <td>{{ lr.get_leave_type_display }}</td>
+                        <td>{{ lr.start_date|date:"Y-m-d" }}</td>
+                        <td>{{ lr.end_date|date:"Y-m-d" }}</td>
+                        <td>{{ lr.total_days }}{% if lr.is_half_day %} <small class="text-muted">(half)</small>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-calendar-check fa-2x mb-2"></i>
+                <p class="mb-0">No upcoming approved leave.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Past requests -->
+<div class="col-12">
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-history"></i> Past Requests</h5>
+        </div>
+        <div class="card-body p-0">
+            {% if past %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Type</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Days</th>
+                        <th>Status</th>
+                        <th>Decided By</th>
+                        <th>Decided At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lr in past %}
+                    <tr>
+                        <td>{{ lr.get_leave_type_display }}</td>
+                        <td>{{ lr.start_date|date:"Y-m-d" }}</td>
+                        <td>{{ lr.end_date|date:"Y-m-d" }}</td>
+                        <td>{{ lr.total_days }}</td>
+                        <td>
+                            {% if lr.status == 'approved' %}
+                                <span class="badge bg-success">Approved</span>
+                            {% elif lr.status == 'denied' %}
+                                <span class="badge bg-danger">Denied</span>
+                            {% elif lr.status == 'cancelled' %}
+                                <span class="badge bg-secondary">Cancelled</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">{{ lr.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ lr.approver.username|default:"—" }}</td>
+                        <td>{{ lr.decided_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <p class="mb-0">No past leave requests.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+</div>
+{% endblock %}

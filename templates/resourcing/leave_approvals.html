@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Leave Approvals{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1"><i class="fas fa-tasks"></i> Leave Approvals</h1>
+        <p class="text-muted mb-0">Pending leave requests across all users.</p>
+    </div>
+    <a href="{% url 'resourcing:my_leave' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to My Leave
+    </a>
+</div>
+
+{% if messages %}
+{% for m in messages %}
+<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+{% endfor %}
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h5 class="mb-0">Pending <span class="badge bg-warning text-dark">{{ pending|length }}</span></h5>
+            {% if pending %}
+            <div class="d-flex gap-2 align-items-center">
+                <input type="text" name="note" class="form-control form-control-sm" placeholder="Optional decision note" style="min-width: 220px;">
+                <button type="submit" name="action" value="approve" class="btn btn-success btn-sm">
+                    <i class="fas fa-check"></i> Approve Selected
+                </button>
+                <button type="submit" name="action" value="deny" class="btn btn-danger btn-sm" onclick="return confirm('Deny selected requests?');">
+                    <i class="fas fa-times"></i> Deny Selected
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card-body p-0">
+            {% if pending %}
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" id="checkall" class="form-check-input">
+                        </th>
+                        <th>User</th>
+                        <th>Type</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Days</th>
+                        <th>Notes</th>
+                        <th class="text-end">Quick Decide</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lr in pending %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" name="leave_ids" value="{{ lr.pk }}" class="form-check-input row-check">
+                        </td>
+                        <td><strong>{{ lr.user.username }}</strong></td>
+                        <td>{{ lr.get_leave_type_display }}</td>
+                        <td>{{ lr.start_date|date:"Y-m-d" }}</td>
+                        <td>{{ lr.end_date|date:"Y-m-d" }}</td>
+                        <td>{{ lr.total_days }}{% if lr.is_half_day %} <small class="text-muted">(half)</small>{% endif %}</td>
+                        <td>{{ lr.notes|truncatechars:60|default:"—" }}</td>
+                        <td class="text-end">
+                            <button type="submit" formaction="{% url 'resourcing:leave_decide' lr.pk %}?action=approve" class="btn btn-sm btn-outline-success">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button type="submit" formaction="{% url 'resourcing:leave_decide' lr.pk %}?action=deny" class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-inbox fa-2x mb-2"></i>
+                <p class="mb-0">No pending leave requests.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var checkall = document.getElementById('checkall');
+    if (checkall) {
+        checkall.addEventListener('change', function() {
+            document.querySelectorAll('.row-check').forEach(function(cb) {
+                cb.checked = checkall.checked;
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.137] - 2026-04-29
+
+### Added — Phase 2.2: Holidays + Leave Requests + Billable Targets
+- New `Holiday` model — org-scoped or global; `is_recurring_yearly` flag; `is_holiday(date, org)` classmethod.
+- New `LeaveRequest` model — vacation / sick / personal / bereavement / jury / parental / unpaid / other; pending → approved/denied workflow with approver, decided_at, decision_note; half-day flag; `total_days` property; `is_user_on_leave(user, date)` helper.
+- New `BillableTarget` model — per-tech weekly hours goal (default 32h/wk).
+- `working_days_in_period(user, start, end, org)` helper subtracts WorkingHours gaps + holidays + approved leave. Used by Phase 3 capacity reporting and Phase 8.5 off-shift GPS suppression.
+- Pages: `/resourcing/leave/` (my requests), `/resourcing/leave/approvals/` (staff queue with bulk approve/deny), `/resourcing/holidays/` (admin).
+- Existing `/resourcing/me/` page now shows a Leave summary card + Billable target card.
+- Audit-logged: every leave decision (approve/deny).
+- Tests: 7 new in `resourcing.tests`.
+
+### Migration
+`resourcing.0002_billabletarget_holiday_leaverequest`.
+
+Phase 2.3 — capacity report + skill-ranking on dispatch board — comes next.
+
 ## [3.17.136] - 2026-04-29
 
 ### Added — Public roadmap on website + GitHub + new Phase 9 (Security alerts)

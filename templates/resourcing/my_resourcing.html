@@ -138,6 +138,70 @@
     </div>
 </div>
 
+<!-- Leave summary card -->
+<div class="col-lg-6">
+    <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-umbrella-beach"></i> Leave (this year)</h5>
+            {% if not viewing_as_admin %}
+            <a href="{% url 'resourcing:my_leave' %}" class="btn btn-sm btn-primary">
+                <i class="fas fa-arrow-right"></i> My Leave
+            </a>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-4">
+                    <div class="h3 mb-0">{{ approved_count }}</div>
+                    <small class="text-muted">Approved</small>
+                </div>
+                <div class="col-4">
+                    <div class="h3 mb-0">{{ pending_count }}</div>
+                    <small class="text-muted">Pending</small>
+                </div>
+                <div class="col-4">
+                    <div class="h3 mb-0">{{ days_used_this_year }}</div>
+                    <small class="text-muted">Days Used</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Billable Target card -->
+<div class="col-lg-6">
+    <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-bullseye"></i> Billable Target</h5>
+            <a href="{% url 'resourcing:billable_target_edit' target.id %}" class="btn btn-sm btn-primary">
+                <i class="fas fa-edit"></i> Edit
+            </a>
+        </div>
+        <div class="card-body">
+            {% if billable_target %}
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="h3 mb-0">{{ billable_target.target_hours_per_week }} <small class="text-muted">h/wk</small></div>
+                    {% if billable_target.is_active %}
+                        <span class="badge bg-success">Active</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Inactive</span>
+                    {% endif %}
+                </div>
+                <div class="text-end">
+                    {% if billable_target.notes %}
+                        <small class="text-muted">{{ billable_target.notes|truncatechars:60 }}</small>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted mb-1">No target set — default is <strong>32 h/wk</strong>.</p>
+            <small class="text-muted">Used by Phase 3 utilization reporting.</small>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
 <!-- Working Hours card -->
 <div class="col-12">
     <div class="card">

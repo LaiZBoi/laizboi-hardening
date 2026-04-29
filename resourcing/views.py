@@ -21,8 +21,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import UserCertificationForm, UserSkillForm, WorkingHoursForm
-from .models import UserCertification, UserSkill, WorkingHours
+from .forms import (
+    BillableTargetForm, HolidayForm, LeaveRequestForm,
+    UserCertificationForm, UserSkillForm, WorkingHoursForm,
+)
+from .models import (
+    BillableTarget, Holiday, LeaveRequest,
+    UserCertification, UserSkill, WorkingHours,
+)
 
 User = get_user_model()
 
@@ -70,7 +76,7 @@ def _redirect_to_profile(target):
 
 @login_required
 def my_resourcing(request):
-    """Profile page with Skills / Certifications / Working Hours cards."""
+    """Profile page with Skills / Certifications / Working Hours / Leave / Billable cards."""
     target_id = request.GET.get('user')
     if target_id and (request.user.is_superuser or request.user.is_staff):
         target = get_object_or_404(User, pk=int(target_id))
@@ -79,9 +85,22 @@ def my_resourcing(request):
         target = request.user
         viewing_as_admin = False
 
+    today = timezone.now().date()
     skills = UserSkill.objects.filter(user=target)
     certifications = UserCertification.objects.filter(user=target)
     working_hours = WorkingHours.objects.filter(user=target)
+
+    # Phase 2.2 — leave summary (this calendar year)
+    year_start = today.replace(month=1, day=1)
+    leave_qs_this_year = LeaveRequest.objects.filter(
+        user=target, start_date__gte=year_start,
+    )
+    approved_this_year = leave_qs_this_year.filter(status='approved')
+    pending_this_year = leave_qs_this_year.filter(status='pending')
+    days_used_this_year = sum(lr.total_days for lr in approved_this_year)
+
+    # Billable target
+    billable_target = BillableTarget.objects.filter(user=target).first()
 
     return render(request, 'resourcing/my_resourcing.html', {
         'target': target,
@@ -89,7 +108,11 @@ def my_resourcing(request):
         'skills': skills,
         'certifications': certifications,
         'working_hours': working_hours,
-        'today': timezone.now().date(),
+        'today': today,
+        'approved_count': approved_this_year.count(),
+        'pending_count': pending_this_year.count(),
+        'days_used_this_year': days_used_this_year,
+        'billable_target': billable_target,
     })
 
 
@@ -288,4 +311,276 @@ def tech_roster(request):
     return render(request, 'resourcing/tech_roster.html', {
         'rows': rows,
         'today': today,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.2 — Holidays (staff/superuser only)
+# ---------------------------------------------------------------------------
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def holiday_list(request):
+    holidays = Holiday.objects.select_related('organization').all()
+    return render(request, 'resourcing/holiday_list.html', {
+        'holidays': holidays,
+        'today': timezone.now().date(),
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def holiday_add(request):
+    if request.method == 'POST':
+        form = HolidayForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Holiday added.')
+            return redirect('resourcing:holiday_list')
+    else:
+        form = HolidayForm()
+    return render(request, 'resourcing/holiday_form.html', {
+        'form': form, 'mode': 'add', 'title': 'Add Holiday',
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def holiday_edit(request, pk):
+    instance = get_object_or_404(Holiday, pk=pk)
+    if request.method == 'POST':
+        form = HolidayForm(request.POST, instance=instance)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Holiday updated.')
+            return redirect('resourcing:holiday_list')
+    else:
+        form = HolidayForm(instance=instance)
+    return render(request, 'resourcing/holiday_form.html', {
+        'form': form, 'instance': instance, 'mode': 'edit', 'title': 'Edit Holiday',
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def holiday_delete(request, pk):
+    instance = get_object_or_404(Holiday, pk=pk)
+    if request.method == 'POST':
+        instance.delete()
+        messages.success(request, 'Holiday deleted.')
+        return redirect('resourcing:holiday_list')
+    return render(request, 'resourcing/confirm_delete.html', {
+        'instance': instance, 'kind': 'Holiday', 'target': None,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.2 — Leave requests
+# ---------------------------------------------------------------------------
+
+@login_required
+def my_leave(request):
+    """Current user's leave requests, optionally filterable by status / year."""
+    status_filter = request.GET.get('status', '')
+    year_filter = request.GET.get('year', '')
+
+    qs = LeaveRequest.objects.filter(user=request.user)
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    if year_filter:
+        try:
+            yr = int(year_filter)
+            qs = qs.filter(start_date__year=yr)
+        except (TypeError, ValueError):
+            pass
+
+    today = timezone.now().date()
+    pending = qs.filter(status__in=('pending',)).order_by('start_date')
+    upcoming = qs.filter(status='approved', end_date__gte=today).order_by('start_date')
+    past = qs.exclude(pk__in=[lr.pk for lr in pending] + [lr.pk for lr in upcoming]).order_by('-start_date')
+
+    return render(request, 'resourcing/my_leave.html', {
+        'pending': pending,
+        'upcoming': upcoming,
+        'past': past,
+        'status_filter': status_filter,
+        'year_filter': year_filter,
+        'leave_status_choices': LeaveRequest.STATUS_CHOICES,
+    })
+
+
+@login_required
+def leave_request_add(request):
+    if request.method == 'POST':
+        form = LeaveRequestForm(request.POST)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.user = request.user
+            obj.status = 'pending'
+            try:
+                obj.full_clean(exclude=None)
+            except Exception as e:
+                form.add_error(None, str(e))
+            else:
+                obj.save()
+                messages.success(request, 'Leave request submitted.')
+                return redirect('resourcing:my_leave')
+    else:
+        form = LeaveRequestForm()
+    return render(request, 'resourcing/leave_form.html', {
+        'form': form, 'mode': 'add', 'title': 'Request Leave',
+    })
+
+
+@login_required
+def leave_request_cancel(request, pk):
+    """Owner can cancel their own pending leave request."""
+    instance = get_object_or_404(LeaveRequest, pk=pk)
+    if instance.user_id != request.user.id and not (request.user.is_staff or request.user.is_superuser):
+        raise PermissionDenied
+    if instance.status != 'pending':
+        messages.error(request, 'Only pending leave requests can be cancelled.')
+        return redirect('resourcing:my_leave')
+    if request.method == 'POST':
+        instance.status = 'cancelled'
+        instance.save(update_fields=['status', 'updated_at'])
+        messages.success(request, 'Leave request cancelled.')
+        return redirect('resourcing:my_leave')
+    return render(request, 'resourcing/confirm_delete.html', {
+        'instance': instance,
+        'kind': 'Leave request (cancel)',
+        'target': None,
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def leave_approvals(request):
+    """Staff queue of pending leave requests across all users.
+
+    Supports bulk approve/deny via POST with leave_ids[] + action=approve|deny.
+    """
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        ids = request.POST.getlist('leave_ids')
+        note = request.POST.get('note', '')
+        if action in ('approve', 'deny') and ids:
+            from audit.models import AuditLog
+            new_status = 'approved' if action == 'approve' else 'denied'
+            now = timezone.now()
+            count = 0
+            for lr in LeaveRequest.objects.filter(pk__in=ids, status='pending'):
+                lr.status = new_status
+                lr.approver = request.user
+                lr.decided_at = now
+                lr.decision_note = note
+                lr.save(update_fields=['status', 'approver', 'decided_at',
+                                       'decision_note', 'updated_at'])
+                AuditLog.log(
+                    user=request.user,
+                    action='update',
+                    object_type='LeaveRequest',
+                    object_id=lr.pk,
+                    object_repr=str(lr),
+                    description=f'Leave {new_status} for {lr.user.username} '
+                                f'({lr.start_date} → {lr.end_date})',
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    path=request.path,
+                    extra_data={'action': new_status, 'note': note},
+                )
+                count += 1
+            messages.success(request, f'{count} request(s) {new_status}.')
+        return redirect('resourcing:leave_approvals')
+
+    pending = LeaveRequest.objects.filter(status='pending').select_related('user').order_by('start_date')
+    return render(request, 'resourcing/leave_approvals.html', {
+        'pending': pending,
+    })
+
+
+@login_required
+@user_passes_test(_is_staff_or_super, login_url='/accounts/profile/')
+def leave_decide(request, pk):
+    """POST endpoint: ?action=approve|deny + optional note. Audit-logged."""
+    if request.method != 'POST':
+        return HttpResponseForbidden('POST required.')
+    instance = get_object_or_404(LeaveRequest, pk=pk)
+    action = request.GET.get('action') or request.POST.get('action')
+    note = request.POST.get('note', '')
+    if action not in ('approve', 'deny'):
+        messages.error(request, 'Invalid action.')
+        return redirect('resourcing:leave_approvals')
+    new_status = 'approved' if action == 'approve' else 'denied'
+    instance.status = new_status
+    instance.approver = request.user
+    instance.decided_at = timezone.now()
+    instance.decision_note = note
+    instance.save(update_fields=['status', 'approver', 'decided_at',
+                                 'decision_note', 'updated_at'])
+    from audit.models import AuditLog
+    AuditLog.log(
+        user=request.user,
+        action='update',
+        object_type='LeaveRequest',
+        object_id=instance.pk,
+        object_repr=str(instance),
+        description=f'Leave {new_status} for {instance.user.username} '
+                    f'({instance.start_date} → {instance.end_date})',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        path=request.path,
+        extra_data={'action': new_status, 'note': note},
+    )
+    messages.success(request, f'Leave request {new_status}.')
+    return redirect('resourcing:leave_approvals')
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.2 — Billable target
+# ---------------------------------------------------------------------------
+
+@login_required
+def my_billable_target(request):
+    """View own billable target. Staff can view anyone via ?user=<id>."""
+    target_id = request.GET.get('user')
+    if target_id and (request.user.is_superuser or request.user.is_staff):
+        target = get_object_or_404(User, pk=int(target_id))
+    else:
+        target = request.user
+    bt = BillableTarget.objects.filter(user=target).first()
+    can_edit = (request.user.id == target.id
+                or request.user.is_staff or request.user.is_superuser)
+    return render(request, 'resourcing/billable_target_form.html', {
+        'target': target,
+        'billable_target': bt,
+        'can_edit': can_edit,
+        'view_only': True,
+    })
+
+
+@login_required
+def billable_target_edit(request, user_id):
+    target = get_object_or_404(User, pk=user_id)
+    if request.user.id != target.id and not (request.user.is_staff or request.user.is_superuser):
+        raise PermissionDenied
+    bt, _ = BillableTarget.objects.get_or_create(user=target)
+    if request.method == 'POST':
+        form = BillableTargetForm(request.POST, instance=bt)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Billable target updated.')
+            if request.user.id == target.id:
+                return redirect('resourcing:my_billable_target')
+            return redirect(reverse('resourcing:my_billable_target') + f'?user={target.id}')
+    else:
+        form = BillableTargetForm(instance=bt)
+    return render(request, 'resourcing/billable_target_form.html', {
+        'form': form,
+        'target': target,
+        'billable_target': bt,
+        'mode': 'edit',
+        'title': 'Edit Billable Target',
+        'can_edit': True,
+        'view_only': False,
     })
