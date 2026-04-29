@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.122] - 2026-04-29
+
+### Fixed
+- **"Attach a workflow" picker on the New Ticket form was empty** in Global view. The v3.17.120 filter only showed workflows scoped to the current org *or* global ones — but most installs have all their workflows tied to a specific org (no globals), so the picker showed "— No workflow —" with nothing else. Now lists all published, non-archived workflows regardless of current scope, with each option showing the owning client name (or "global") for clarity.
+
 ## [3.17.121] - 2026-04-29
 
 ### Docs

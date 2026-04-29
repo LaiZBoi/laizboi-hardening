@@ -467,24 +467,19 @@ def ticket_create(request):
     if catalog_slug:
         catalog_item = ServiceCatalogItem.objects.filter(slug=catalog_slug, is_active=True).first()
 
-    # Workflow templates available to attach at creation. Org-scoped (this
-    # client's) plus global templates with no organization.
+    # Workflow templates available to attach at creation. List ALL published,
+    # non-archived templates — the user picks one and the org is set when the
+    # ticket is saved. (Earlier we tried to scope by current-org, but most
+    # processes are tied to a specific org so the dropdown went empty in
+    # Global view.)
     available_workflows = []
     try:
         from processes.models import Process
-        from django.db.models import Q
-        scope = preselected.id if preselected else None
-        wf_qs = Process.objects.filter(
-            is_published=True, is_archived=False,
-        ).order_by('title')
-        if scope is not None:
-            wf_qs = wf_qs.filter(Q(organization_id=scope) | Q(organization__isnull=True))
-        else:
-            # No client picked yet — only show global templates; the client
-            # filter happens on POST (and the picker is re-fetched on
-            # client change via the small inline JS below).
-            wf_qs = wf_qs.filter(organization__isnull=True)
-        available_workflows = list(wf_qs.values('pk', 'title', 'organization_id'))
+        available_workflows = list(
+            Process.objects.filter(is_published=True, is_archived=False)
+            .order_by('organization__name', 'title')
+            .values('pk', 'title', 'organization_id', 'organization__name')
+        )
     except Exception:
         pass
 

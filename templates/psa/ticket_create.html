@@ -135,7 +135,7 @@
             <select name="workflow_id" class="form-select">
                 <option value="">— No workflow —</option>
                 {% for w in available_workflows %}
-                <option value="{{ w.pk }}">{{ w.title }}{% if not w.organization_id %} (global){% endif %}</option>
+                <option value="{{ w.pk }}">{{ w.title }}{% if w.organization__name %} — {{ w.organization__name }}{% else %} — global{% endif %}</option>
                 {% endfor %}
             </select>
             <small class="form-text text-muted">
