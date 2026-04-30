@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.156] - 2026-04-29
+
+### Fixed
+- **Asset Summary Report failed with "Cannot resolve keyword 'name' into field. Join on 'asset_type' not permitted."** `Asset.asset_type` is a `CharField(choices=…)`, not an FK to `AssetType` — `reports.generators.AssetSummaryReport` was incorrectly doing `values('asset_type__name')`. Switched to `values('asset_type')` and translates the raw code to a display label via `Asset._meta.get_field('asset_type').flatchoices`. Output shape preserved (still emits `'asset_type__name'` key for downstream PDF templates), just sourced from the choices dict instead of a non-existent FK relation.
+
 ## [3.17.155] - 2026-04-29
 
 ### Added — Phase 5.3 (closes Phase 5): Sales-activity timeline + lead capture

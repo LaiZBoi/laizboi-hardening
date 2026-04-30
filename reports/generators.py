@@ -30,10 +30,21 @@ class AssetSummaryReport(ReportGenerator):
     def generate(self):
         assets = Asset.objects.filter(organization=self.organization)
 
-        # Asset counts by type
-        by_type = assets.values('asset_type__name').annotate(
+        # Asset counts by type. Asset.asset_type is a CharField with
+        # choices, NOT an FK to AssetType — so we group by the raw code
+        # and translate to display labels via the choices dict.
+        type_choices = dict(Asset._meta.get_field('asset_type').flatchoices)
+        by_type_raw = assets.values('asset_type').annotate(
             count=Count('id')
         ).order_by('-count')
+        by_type = [
+            {
+                'asset_type': row['asset_type'],
+                'asset_type__name': type_choices.get(row['asset_type'], row['asset_type']),
+                'count': row['count'],
+            }
+            for row in by_type_raw
+        ]
 
         # Recently added
         days = self.parameters.get('recent_days', 30)
