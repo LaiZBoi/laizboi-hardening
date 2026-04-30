@@ -236,6 +236,55 @@ class BillableTargetTests(TestCase):
         self.assertEqual(float(bt.target_hours_per_week), 32.0)
 
 
+# v3.17.169 — billable target edit is now manager/admin-only.
+# Even the target user themselves can NOT self-edit. Only users with the
+# `resourcing_manage_cost_rates` perm (granted via RoleTemplate or by being
+# a superuser) may edit a tech's billable target.
+@override_settings(REQUIRE_2FA=False, SECURE_SSL_REDIRECT=False)
+class BillableTargetPermissionTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.regular = User.objects.create_user('reg-bt', 'r@x.com', 'pw')
+        self.admin = User.objects.create_user('admin-bt', 'a@x.com', 'pw',
+                                               is_staff=True, is_superuser=True)
+
+    def _bypass_2fa(self):
+        session = self.client.session
+        session['2fa_prompted'] = True
+        session.save()
+
+    def test_user_cannot_self_edit_billable_target(self):
+        """Regular user with no resourcing_manage_cost_rates → 403 on POST
+        to billable_target_edit even on their own user_id."""
+        self.client.force_login(self.regular)
+        self._bypass_2fa()
+        r = self.client.post(
+            reverse('resourcing:billable_target_edit', args=[self.regular.id]),
+            {'target_hours_per_week': '40', 'is_active': 'on', 'notes': 'self-edit'},
+        )
+        # Either 403 (PermissionDenied) or a redirect-to-login style bounce.
+        self.assertIn(r.status_code, [302, 303, 403])
+        # And the change must NOT have persisted.
+        from resourcing.models import BillableTarget
+        bt = BillableTarget.objects.filter(user=self.regular).first()
+        if bt is not None:
+            self.assertNotEqual(float(bt.target_hours_per_week), 40.0)
+
+    def test_manager_can_edit_anyones_target(self):
+        """User with resourcing_manage_cost_rates → 200/302 OK."""
+        self.client.force_login(self.admin)
+        self._bypass_2fa()
+        r = self.client.post(
+            reverse('resourcing:billable_target_edit', args=[self.regular.id]),
+            {'target_hours_per_week': '36', 'is_active': 'on', 'notes': 'manager set'},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        from resourcing.models import BillableTarget
+        bt = BillableTarget.objects.get(user=self.regular)
+        self.assertEqual(float(bt.target_hours_per_week), 36.0)
+
+
 # ---------------------------------------------------------------------------
 # Phase 2.3 — Capacity report + skill ranking tests
 # ---------------------------------------------------------------------------

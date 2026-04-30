@@ -39,8 +39,11 @@ def process_list(request):
             is_archived=False
         ).select_related('organization', 'created_by').prefetch_related('tags')
     elif not org:
-        # No org and not in global view - need org context
-        messages.error(request, 'Organization context required.')
+        # No org and not in global view — need org context.
+        # v3.17.169 — clearer message; non-staff users without an active org
+        # have no way to scope this list, so we still redirect them.
+        messages.error(request,
+            'Switch to a specific organization first to see its workflows.')
         return redirect('accounts:organization_list')
     else:
         # Organization view: get org processes + global processes
@@ -82,7 +85,10 @@ def process_detail(request, slug):
     in_global_view = not org and (request.user.is_superuser or is_staff)
 
     if not org and not in_global_view:
-        messages.error(request, 'Organization context required.')
+        # v3.17.169 — clearer message for non-staff in Global view (which
+        # they shouldn't see, but defense-in-depth).
+        messages.error(request,
+            'Switch to a specific organization first to view this workflow.')
         return redirect('accounts:organization_list')
 
     if in_global_view:
@@ -265,10 +271,52 @@ def _generate_flowchart_xml_from_process(process):
 @login_required
 def process_create(request):
     """Create new process"""
+    from core.models import Organization
+
     org = get_request_organization(request)
+
+    # v3.17.169 — in Global view, render the form with an org picker instead
+    # of bouncing the user back to the org list. The picked org becomes the
+    # `organization` for this new Process.
+    needs_org_pick = False
+    org_choices = None
     if not org:
-        messages.error(request, 'Organization context required.')
-        return redirect('accounts:organization_list')
+        is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+        if request.user.is_superuser or is_staff:
+            org_choices = Organization.objects.filter(is_active=True).order_by('name')
+        else:
+            from accounts.models import Membership
+            org_ids = Membership.objects.filter(
+                user=request.user, is_active=True
+            ).values_list('organization_id', flat=True)
+            org_choices = Organization.objects.filter(
+                pk__in=org_ids, is_active=True
+            ).order_by('name')
+        if not org_choices.exists():
+            messages.error(request,
+                'You must be a member of at least one organization to create a process.')
+            return redirect('accounts:organization_list')
+        if request.method == 'POST':
+            picked = (request.POST.get('selected_org_id') or '').strip()
+            if picked:
+                try:
+                    org = org_choices.get(pk=int(picked))
+                except (Organization.DoesNotExist, ValueError, TypeError):
+                    org = None
+        needs_org_pick = org is None
+
+    if needs_org_pick:
+        if request.method == 'POST':
+            messages.error(request,
+                'Please pick an organization to own this process.')
+        return render(request, 'processes/process_form.html', {
+            'form': ProcessForm(),
+            'formset': ProcessStageFormSet(),
+            'action': 'Create',
+            'current_organization': None,
+            'org_choices': org_choices,
+            'needs_org_pick': True,
+        })
 
     if request.method == 'POST':
         form = ProcessForm(request.POST, organization=org)
@@ -304,11 +352,22 @@ def process_create(request):
 def process_edit(request, slug):
     """Edit existing process"""
     org = get_request_organization(request)
-    if not org:
-        messages.error(request, 'Organization context required.')
-        return redirect('accounts:organization_list')
 
-    process = get_object_or_404(Process, slug=slug, organization=org)
+    # v3.17.169 — in Global view, fall back to the process's own organization
+    # (only superusers/staff reach this branch via the global-view check).
+    # For everyone else, no-org still bounces because they shouldn't be
+    # editing arbitrary org processes from outside an org context.
+    if not org:
+        is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+        if request.user.is_superuser or is_staff:
+            process = get_object_or_404(Process, slug=slug)
+            org = process.organization
+        else:
+            messages.error(request,
+                'Switch to a specific organization first to edit this process.')
+            return redirect('accounts:organization_list')
+    else:
+        process = get_object_or_404(Process, slug=slug, organization=org)
 
     if request.method == 'POST':
         form = ProcessForm(request.POST, instance=process, organization=org)
@@ -341,11 +400,20 @@ def process_edit(request, slug):
 def process_delete(request, slug):
     """Delete process"""
     org = get_request_organization(request)
-    if not org:
-        messages.error(request, 'Organization context required.')
-        return redirect('accounts:organization_list')
 
-    process = get_object_or_404(Process, slug=slug, organization=org)
+    # v3.17.169 — Global-view superuser/staff: fall back to the process's own
+    # organization. Everyone else: helpful redirect with a clearer message.
+    if not org:
+        is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+        if request.user.is_superuser or is_staff:
+            process = get_object_or_404(Process, slug=slug)
+            org = process.organization
+        else:
+            messages.error(request,
+                'This action requires you to switch to a specific organization first.')
+            return redirect('accounts:organization_list')
+    else:
+        process = get_object_or_404(Process, slug=slug, organization=org)
 
     if request.method == 'POST':
         title = process.title
@@ -431,9 +499,60 @@ def execution_create(request, slug):
     from core.models import Organization, SystemSetting
 
     org = get_request_organization(request)
+
+    # v3.17.169 — when the user is in Global view (no current org), don't bail
+    # out with "Organization context required". Instead let them pick the
+    # organization to scope the workflow run. The PSA-enabled path already
+    # asks for a `client_org_id` on the form; we honor that picked org as the
+    # request-scoped one. For the legacy (PSA-disabled) path, we use the
+    # `selected_org_id` field rendered by the org-picker block.
+    needs_org_pick = False
+    org_choices = None
     if not org:
-        messages.error(request, 'Organization context required.')
-        return redirect('accounts:organization_list')
+        is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+        if request.user.is_superuser or is_staff:
+            org_choices = Organization.objects.filter(is_active=True).order_by('name')
+        else:
+            from accounts.models import Membership
+            org_ids = Membership.objects.filter(
+                user=request.user, is_active=True
+            ).values_list('organization_id', flat=True)
+            org_choices = Organization.objects.filter(
+                pk__in=org_ids, is_active=True
+            ).order_by('name')
+        if not org_choices.exists():
+            messages.error(request,
+                'You must be a member of at least one organization to launch workflows.')
+            return redirect('accounts:organization_list')
+        if request.method == 'POST':
+            picked = (request.POST.get('selected_org_id')
+                      or request.POST.get('client_org_id') or '').strip()
+            if picked:
+                try:
+                    org = org_choices.get(pk=int(picked))
+                except (Organization.DoesNotExist, ValueError, TypeError):
+                    org = None
+        needs_org_pick = org is None
+
+    if needs_org_pick:
+        # Render the form with an org picker; let the user pick on POST.
+        process = get_object_or_404(
+            Process.objects.filter(Q(is_global=True) | Q(organization__in=org_choices)),
+            slug=slug
+        )
+        psa_enabled = bool(getattr(SystemSetting.get_settings(), 'psa_enabled', False))
+        if request.method == 'POST':
+            messages.error(request,
+                'Please pick an organization to scope this workflow run.')
+        return render(request, 'processes/execution_form.html', {
+            'form': ProcessExecutionForm(),
+            'process': process,
+            'current_organization': None,
+            'psa_enabled': psa_enabled,
+            'client_orgs': org_choices,
+            'org_choices': org_choices,
+            'needs_org_pick': True,
+        })
 
     process = get_object_or_404(
         Process.objects.filter(Q(organization=org) | Q(is_global=True)),
@@ -661,7 +780,10 @@ def execution_list(request):
                 'stage_completions'
             ).order_by('-created_at')
         else:
-            messages.error(request, 'Organization context required.')
+            # v3.17.169 — clearer message + still redirect (this is a list
+            # endpoint with no form to embed a picker into).
+            messages.error(request,
+                'Switch to a specific organization first to view its workflow executions.')
             return redirect('accounts:organization_list')
     else:
         # Get all executions for this org

@@ -561,8 +561,10 @@ def my_billable_target(request):
     else:
         target = request.user
     bt = BillableTarget.objects.filter(user=target).first()
-    can_edit = (request.user.id == target.id
-                or request.user.is_staff or request.user.is_superuser)
+    # v3.17.169 — billable targets are now manager/admin-only. Even the target
+    # user themselves cannot self-edit; this avoids mixed signals about whether
+    # a tech is meeting their own self-set target.
+    can_edit = user_has_perm(request.user, 'resourcing_manage_cost_rates')
     return render(request, 'resourcing/billable_target_form.html', {
         'target': target,
         'billable_target': bt,
@@ -574,11 +576,10 @@ def my_billable_target(request):
 @login_required
 def billable_target_edit(request, user_id):
     target = get_object_or_404(User, pk=user_id)
-    # Own-data: always allowed. Other-user: require resourcing_manage_cost_rates
-    # (v3.17.145 — replaces the coarse is_staff check).
-    if request.user.id != target.id and not user_has_perm(
-        request.user, 'resourcing_manage_cost_rates'
-    ):
+    # v3.17.169 — manager/admin only. Per user request, even the target user
+    # themselves cannot edit their own billable target. Only users with
+    # `resourcing_manage_cost_rates` (or staff/superuser via that perm) can.
+    if not user_has_perm(request.user, 'resourcing_manage_cost_rates'):
         raise PermissionDenied
     bt, _ = BillableTarget.objects.get_or_create(user=target)
     if request.method == 'POST':

@@ -5,6 +5,15 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.169] - 2026-04-30
+
+### Changed
+- **Phase 8 moved to last position in the roadmap** — Native mobile apps + GPS auto-time + Timeclock now appears after Phase 30. Phase 8 remains the largest single undertaking and depends on a lot of other work being mature first; positioning it last makes the priority order match reality. Sizing-table row also moved to the last row.
+
+### Fixed
+- **BillableTarget can no longer be self-edited.** Per user request, only managers/admins (users with the `resourcing_manage_cost_rates` permission) can set a tech's billable target — even the target user themselves can't edit their own. Old behavior allowed self-edit which mixed signals about whether a tech was meeting their target. Template now renders a "Your billable target is set by your manager." note when the viewing user lacks the permission. New tests in `resourcing.tests.BillableTargetPermissionTests`.
+- **Workflow launch now asks which org instead of erroring** when invoked from Global view. Previously `/processes/<slug>/run/` returned "Organization context required." and redirected away. Now the form renders with an org picker; the user picks the org for that run; the rest of the flow proceeds normally. Same pattern applied to `process_create` (org picker on the new-process form). `process_edit` and `process_delete` fall back to the existing process's organization when invoked from Global view by a superuser/staff user. `process_list` / `process_detail` / `execution_list` get clearer redirect messages ("Switch to a specific organization first to …"). Locations + tag-views still use the legacy error message — pattern is established and can be migrated incrementally.
+
 ## [3.17.168] - 2026-04-30
 
 ### Added — Phase 9: Security alert ingestion (EDR / AV / Firewall)

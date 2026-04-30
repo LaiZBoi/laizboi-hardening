@@ -22,6 +22,22 @@
                 <form method="post">
                     {% csrf_token %}
 
+                    {% if needs_org_pick %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-circle-info me-1"></i>
+                        You're in <strong>Global view</strong>. Pick which organization this workflow run belongs to:
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Organization <span class="text-danger">*</span></label>
+                        <select name="selected_org_id" class="form-select" required>
+                            <option value="">Pick an organization…</option>
+                            {% for o in org_choices %}
+                            <option value="{{ o.pk }}">{{ o.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+
                     {% if can_assign and eligible_assignees %}
                     <div class="mb-3">
                         <label for="assigned_to" class="form-label"><i class="fas fa-user"></i> Assign to (optional)</label>

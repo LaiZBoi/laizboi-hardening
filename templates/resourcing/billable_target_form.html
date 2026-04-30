@@ -47,14 +47,24 @@
         </div>
         {% endif %}
     </div>
-    {% if can_edit %}
     <div class="card-footer">
+        {% if can_edit %}
         <a href="{% url 'resourcing:billable_target_edit' target.id %}" class="btn btn-primary">
             <i class="fas fa-edit"></i> {% if billable_target %}Edit{% else %}Set{% endif %} Target
         </a>
+        {% else %}
+        <small class="text-muted me-2">
+            <i class="fas fa-lock"></i>
+            {% if target.id == request.user.id %}
+                Your billable target is set by your manager.
+            {% else %}
+                Set by a manager or admin (requires the
+                <code>resourcing_manage_cost_rates</code> permission).
+            {% endif %}
+        </small>
+        {% endif %}
         <a href="{% url 'resourcing:my_resourcing' %}{% if target.id != request.user.id %}?user={{ target.id }}{% endif %}" class="btn btn-secondary">Back</a>
     </div>
-    {% endif %}
 </div>
 {% else %}
 <form method="post">

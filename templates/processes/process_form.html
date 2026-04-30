@@ -14,6 +14,24 @@
 <form method="post" id="processForm">
     {% csrf_token %}
 
+    {% if needs_org_pick %}
+    <div class="alert alert-info">
+        <i class="fas fa-circle-info me-1"></i>
+        You're in <strong>Global view</strong>. Pick which organization will own this process:
+    </div>
+    <div class="card mb-3">
+        <div class="card-body">
+            <label class="form-label">Organization <span class="text-danger">*</span></label>
+            <select name="selected_org_id" class="form-select" required>
+                <option value="">Pick an organization…</option>
+                {% for o in org_choices %}
+                <option value="{{ o.pk }}">{{ o.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Workflow Details -->
     <div class="card mb-3">
         <div class="card-header py-2">

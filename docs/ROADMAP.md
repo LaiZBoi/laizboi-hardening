@@ -127,47 +127,6 @@ MSPs run a stack of security tools that all alert independently — SentinelOne,
 
 **Dependencies:** none. Can run alongside Phase 2 / 3 / 8.
 
-## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)**
-
-Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentation + employee timeclock makes this a force-multiplier for billable-hours capture, not just a UX improvement.
-
-### Sub-phase 8.1 — Backend foundation
-- `TechnicianLocation` model — append-only GPS pings (lat/lon/accuracy/timestamp/source); retention policy + per-org enable flag.
-- `TimeclockEntry` model — clock-in / clock-out events with tech, organization, location, optional ticket, optional project, source (`'mobile'` / `'web'` / `'manual'`); derives a `TimeEntry` row on clock-out so existing billing rolls up unchanged.
-- `ClientSiteGeofence` model — per-client polygon or radius around their physical address(es). Used to auto-detect "tech is on site" for ticket time tracking.
-- REST API additions: `/api/v2/mobile/locations/`, `/api/v2/mobile/timeclock/`, `/api/v2/mobile/active-ticket/`.
-- Token auth (long-lived per-device tokens stored in `MobileDevice` model with revoke-on-demand).
-
-### Sub-phase 8.2 — GPS auto-documentation engine
-- Background worker: every GPS ping with the tech "inside a client geofence" auto-starts a `TicketTimeEntry` against their currently-active ticket for that client (or creates a placeholder if no ticket open).
-- On exit-geofence event: stop the time entry, write the duration, optionally prompt the tech to confirm + add notes via push notification.
-- Selectable per-tech: **Always on** / **Ask first** / **Off**. Per-tech UserProfile flag.
-- Audit log every auto-time event so disputed billing can be traced.
-
-### Sub-phase 8.3 — Timeclock feature
-- Web UI: Timeclock dashboard at `/timeclock/` for staff to view who's clocked in, total hours per pay period, exception flags (long shifts, missing clock-out).
-- Mobile UI: prominent "Clock in / Clock out" button on the app home screen. Optional tie to the active ticket.
-- Selectable per-org and per-tech: required vs optional, with vs without GPS context, separate from per-ticket time tracking.
-- Payroll export — CSV per pay period, hooks for QuickBooks Time / Gusto / etc. (defer the integration; just structured export first).
-
-### Sub-phase 8.4 — App build
-- React Native (Expo SDK 51+ with EAS cloud build — revisits the earlier "no Expo accounts" rejection; required for store submission).
-- Auth: Azure SSO + email/password fallback; session-token cookie not used (mobile uses long-lived bearer).
-- Screens: Dashboard / My Tickets / Active Ticket / Clock In-Out / Map / Settings.
-- Background location: foreground-only by default, opt-in for background; iOS "Always" permission requested only for techs who enable Always-on auto-time.
-- Push notifications via FCM/APNS for ticket assignment, clock-in reminders, geofence exit prompts.
-
-### Sub-phase 8.5 — Privacy + safeguards
-- **Off-shift suppression**: GPS pings outside the tech's `WorkingHours` (Phase 2) are dropped at the API layer — never stored.
-- Per-tech UI to view + delete their own location history.
-- Org-admin retention policy (default: 90 days).
-- Geofence-only mode: store only "entered/exited geofence X at time T", never raw lat/lon.
-- Audit trail of every location-history view + export.
-
-**Dependencies:** Phase 2 (`WorkingHours` for off-shift suppression). Recommended before Phase 3 (so timeclock data flows into utilization reporting).
-
-**Sizing:** **L** — backend foundation 2 weeks, auto-time engine 2 weeks, timeclock UI 1-2 weeks, mobile app build 4-6 weeks, privacy hardening 1 week. ~10-13 weeks total. Sub-phase 8.1 is the first concrete deliverable and is a useful release on its own (web-only timeclock + GPS API endpoints) even before any mobile app ships.
-
 ---
 
 # Long-term roadmap — Phases 10-23
@@ -606,6 +565,51 @@ Dependencies: none direct. Strictly smaller than Phase 24.
 
 ---
 
+## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)**
+
+Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentation + employee timeclock makes this a force-multiplier for billable-hours capture, not just a UX improvement.
+
+Positioned last in the roadmap (v3.17.169) because it's the largest single undertaking and depends on a lot of other work being mature first — backend, scheduling, billing, and mobile app distribution all need to be in place before this phase pays off.
+
+### Sub-phase 8.1 — Backend foundation
+- `TechnicianLocation` model — append-only GPS pings (lat/lon/accuracy/timestamp/source); retention policy + per-org enable flag.
+- `TimeclockEntry` model — clock-in / clock-out events with tech, organization, location, optional ticket, optional project, source (`'mobile'` / `'web'` / `'manual'`); derives a `TimeEntry` row on clock-out so existing billing rolls up unchanged.
+- `ClientSiteGeofence` model — per-client polygon or radius around their physical address(es). Used to auto-detect "tech is on site" for ticket time tracking.
+- REST API additions: `/api/v2/mobile/locations/`, `/api/v2/mobile/timeclock/`, `/api/v2/mobile/active-ticket/`.
+- Token auth (long-lived per-device tokens stored in `MobileDevice` model with revoke-on-demand).
+
+### Sub-phase 8.2 — GPS auto-documentation engine
+- Background worker: every GPS ping with the tech "inside a client geofence" auto-starts a `TicketTimeEntry` against their currently-active ticket for that client (or creates a placeholder if no ticket open).
+- On exit-geofence event: stop the time entry, write the duration, optionally prompt the tech to confirm + add notes via push notification.
+- Selectable per-tech: **Always on** / **Ask first** / **Off**. Per-tech UserProfile flag.
+- Audit log every auto-time event so disputed billing can be traced.
+
+### Sub-phase 8.3 — Timeclock feature
+- Web UI: Timeclock dashboard at `/timeclock/` for staff to view who's clocked in, total hours per pay period, exception flags (long shifts, missing clock-out).
+- Mobile UI: prominent "Clock in / Clock out" button on the app home screen. Optional tie to the active ticket.
+- Selectable per-org and per-tech: required vs optional, with vs without GPS context, separate from per-ticket time tracking.
+- Payroll export — CSV per pay period, hooks for QuickBooks Time / Gusto / etc. (defer the integration; just structured export first).
+
+### Sub-phase 8.4 — App build
+- React Native (Expo SDK 51+ with EAS cloud build — revisits the earlier "no Expo accounts" rejection; required for store submission).
+- Auth: Azure SSO + email/password fallback; session-token cookie not used (mobile uses long-lived bearer).
+- Screens: Dashboard / My Tickets / Active Ticket / Clock In-Out / Map / Settings.
+- Background location: foreground-only by default, opt-in for background; iOS "Always" permission requested only for techs who enable Always-on auto-time.
+- Push notifications via FCM/APNS for ticket assignment, clock-in reminders, geofence exit prompts.
+
+### Sub-phase 8.5 — Privacy + safeguards
+- **Off-shift suppression**: GPS pings outside the tech's `WorkingHours` (Phase 2) are dropped at the API layer — never stored.
+- Per-tech UI to view + delete their own location history.
+- Org-admin retention policy (default: 90 days).
+- Geofence-only mode: store only "entered/exited geofence X at time T", never raw lat/lon.
+- Audit trail of every location-history view + export.
+
+**Dependencies:** Phase 2 (`WorkingHours` for off-shift suppression). Recommended before Phase 3 (so timeclock data flows into utilization reporting).
+
+**Sizing:** **L** — backend foundation 2 weeks, auto-time engine 2 weeks, timeclock UI 1-2 weeks, mobile app build 4-6 weeks, privacy hardening 1 week. ~10-13 weeks total. Sub-phase 8.1 is the first concrete deliverable and is a useful release on its own (web-only timeclock + GPS API endpoints) even before any mobile app ships.
+
+---
+
 ## What's explicitly NOT in this plan
 
 - Multi-currency beyond per-record `currency` field
@@ -627,7 +631,6 @@ Dependencies: none direct. Strictly smaller than Phase 24.
 | 5 — CRM | L | 4-5 weeks | none |
 | 6 — ITIL | M | 2-3 weeks | none |
 | 7 — Outsourcing + ecosystem + polish | Continuous | ongoing | runs alongside |
-| 8 — Mobile apps + GPS auto-time + Timeclock | L | 10-13 weeks | Phase 2 (WorkingHours); ideally before Phase 3 |
 | 9 — Security alert ingestion (EDR / AV / Firewall) | M | 5 weeks — **framework + 1 reference adapter shipped v3.17.168** | none — can run alongside any |
 | 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks | extends existing IMAP poller |
 | 11 — Advanced Dispatch & Tech Scheduling | M | 2-3 weeks | extends Phase 2 + dispatch board |
@@ -651,6 +654,7 @@ Dependencies: none direct. Strictly smaller than Phase 24.
 | 29 — Commercial Operations Ecosystem | Continuous · meta | ongoing | runs alongside |
 | 30 — Endpoint Remote Access (alt to Phase 24) | L | 4-6 weeks | none |
 | 31 — Vault GeoIP / IP / Time Access Rules | S | shipped v3.17.163 | extends FirewallMiddleware GeoIP infra |
+| 8 — Mobile apps + GPS auto-time + Timeclock | L | 10-13 weeks | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.
 
