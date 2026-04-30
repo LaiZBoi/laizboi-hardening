@@ -19,7 +19,10 @@ class Organization(models.Model):
     TYPE_CONSULTING = 'consulting'
     TYPE_PROJECT_BASED = 'project_based'
     TYPE_INTERNAL = 'internal'
+    TYPE_SUBCONTRACTOR = 'subcontractor'
     TYPE_OTHER = 'other'
+
+    SUBCONTRACTOR_TYPE = TYPE_SUBCONTRACTOR  # alias used by Phase 7 outsourcing
 
     ORGANIZATION_TYPE_CHOICES = [
         ('', 'Not Specified'),
@@ -29,6 +32,7 @@ class Organization(models.Model):
         (TYPE_CONSULTING, 'Consulting Only'),
         (TYPE_PROJECT_BASED, 'Project-Based'),
         (TYPE_INTERNAL, 'Internal / Staff'),
+        (TYPE_SUBCONTRACTOR, 'Subcontractor / Outsourcing Partner'),
         (TYPE_OTHER, 'Other'),
     ]
 
@@ -69,6 +73,29 @@ class Organization(models.Model):
     # Branding
     logo = models.ImageField(upload_to='organizations/logos/', blank=True, null=True)
 
+    # --- Phase 7: Outsourcing partner fields --------------------------
+    is_outsourcing_partner = models.BooleanField(
+        default=False,
+        help_text='When true, this org can receive outsourced tickets via the '
+                  'share-ticket-to-partner endpoint. Requires partner_secret.',
+    )
+    partner_secret = models.CharField(
+        max_length=64, blank=True,
+        help_text='HMAC shared secret for verifying inbound webhook payloads. '
+                  'Auto-generated when is_outsourcing_partner flips to True.',
+    )
+    partner_endpoint_url = models.URLField(
+        blank=True,
+        help_text='Inbound webhook URL on the partner side that should '
+                  'receive ticket-share notifications.',
+    )
+    billing_markup_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='Optional markup % applied to time entries logged by techs '
+                  'from this partner org when billed back to the originating '
+                  'client. 0 = no markup.',
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -100,6 +127,11 @@ class Organization(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
+        # Phase 7: auto-generate HMAC partner secret when an org becomes an
+        # outsourcing partner. Token is 64 hex chars (32 bytes).
+        if self.is_outsourcing_partner and not self.partner_secret:
+            import secrets
+            self.partner_secret = secrets.token_hex(32)
         super().save(*args, **kwargs)
 
 

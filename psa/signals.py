@@ -102,6 +102,120 @@ def _fire_comment_workflow(sender, instance, created, **kwargs):
         logger.exception('PSA comment workflow signal failed')
 
 
+# ---------------------------------------------------------------------------
+# Phase 7 -- two-way outsourcing sync (outbound side)
+# ---------------------------------------------------------------------------
+
+@receiver(post_save, sender=TicketComment)
+def _fan_out_comment_to_partners(sender, instance, created, **kwargs):
+    """When a comment lands on a ticket with active TicketShare rows,
+    fire an HMAC-signed POST to each partner's webhook. Failures are
+    logged but never block the comment save flow.
+
+    Comments authored by the partner (source='partner') are skipped to
+    avoid loops. Internal-only notes are skipped -- partners only see
+    public-visible comments.
+    """
+    if not created:
+        return
+    if getattr(instance, 'source', '') == 'partner':
+        return
+    if instance.is_internal:
+        return
+    try:
+        import time as _time
+
+        from .views import _phase7_post_to_partner
+
+        active_shares = instance.ticket.shares.filter(status__in=['accepted']).select_related('partner_org')
+        for share in active_shares:
+            try:
+                payload = {
+                    'event': 'comment',
+                    'ticket_number': instance.ticket.ticket_number,
+                    'share_pk': share.pk,
+                    'payload': {
+                        'body': instance.body or '',
+                        'author': (
+                            instance.author.get_username() if instance.author_id
+                            else (instance.author_name or 'system')
+                        ),
+                        'author_email': instance.author_email or (
+                            instance.author.email if instance.author_id else ''
+                        ),
+                        'is_internal': False,
+                    },
+                    'ts': int(_time.time()),
+                }
+                _phase7_post_to_partner(share, payload)
+            except Exception:
+                logger.exception('Outbound partner comment fan-out failed for share %s', share.pk)
+    except Exception:
+        logger.exception('Outbound partner comment fan-out top-level failed')
+
+
+@receiver(post_save, sender=Ticket)
+def _fan_out_status_to_partners(sender, instance, created, **kwargs):
+    """When a Ticket status changes, fire an HMAC-signed POST to each
+    partner with an active share. Fan-out is best-effort -- failures
+    log but never block ticket save.
+
+    Reuses the prior-status snapshot captured by `_capture_prior_status`.
+    Note: that handler pops the snapshot in `_fire_ticket_workflow`; we
+    must run BEFORE it -- since signal order is registration order, we
+    instead recompute by checking what the workflow engine logs. To keep
+    the fan-out independent of receiver ordering, we re-fetch the prior
+    status via a separate snapshot dict.
+    """
+    if created:
+        return
+    try:
+        prior = _PRIOR_STATUS_FOR_PARTNERS.pop(instance.pk, None)
+        if prior is None or prior == instance.status_id:
+            return
+        active_shares = instance.shares.filter(status__in=['accepted']).select_related('partner_org')
+        if not active_shares.exists():
+            return
+        import time as _time
+
+        from .views import _phase7_post_to_partner
+
+        status_slug = instance.status.slug if instance.status_id else ''
+        for share in active_shares:
+            try:
+                payload = {
+                    'event': 'status',
+                    'ticket_number': instance.ticket_number,
+                    'share_pk': share.pk,
+                    'payload': {
+                        'status': status_slug,
+                        'status_name': (instance.status.name if instance.status_id else ''),
+                    },
+                    'ts': int(_time.time()),
+                }
+                _phase7_post_to_partner(share, payload)
+            except Exception:
+                logger.exception('Outbound partner status fan-out failed for share %s', share.pk)
+    except Exception:
+        logger.exception('Outbound partner status fan-out top-level failed')
+
+
+# Separate snapshot dict so the fan-out handler is independent of
+# `_fire_ticket_workflow` consuming `_PRIOR_TICKET`.
+_PRIOR_STATUS_FOR_PARTNERS = {}
+
+
+@receiver(pre_save, sender=Ticket)
+def _capture_prior_status_for_partners(sender, instance, **kwargs):
+    if not instance.pk:
+        return
+    try:
+        prev = Ticket.objects.only('status_id').get(pk=instance.pk)
+        _PRIOR_STATUS_FOR_PARTNERS[instance.pk] = prev.status_id
+    except Ticket.DoesNotExist:
+        _PRIOR_STATUS_FOR_PARTNERS[instance.pk] = None
+
+
 @receiver(post_save, sender=Ticket)
 def _auto_create_change_request(sender, instance, created, **kwargs):
     """When a Ticket of type 'change' is created, auto-spawn a draft

@@ -32,6 +32,9 @@ urlpatterns = [
     path('t/<str:ticket_number>/kb-link/', views.ticket_kb_link, name='ticket_kb_link'),
     path('t/<str:ticket_number>/kb-unlink/<int:link_pk>/', views.ticket_kb_unlink, name='ticket_kb_unlink'),
     path('t/<str:ticket_number>/workflow/launch/', views.ticket_launch_workflow, name='ticket_launch_workflow'),
+    # Phase 7: outsourcing
+    path('t/<str:ticket_number>/share/', views.ticket_share, name='ticket_share'),
+    path('partners/webhook/<int:share_pk>/', views.ticket_partner_webhook, name='ticket_partner_webhook'),
     path('t/<str:ticket_number>/', views.ticket_detail, name='ticket_detail'),
     # Projects (Workstream 3)
     path('projects/', views.project_list, name='project_list'),

@@ -794,6 +794,10 @@ class RoleTemplate(BaseModel):
     catalog_approve_change = models.BooleanField(default=False,
         help_text='Approve / reject ServiceCatalogChange proposals.')
 
+    # --- Phase 7 outsourcing — v3.17.166 ---
+    outsourcing_share_tickets = models.BooleanField(default=False,
+        help_text='Share a ticket with an outsourcing partner via HMAC-signed webhook.')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -924,6 +928,8 @@ class RoleTemplate(BaseModel):
                 'release_freeze': True,
                 'catalog_propose_change': True,
                 'catalog_approve_change': True,
+                # Phase 7 outsourcing — Owner: True
+                'outsourcing_share_tickets': True,
             },
             {
                 'name': 'Administrator',
@@ -1025,6 +1031,8 @@ class RoleTemplate(BaseModel):
                 'release_freeze': True,
                 'catalog_propose_change': True,
                 'catalog_approve_change': True,
+                # Phase 7 outsourcing — Administrator: True
+                'outsourcing_share_tickets': True,
             },
             {
                 'name': 'Editor',
@@ -1671,6 +1679,8 @@ class RoleTemplate(BaseModel):
                 release_freeze=True,
                 catalog_propose_change=True,
                 catalog_approve_change=True,
+                # Phase 7 outsourcing — Tech Manager: True
+                outsourcing_share_tickets=True,
             ),
             _build(
                 'Office Manager',
@@ -1751,6 +1761,8 @@ class RoleTemplate(BaseModel):
                 release_freeze=True,
                 catalog_propose_change=True,
                 catalog_approve_change=True,
+                # Phase 7 outsourcing — Office Manager: True
+                outsourcing_share_tickets=True,
             ),
             _build(
                 'Full Admin',

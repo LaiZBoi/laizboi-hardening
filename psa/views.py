@@ -6451,3 +6451,263 @@ def catalog_change_decide(request, pk):
         'change': change,
         'diff_rows': diff_rows,
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 — Outsourcing: share-ticket-to-partner endpoint + inbound webhook
+# ---------------------------------------------------------------------------
+
+import hashlib as _phase7_hashlib
+import hmac as _phase7_hmac
+import json as _phase7_json
+import logging as _phase7_logging
+import time as _phase7_time
+
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+
+_phase7_log = _phase7_logging.getLogger('psa.outsourcing')
+
+
+def _phase7_sign(secret: str, body: bytes) -> str:
+    """HMAC-SHA256 hex digest of the request body."""
+    return _phase7_hmac.new(
+        (secret or '').encode('utf-8'),
+        body,
+        _phase7_hashlib.sha256,
+    ).hexdigest()
+
+
+def _phase7_post_to_partner(share, payload: dict) -> dict:
+    """Fire an HMAC-signed POST to the partner's webhook. Returns
+    {'ok': bool, 'status': int, 'error': str}. Never raises."""
+    import urllib.error
+    import urllib.request
+
+    partner = share.partner_org
+    url = (partner.partner_endpoint_url or '').strip()
+    if not url:
+        return {'ok': False, 'status': 0, 'error': 'partner has no endpoint URL'}
+    body = _phase7_json.dumps(payload).encode('utf-8')
+    sig = _phase7_sign(partner.partner_secret, body)
+    req = urllib.request.Request(
+        url, data=body, method='POST',
+        headers={
+            'Content-Type': 'application/json',
+            'X-CST0R-Signature': sig,
+            'X-CST0R-Share-Pk': str(share.pk),
+            'User-Agent': 'ClientSt0r-Outsourcing/1.0',
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return {'ok': 200 <= resp.status < 300, 'status': resp.status, 'error': ''}
+    except urllib.error.HTTPError as e:
+        return {'ok': False, 'status': e.code, 'error': str(e)[:200]}
+    except Exception as e:
+        return {'ok': False, 'status': 0, 'error': str(e)[:200]}
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['GET', 'POST'])
+def ticket_share(request, ticket_number):
+    """Share a ticket with an outsourcing partner via HMAC-signed webhook.
+
+    GET  -> render a pick-a-partner form (only orgs with is_outsourcing_partner=True).
+    POST -> create TicketShare row + fire HMAC-signed POST to partner_endpoint_url.
+
+    Permission: outsourcing_share_tickets.
+    """
+    from accounts.permission_utils import user_has_perm
+    from core.models import Organization
+    from .models import TicketShare
+
+    if not (request.user.is_superuser or user_has_perm(request.user, 'outsourcing_share_tickets')):
+        return HttpResponseForbidden('You do not have permission to share tickets to outsourcing partners.')
+
+    ticket = _scoped_ticket_for_write(request, ticket_number)
+    partners = Organization.objects.filter(is_outsourcing_partner=True, is_active=True).order_by('name')
+
+    if request.method == 'POST':
+        partner_id = request.POST.get('partner_org') or ''
+        notes = (request.POST.get('notes') or '').strip()
+        try:
+            partner = partners.get(pk=partner_id)
+        except Organization.DoesNotExist:
+            messages.error(request, 'Pick a valid outsourcing partner.')
+            return redirect(request.path)
+
+        share, created = TicketShare.objects.get_or_create(
+            ticket=ticket, partner_org=partner,
+            defaults={
+                'shared_by': request.user,
+                'notes': notes,
+                'status': 'pending',
+            },
+        )
+        if not created:
+            messages.warning(request, f'Already shared with {partner.name}.')
+            return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+        # Fire HMAC-signed POST to partner endpoint. Failures don't roll back
+        # the share row -- the partner has the webhook ID and can re-pull.
+        payload = {
+            'event': 'ticket_shared',
+            'ticket_number': ticket.ticket_number,
+            'subject': ticket.subject,
+            'description': ticket.description or '',
+            'priority': ticket.priority.code if ticket.priority_id else '',
+            'partner_secret_token': partner.partner_secret,
+            'share_pk': share.pk,
+            'notes': notes,
+            'ts': int(_phase7_time.time()),
+        }
+        result = _phase7_post_to_partner(share, payload)
+        share.last_synced_at = timezone.now()
+        share.save(update_fields=['last_synced_at'])
+
+        AuditLog.log(
+            user=request.user, action='create', organization=ticket.organization,
+            object_type='psa.TicketShare', object_id=share.pk,
+            object_repr=str(share),
+            description=f'Shared {ticket.ticket_number} with partner "{partner.name}"',
+            ip_address=_client_ip(request), path=request.path,
+            extra_data={
+                'partner_id': partner.pk,
+                'webhook_ok': result.get('ok'),
+                'webhook_status': result.get('status'),
+                'webhook_error': result.get('error', '')[:200],
+            },
+        )
+        if result.get('ok'):
+            messages.success(request, f'Shared with {partner.name}; partner notified.')
+        else:
+            messages.warning(
+                request,
+                f'Shared with {partner.name}, but partner webhook failed: '
+                f'{result.get("error") or result.get("status")}.',
+            )
+        return redirect(reverse('psa:ticket_detail', kwargs={'ticket_number': ticket.ticket_number}))
+
+    # GET: render form
+    existing = ticket.shares.select_related('partner_org').all()
+    return render(request, 'psa/ticket_share.html', {
+        'ticket': ticket,
+        'partners': partners,
+        'existing_shares': existing,
+    })
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def ticket_partner_webhook(request, share_pk):
+    """Public webhook: accepts comment / status updates from a partner.
+
+    Validates HMAC signature in X-CST0R-Signature header against
+    partner_org.partner_secret. Body: {event: 'comment'|'status', payload: {...}}.
+
+      * On 'comment'  -> create a TicketComment with is_internal=False, source='partner'.
+      * On 'status'   -> map partner status string to local TicketStatus
+                         (best-effort match by slug; fall back to 'in_progress').
+    """
+    from .models import TicketComment, TicketShare, TicketStatus as _TS
+
+    share = TicketShare.objects.select_related('ticket', 'partner_org').filter(pk=share_pk).first()
+    if share is None:
+        return JsonResponse({'ok': False, 'error': 'unknown share'}, status=404)
+
+    raw_body = request.body or b''
+    raw_body = raw_body[:128 * 1024]  # cap
+    sig_header = request.headers.get('X-CST0R-Signature') or request.META.get('HTTP_X_CST0R_SIGNATURE') or ''
+    expected = _phase7_sign(share.partner_org.partner_secret or '', raw_body)
+    if not (sig_header and _phase7_hmac.compare_digest(sig_header, expected)):
+        AuditLog.log(
+            user=None, action='access_denied', organization=share.ticket.organization,
+            object_type='psa.TicketShare', object_id=share.pk,
+            object_repr=str(share),
+            description='Partner webhook rejected (bad signature)',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        return HttpResponseForbidden('Invalid signature')
+
+    try:
+        data = _phase7_json.loads(raw_body.decode('utf-8') or '{}')
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'bad json'}, status=400)
+
+    event = (data.get('event') or '').lower()
+    payload = data.get('payload') or {}
+
+    if event == 'comment':
+        body = (payload.get('body') or '').strip()
+        if not body:
+            return JsonResponse({'ok': False, 'error': 'empty comment'}, status=400)
+        comment = TicketComment.objects.create(
+            ticket=share.ticket,
+            body=body,
+            is_internal=False,
+            is_system=False,
+            author_name=(payload.get('author') or share.partner_org.name)[:200],
+            author_email=(payload.get('author_email') or '')[:254],
+            source='partner',
+        )
+        share.last_synced_at = timezone.now()
+        share.save(update_fields=['last_synced_at'])
+        AuditLog.log(
+            user=None, action='create', organization=share.ticket.organization,
+            object_type='psa.TicketComment', object_id=comment.pk,
+            object_repr=f'partner comment on {share.ticket.ticket_number}',
+            description=f'Inbound partner comment from {share.partner_org.name}',
+            ip_address=_client_ip(request), path=request.path,
+            extra_data={'share_pk': share.pk, 'partner_id': share.partner_org_id},
+        )
+        return JsonResponse({'ok': True, 'comment_id': comment.pk})
+
+    if event == 'status':
+        partner_status = (payload.get('status') or '').strip().lower()
+        # Best-effort map partner status string to a local slug.
+        # Recognised local share statuses get reflected on the share row;
+        # any string is also looked up against TicketStatus.slug (case-insensitive).
+        share_map = {
+            'accepted': 'accepted',
+            'declined': 'declined',
+            'completed': 'completed',
+            'recalled': 'recalled',
+            'pending': 'pending',
+        }
+        if partner_status in share_map:
+            now = timezone.now()
+            share.status = share_map[partner_status]
+            update_fields = ['status', 'last_synced_at']
+            share.last_synced_at = now
+            if share.status == 'accepted' and not share.accepted_at:
+                share.accepted_at = now
+                update_fields.append('accepted_at')
+            if share.status == 'completed' and not share.completed_at:
+                share.completed_at = now
+                update_fields.append('completed_at')
+            share.save(update_fields=update_fields)
+
+        # Also try to map onto a local Ticket status. Best-effort -- fallback
+        # to in_progress if no match. Skip if partner sent a share-only token.
+        local = None
+        if partner_status and partner_status not in share_map:
+            local = _TS.objects.filter(slug__iexact=partner_status).first()
+        if local is None:
+            local = _TS.objects.filter(slug__in=['in_progress', 'in-progress']).first()
+        if local is not None and share.ticket.status_id != local.pk:
+            share.ticket.status = local
+            share.ticket.save(update_fields=['status', 'updated_at'])
+        AuditLog.log(
+            user=None, action='update', organization=share.ticket.organization,
+            object_type='psa.TicketShare', object_id=share.pk,
+            object_repr=str(share),
+            description=f'Inbound partner status update from {share.partner_org.name}: {partner_status}',
+            ip_address=_client_ip(request), path=request.path,
+            extra_data={'share_pk': share.pk, 'partner_status': partner_status},
+        )
+        return JsonResponse({'ok': True, 'share_status': share.status})
+
+    return JsonResponse({'ok': False, 'error': 'unknown event'}, status=400)

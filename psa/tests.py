@@ -4208,3 +4208,181 @@ class ReleasePermissionTests(TestCase):
         self.release.refresh_from_db()
         self.assertEqual(self.release.status, 'frozen')
         self.assertTrue(self.release.is_frozen)
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 — Outsourcing + Integration SDK
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class TicketShareTests(TestCase):
+    """Outsourcing share endpoint + partner webhook receiver."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        # Originator org (the MSP)
+        self.org = Organization.objects.create(name='ShareOrg', slug='share-org')
+        # Partner org
+        self.partner = Organization.objects.create(
+            name='Partner Inc', slug='partner-inc',
+            is_outsourcing_partner=True,
+            partner_endpoint_url='http://127.0.0.1:1/no-such-host',
+        )
+        # Sharer with outsourcing_share_tickets perm
+        self.share_role = RoleTemplate.objects.create(
+            name='Sharer', is_system_template=False,
+            outsourcing_share_tickets=True,
+            assets_create=True,
+        )
+        self.user = User.objects.create_user(
+            username='sharer', password='pw', email='s@x.com')
+        Membership.objects.create(
+            user=self.user, organization=self.org,
+            role=Role.ADMIN, role_template=self.share_role, is_active=True,
+        )
+        # Required ticket scaffolding
+        from psa.models import Ticket as _T
+        self.priority = TicketPriority.objects.filter(code='P3').first() or \
+            TicketPriority.objects.create(code='P3', name='Normal')
+        self.status = TicketStatus.objects.filter(slug='new').first() or \
+            TicketStatus.objects.create(name='New', slug='new')
+        self.ttype = TicketType.objects.filter(slug='incident').first() or \
+            TicketType.objects.create(name='Incident', slug='incident')
+        self.ticket = _T.objects.create(
+            organization=self.org, subject='need partner help',
+            description='offload this please',
+            priority=self.priority, status=self.status,
+            ticket_type=self.ttype,
+            queue=Queue.objects.first(),
+        )
+
+    def _client_for(self, user):
+        c = Client()
+        c.force_login(user)
+        sess = c.session
+        sess['current_organization_id'] = self.org.id
+        sess.save()
+        return c
+
+    def test_partner_secret_auto_generated(self):
+        """Setting is_outsourcing_partner=True saves a 64-char hex token."""
+        org = Organization.objects.create(
+            name='Auto Partner', slug='auto-partner',
+            is_outsourcing_partner=True,
+        )
+        self.assertEqual(len(org.partner_secret), 64)
+        # Hex check
+        int(org.partner_secret, 16)
+
+    def test_share_creates_share_row(self):
+        """POST share endpoint -> TicketShare row exists, status='pending'."""
+        from psa.models import TicketShare
+        c = self._client_for(self.user)
+        r = c.post(
+            f'/psa/t/{self.ticket.ticket_number}/share/',
+            {'partner_org': str(self.partner.pk), 'notes': 'please handle'},
+        )
+        self.assertEqual(r.status_code, 302)
+        share = TicketShare.objects.get(ticket=self.ticket, partner_org=self.partner)
+        self.assertEqual(share.status, 'pending')
+        self.assertEqual(share.shared_by, self.user)
+        self.assertEqual(share.notes, 'please handle')
+
+    def test_partner_webhook_creates_comment(self):
+        """POST to webhook with valid HMAC sig and event='comment' ->
+        TicketComment created with source='partner'."""
+        import hashlib
+        import hmac
+        import json as _json
+
+        from psa.models import TicketComment, TicketShare
+
+        share = TicketShare.objects.create(
+            ticket=self.ticket, partner_org=self.partner, status='accepted',
+        )
+        body_dict = {'event': 'comment', 'payload': {
+            'body': 'partner reply here',
+            'author': 'partner-tech',
+            'author_email': 'tech@partner.example',
+        }}
+        raw = _json.dumps(body_dict).encode('utf-8')
+        sig = hmac.new(
+            self.partner.partner_secret.encode('utf-8'),
+            raw, hashlib.sha256,
+        ).hexdigest()
+        c = Client()
+        r = c.post(
+            f'/psa/partners/webhook/{share.pk}/',
+            data=raw,
+            content_type='application/json',
+            HTTP_X_CST0R_SIGNATURE=sig,
+        )
+        self.assertEqual(r.status_code, 200)
+        comment = TicketComment.objects.filter(
+            ticket=self.ticket, source='partner').order_by('-id').first()
+        self.assertIsNotNone(comment)
+        self.assertEqual(comment.body, 'partner reply here')
+        self.assertFalse(comment.is_internal)
+        self.assertEqual(comment.author_name, 'partner-tech')
+
+    def test_webhook_rejects_bad_signature(self):
+        """POST with wrong sig -> 403."""
+        import json as _json
+
+        from psa.models import TicketShare
+
+        share = TicketShare.objects.create(
+            ticket=self.ticket, partner_org=self.partner, status='accepted',
+        )
+        raw = _json.dumps({'event': 'comment', 'payload': {'body': 'x'}}).encode('utf-8')
+        c = Client()
+        r = c.post(
+            f'/psa/partners/webhook/{share.pk}/',
+            data=raw,
+            content_type='application/json',
+            HTTP_X_CST0R_SIGNATURE='deadbeef',
+        )
+        self.assertEqual(r.status_code, 403)
+
+
+class IntegrationSDKTests(TestCase):
+    """Integration SDK skeleton: registry + abstract base."""
+
+    def test_register_and_lookup(self):
+        from integrations.sdk import IntegrationProvider, get, register
+
+        @register
+        class _DummyProvider(IntegrationProvider):
+            slug = 'phase7-dummy'
+            label = 'Dummy'
+            category = 'other'
+
+            def test_connection(self, connection):
+                return {'ok': True, 'message': 'ok'}
+
+            def sync(self, connection):
+                return {'ok': True, 'records_imported': 0, 'errors': []}
+
+        p = get('phase7-dummy')
+        self.assertIsNotNone(p)
+        self.assertEqual(p.slug, 'phase7-dummy')
+        self.assertEqual(p.label, 'Dummy')
+        self.assertEqual(p.category, 'other')
+
+    def test_missing_slug_raises(self):
+        from integrations.sdk import IntegrationProvider, register
+
+        with self.assertRaises(ValueError):
+            @register
+            class _NoSlug(IntegrationProvider):
+                slug = None
+                label = 'NoSlug'
+                category = 'other'
+
+                def test_connection(self, connection):
+                    return {'ok': True, 'message': ''}
+
+                def sync(self, connection):
+                    return {'ok': True, 'records_imported': 0, 'errors': []}

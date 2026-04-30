@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.166] - 2026-04-30
+
+### Added — Phase 7 (partial): Outsourcing workflow + Integration SDK skeleton
+- **Subcontractor org type** — `Organization.is_outsourcing_partner` flag, auto-generated `partner_secret` HMAC key, `partner_endpoint_url` for inbound webhooks, `billing_markup_pct` for partner-time markup. New `subcontractor` choice on `ORGANIZATION_TYPE_CHOICES`.
+- **`psa.TicketShare` model** — records tickets shared with partners (pending → accepted → completed; or declined / recalled). Unique per (ticket, partner).
+- **Share endpoint** at `/psa/t/<n>/share/` — staff (with `outsourcing_share_tickets` perm) picks a partner; HMAC-signed POST fires to the partner's webhook with the ticket payload.
+- **Inbound webhook** at `/psa/partners/webhook/<share_pk>/` — accepts comment / status updates from the partner. Validates HMAC signature; on comment creates a TicketComment with `source='partner'`; on status maps to local TicketStatus.
+- **Outbound sync** — when a TicketComment lands on a ticket with active shares, fires the same HMAC-signed POST to each partner. Failures logged, not blocking. Same pattern for Ticket status changes.
+- **Integration SDK skeleton** at `integrations/sdk/` — `IntegrationProvider` abstract base + slug registry + exception hierarchy. New providers register via `@register` decorator; resolved by slug or category. Foundation for Phase 9 security-alert vendors.
+- New `outsourcing_share_tickets` RoleTemplate boolean. Defaults wired across all 13 system templates (Owner / Administrator / Full Admin / Tech Manager / Office Manager = True; Editor / Help Desk / IT Manager / Documentation Writer / Read-Only / Client / Client Admin / Technician = False).
+- 6 new tests in `psa.tests` (TicketShareTests + IntegrationSDKTests).
+
+### Phase 7 status
+- Outsourcing workflow: shipped (this release).
+- Integration SDK foundation: shipped (this release).
+- Polish backlog: continuous.
+
+### Migrations
+- `core.0050_organization_billing_markup_pct_and_more` (Organization fields)
+- `psa.0026_ticketshare` (TicketShare model)
+- `accounts.0027_roletemplate_outsourcing_share_tickets` (RoleTemplate boolean)
+
 ## [3.17.165] - 2026-04-30
 
 ### Added — Phase 6.3 (closes Phase 6): Release management + Service-catalog governance

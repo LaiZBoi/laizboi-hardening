@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Share {{ ticket.ticket_number }} with partner{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_detail' ticket_number=ticket.ticket_number %}">{{ ticket.ticket_number }}</a></li>
+        <li class="breadcrumb-item active">Share with partner</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3"><i class="fas fa-handshake me-2"></i>Share with outsourcing partner</h2>
+
+<p class="text-muted">
+    Sends the ticket payload to the partner via an HMAC-signed POST. The partner
+    receives ticket subject, description, and priority -- comments + status sync
+    bidirectionally afterwards.
+</p>
+
+{% if existing_shares %}
+    <div class="card mb-3">
+        <div class="card-header"><strong>Already shared</strong></div>
+        <ul class="list-group list-group-flush">
+            {% for s in existing_shares %}
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>{{ s.partner_org.name }}</span>
+                    <span class="badge bg-secondary">{{ s.get_status_display }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+{% if partners %}
+    <form method="post" class="card">
+        {% csrf_token %}
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Partner organization <span class="text-danger">*</span></label>
+                <select class="form-select" name="partner_org" required>
+                    <option value="">-- pick a partner --</option>
+                    {% for p in partners %}
+                        <option value="{{ p.pk }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Only orgs flagged is_outsourcing_partner are listed.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Notes</label>
+                <textarea name="notes" class="form-control" rows="3"
+                          placeholder="Optional context for the partner."></textarea>
+            </div>
+        </div>
+        <div class="card-footer text-end">
+            <a href="{% url 'psa:ticket_detail' ticket_number=ticket.ticket_number %}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-handshake me-1"></i>Share with partner
+            </button>
+        </div>
+    </form>
+{% else %}
+    <div class="alert alert-warning">
+        No outsourcing partners configured. Mark an Organization with
+        <code>is_outsourcing_partner=True</code> first.
+    </div>
+{% endif %}
+{% endblock %}

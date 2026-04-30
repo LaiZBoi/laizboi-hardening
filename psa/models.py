@@ -2943,3 +2943,51 @@ class ServiceCatalogChange(models.Model):
         self.decided_at = timezone.now()
         self.save()
         return True
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 — Outsourcing: ticket sharing with subcontractor / partner orgs
+# ---------------------------------------------------------------------------
+
+
+class TicketShare(models.Model):
+    """
+    Records that a Ticket has been shared with an outsourcing partner.
+    The partner sees this ticket via their copy of Client St0r — comments
+    + status sync bidirectionally via the partner webhook.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending Acceptance'),
+        ('accepted', 'Accepted by Partner'),
+        ('declined', 'Declined by Partner'),
+        ('completed', 'Work Completed'),
+        ('recalled', 'Recalled by Originator'),
+    ]
+    ticket = models.ForeignKey(
+        'psa.Ticket', on_delete=models.CASCADE,
+        related_name='shares',
+    )
+    partner_org = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='inbound_shared_tickets',
+        limit_choices_to={'is_outsourcing_partner': True},
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    shared_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    shared_at = models.DateTimeField(auto_now_add=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True,
+        help_text='Optional context passed to the partner.')
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'psa_ticket_shares'
+        ordering = ['-shared_at']
+        unique_together = [['ticket', 'partner_org']]
+
+    def __str__(self):
+        return f'{self.ticket.ticket_number} -> {self.partner_org.name}'
