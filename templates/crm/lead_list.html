@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}CRM — Leads{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item active">Leads</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0"><i class="fas fa-user-plus"></i> Leads</h1>
+    {% if can_create_lead %}
+    <a href="{% url 'crm:lead_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New Lead</a>
+    {% endif %}
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-6">
+        <input type="search" class="form-control" name="q" value="{{ q }}" placeholder="Search company / contact / email / industry">
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" name="status">
+            <option value="">All statuses</option>
+            {% for code, label in status_choices %}
+            <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-filter"></i> Filter</button>
+        {% if q or status %}
+        <a href="{% url 'crm:lead_list' %}" class="btn btn-link">Clear</a>
+        {% endif %}
+    </div>
+</form>
+
+<div class="table-responsive">
+    <table class="table table-sm table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Company</th>
+                <th>Contact</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th class="text-end">Value</th>
+                <th>Campaign</th>
+                <th>Owner</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for l in leads %}
+            <tr>
+                <td><a href="{% url 'crm:lead_detail' l.pk %}"><strong>{{ l.company_name }}</strong></a></td>
+                <td>{{ l.contact_full_name|default:"—" }}</td>
+                <td><small>{{ l.contact_email|default:"—" }}</small></td>
+                <td>
+                    {% if l.status == 'new' %}<span class="badge text-bg-primary">New</span>
+                    {% elif l.status == 'contacted' %}<span class="badge text-bg-info">Contacted</span>
+                    {% elif l.status == 'qualified' %}<span class="badge text-bg-success">Qualified</span>
+                    {% elif l.status == 'disqualified' %}<span class="badge text-bg-secondary">Disqualified</span>
+                    {% elif l.status == 'converted' %}<span class="badge text-bg-dark">Converted</span>
+                    {% else %}<span class="badge text-bg-secondary">{{ l.get_status_display }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">${{ l.estimated_value|floatformat:2|intcomma }}</td>
+                <td><small>{{ l.campaign.name|default:"—" }}</small></td>
+                <td><small>{{ l.assigned_to.username|default:"—" }}</small></td>
+                <td><small class="text-muted">{{ l.created_at|date:"M j, Y" }}</small></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-4">No leads found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

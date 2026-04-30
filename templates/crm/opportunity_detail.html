@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Opportunity — {{ opp.name }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'crm:opportunity_list' %}">Opportunities</a></li>
+        <li class="breadcrumb-item active">{{ opp.name|truncatechars:50 }}</li>
+    </ol>
+</nav>
+
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <strong>{{ opp.name }}</strong>
+                <span class="badge text-bg-info">{{ opp.get_stage_display }}</span>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Client</dt>
+                    <dd class="col-sm-9">{{ opp.client_org.name }}</dd>
+
+                    <dt class="col-sm-3">Estimated value</dt>
+                    <dd class="col-sm-9">${{ opp.estimated_value|floatformat:2|intcomma }}</dd>
+
+                    <dt class="col-sm-3">Probability</dt>
+                    <dd class="col-sm-9">{{ opp.probability_pct }}%</dd>
+
+                    <dt class="col-sm-3">Weighted value</dt>
+                    <dd class="col-sm-9"><strong>${{ opp.weighted_value|floatformat:2|intcomma }}</strong></dd>
+
+                    <dt class="col-sm-3">Expected close</dt>
+                    <dd class="col-sm-9">{{ opp.expected_close_date|date:"M j, Y"|default:"—" }}</dd>
+
+                    {% if opp.actual_close_date %}
+                    <dt class="col-sm-3">Actual close</dt>
+                    <dd class="col-sm-9">{{ opp.actual_close_date|date:"M j, Y" }}</dd>
+                    {% endif %}
+
+                    {% if opp.lost_reason %}
+                    <dt class="col-sm-3">Lost reason</dt>
+                    <dd class="col-sm-9">{{ opp.lost_reason }}</dd>
+                    {% endif %}
+
+                    <dt class="col-sm-3">Owner</dt>
+                    <dd class="col-sm-9">{{ opp.assigned_to.username|default:"—" }}</dd>
+
+                    <dt class="col-sm-3">Campaign</dt>
+                    <dd class="col-sm-9">{% if opp.campaign %}<a href="{% url 'crm:campaign_detail' opp.campaign.pk %}">{{ opp.campaign.name }}</a>{% else %}—{% endif %}</dd>
+
+                    {% if opp.source_lead %}
+                    <dt class="col-sm-3">Source lead</dt>
+                    <dd class="col-sm-9"><a href="{% url 'crm:lead_detail' opp.source_lead.pk %}">{{ opp.source_lead.company_name }}</a></dd>
+                    {% endif %}
+
+                    {% if opp.quote %}
+                    <dt class="col-sm-3">Quote</dt>
+                    <dd class="col-sm-9">{{ opp.quote.quote_number }} — {{ opp.quote.title|truncatechars:60 }}</dd>
+                    {% endif %}
+
+                    <dt class="col-sm-3">Created</dt>
+                    <dd class="col-sm-9"><small class="text-muted">{{ opp.created_at|date:"M j, Y H:i" }}</small></dd>
+                </dl>
+
+                {% if opp.description %}
+                <hr>
+                <h6>Description</h6>
+                <pre class="mb-0" style="white-space: pre-wrap;">{{ opp.description }}</pre>
+                {% endif %}
+
+                {% if opp.notes %}
+                <hr>
+                <h6>Notes</h6>
+                <pre class="mb-0" style="white-space: pre-wrap;">{{ opp.notes }}</pre>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header py-2"><strong>Actions</strong></div>
+            <div class="card-body d-grid gap-2">
+                {% if can_manage_pipeline %}
+                <a href="{% url 'crm:opportunity_edit' opp.pk %}" class="btn btn-outline-primary"><i class="fas fa-edit"></i> Edit</a>
+
+                {% if not opp.quote and opp.stage != 'closed_lost' %}
+                {% if opp.stage == 'proposal' or opp.stage == 'negotiation' or opp.stage == 'closed_won' %}
+                <form method="post" action="{% url 'crm:opportunity_to_quote' opp.pk %}" onsubmit="return confirm('Draft a Quote from this opportunity?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success w-100"><i class="fas fa-file-invoice-dollar"></i> Convert to Quote</button>
+                </form>
+                {% endif %}
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

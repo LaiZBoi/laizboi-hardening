@@ -169,6 +169,19 @@
                     </li>
                     {% endif %}
                     <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="crmDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-chart-pie"></i> {% trans "CRM" %}
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{% url 'crm:home' %}"><i class="fas fa-home"></i> {% trans "Overview" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'crm:pipeline' %}"><i class="fas fa-columns"></i> {% trans "Pipeline" %}</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'crm:lead_list' %}"><i class="fas fa-user-plus"></i> {% trans "Leads" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'crm:opportunity_list' %}"><i class="fas fa-handshake"></i> {% trans "Opportunities" %}</a></li>
+                            <li><a class="dropdown-item" href="{% url 'crm:campaign_list' %}"><i class="fas fa-bullhorn"></i> {% trans "Campaigns" %}</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="reportsDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-chart-bar"></i> {% trans "Reports" %}
                         </a>

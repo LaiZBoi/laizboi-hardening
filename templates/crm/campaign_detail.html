@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Campaign — {{ campaign.name }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'crm:campaign_list' %}">Campaigns</a></li>
+        <li class="breadcrumb-item active">{{ campaign.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0"><i class="fas fa-bullhorn"></i> {{ campaign.name }}</h1>
+    <a href="{% url 'crm:campaign_edit' campaign.pk %}" class="btn btn-outline-primary"><i class="fas fa-edit"></i> Edit</a>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Leads</div>
+                <div class="h3 mb-0">{{ lead_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Converted</div>
+                <div class="h3 mb-0">{{ converted_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Won Deals</div>
+                <div class="h3 mb-0">{{ won_count }} <small class="text-muted">${{ won_value|floatformat:0|intcomma }}</small></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="text-muted small">ROI</div>
+                <div class="h3 mb-0">
+                    {% if roi is not None %}{{ roi }}%{% else %}<small class="text-muted">no budget</small>{% endif %}
+                </div>
+                <small class="text-muted">Budget: ${{ campaign.budget|floatformat:2|intcomma }}</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-2">Channel</dt>
+            <dd class="col-sm-10">{{ campaign.get_channel_display|default:"—" }}</dd>
+            <dt class="col-sm-2">Status</dt>
+            <dd class="col-sm-10">{% if campaign.is_active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</dd>
+            <dt class="col-sm-2">Start</dt>
+            <dd class="col-sm-10">{{ campaign.start_date|date:"M j, Y"|default:"—" }}</dd>
+            <dt class="col-sm-2">End</dt>
+            <dd class="col-sm-10">{{ campaign.end_date|date:"M j, Y"|default:"—" }}</dd>
+            {% if campaign.description %}
+            <dt class="col-sm-2">Description</dt>
+            <dd class="col-sm-10"><pre class="mb-0" style="white-space: pre-wrap;">{{ campaign.description }}</pre></dd>
+            {% endif %}
+        </dl>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header py-2"><strong>Attributed Leads</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>Company</th><th>Status</th><th>Created</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for l in leads %}
+                        <tr>
+                            <td><a href="{% url 'crm:lead_detail' l.pk %}">{{ l.company_name }}</a></td>
+                            <td><span class="badge text-bg-secondary">{{ l.get_status_display }}</span></td>
+                            <td><small class="text-muted">{{ l.created_at|date:"M j, Y" }}</small></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" class="text-center text-muted small py-3">No leads attributed.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header py-2"><strong>Attributed Opportunities</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>Name</th><th>Stage</th><th class="text-end">Value</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for o in opps %}
+                        <tr>
+                            <td><a href="{% url 'crm:opportunity_detail' o.pk %}">{{ o.name|truncatechars:35 }}</a></td>
+                            <td><span class="badge text-bg-info">{{ o.get_stage_display }}</span></td>
+                            <td class="text-end">${{ o.estimated_value|floatformat:2|intcomma }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" class="text-center text-muted small py-3">No opportunities attributed.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

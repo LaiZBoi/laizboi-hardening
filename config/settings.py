@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     'psa_ai.apps.PsaAiConfig',
     'portal.apps.PortalConfig',
     'resourcing.apps.ResourcingConfig',
+    'crm.apps.CrmConfig',
 ]
 
 # Optional apps - only add if installed (allows updates without dependencies)

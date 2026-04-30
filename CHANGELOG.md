@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.152] - 2026-04-29
+
+### Added — Phase 5.1: CRM foundation (Lead / Opportunity / Campaign + pipeline Kanban)
+- New `crm` Django app with three models: `Lead` (pre-qualification), `Opportunity` (deal in flight against an Organization, 6 pipeline stages), `Campaign` (marketing/outreach with channel + budget).
+- **Pipeline Kanban** at `/crm/pipeline/` — 6-column drag-and-drop board (Discovery → Qualified → Proposal → Negotiation → Closed Won / Closed Lost). Each card shows opp name, client, weighted value, owner. Per-column totals at the bottom.
+- **Lead → Org + Opportunity conversion** at `POST /crm/leads/<pk>/convert/` — creates a `core.Organization` and a draft `Opportunity` with the lead's data, marks lead `status='converted'` and links via `converted_to_*` FKs.
+- **Opportunity → Quote conversion** at `POST /crm/opportunities/<pk>/to-quote/` — drafts a `psa.Quote` with the client_org pre-filled.
+- 5 new RoleTemplate booleans: `crm_view`, `crm_create_lead`, `crm_manage_pipeline`, `crm_manage_campaigns`, `crm_view_forecast`. Defaults: Editor = view + create_lead + manage_pipeline; Read-only = view only; Owner / Admin = all.
+- New top-level CRM dropdown in the navbar.
+- Tests in `crm.tests` cover model props, conversion, kanban auth.
+
+Phase 5 sub-phases left: 5.2 Commission rules + lead scoring + funnel reporting; 5.3 Sales-activity timeline + lead capture (web form / IMAP / API).
+
+### Migrations
+`crm.0001_initial` + `accounts.0022_roletemplate_crm_create_lead_and_more` for the 5 new RoleTemplate booleans.
+
 ## [3.17.151] - 2026-04-29
 
 ### Added — Phase 4.4: One-click PO from accepted quote (closes Phase 4)

@@ -112,6 +112,10 @@ class Membership(BaseModel):
                 procurement_view=True, procurement_create_pr=True,
                 procurement_approve_pr=True, procurement_create_po=True,
                 procurement_send_po=True,
+                # CRM (Phase 5) — Owner: all True
+                crm_view=True, crm_create_lead=True,
+                crm_manage_pipeline=True, crm_manage_campaigns=True,
+                crm_view_forecast=True,
             )
         elif self.role == Role.ADMIN:
             return SimpleNamespace(
@@ -143,6 +147,10 @@ class Membership(BaseModel):
                 procurement_view=True, procurement_create_pr=True,
                 procurement_approve_pr=True, procurement_create_po=True,
                 procurement_send_po=True,
+                # CRM (Phase 5) — Admin: all True
+                crm_view=True, crm_create_lead=True,
+                crm_manage_pipeline=True, crm_manage_campaigns=True,
+                crm_view_forecast=True,
             )
         elif self.role == Role.EDITOR:
             return SimpleNamespace(
@@ -175,6 +183,11 @@ class Membership(BaseModel):
                 procurement_view=True, procurement_create_pr=True,
                 procurement_approve_pr=False, procurement_create_po=False,
                 procurement_send_po=False,
+                # CRM (Phase 5) — Editor: view + create_lead + manage_pipeline,
+                # campaigns + forecast off.
+                crm_view=True, crm_create_lead=True,
+                crm_manage_pipeline=True, crm_manage_campaigns=False,
+                crm_view_forecast=False,
             )
         else:  # READONLY
             return SimpleNamespace(
@@ -206,6 +219,10 @@ class Membership(BaseModel):
                 procurement_view=True, procurement_create_pr=False,
                 procurement_approve_pr=False, procurement_create_po=False,
                 procurement_send_po=False,
+                # CRM (Phase 5) — Read-Only: only crm_view.
+                crm_view=True, crm_create_lead=False,
+                crm_manage_pipeline=False, crm_manage_campaigns=False,
+                crm_view_forecast=False,
             )
 
     def can_read(self):
@@ -692,6 +709,19 @@ class RoleTemplate(BaseModel):
     procurement_send_po = models.BooleanField(default=False,
         help_text='Email PO PDF to vendor and mark as sent.')
 
+    # --- CRM (Phase 5) — v3.17.152 ---
+    crm_view = models.BooleanField(default=False,
+        help_text='View leads, opportunities, campaigns, and the pipeline.')
+    crm_create_lead = models.BooleanField(default=False,
+        help_text='Create / edit leads (file inbound prospects).')
+    crm_manage_pipeline = models.BooleanField(default=False,
+        help_text='Move opportunities through stages, convert leads, '
+                  'create / edit opportunities.')
+    crm_manage_campaigns = models.BooleanField(default=False,
+        help_text='Create / edit marketing campaigns and view ROI.')
+    crm_view_forecast = models.BooleanField(default=False,
+        help_text='See $-weighted pipeline forecast (revenue projections).')
+
     class Meta:
         db_table = 'role_templates'
         ordering = ['name']
@@ -782,6 +812,12 @@ class RoleTemplate(BaseModel):
                 'procurement_approve_pr': True,
                 'procurement_create_po': True,
                 'procurement_send_po': True,
+                # CRM (Phase 5) — Owner: all True
+                'crm_view': True,
+                'crm_create_lead': True,
+                'crm_manage_pipeline': True,
+                'crm_manage_campaigns': True,
+                'crm_view_forecast': True,
             },
             {
                 'name': 'Administrator',
@@ -860,6 +896,12 @@ class RoleTemplate(BaseModel):
                 'procurement_approve_pr': True,
                 'procurement_create_po': True,
                 'procurement_send_po': True,
+                # CRM (Phase 5) — Administrator: all True
+                'crm_view': True,
+                'crm_create_lead': True,
+                'crm_manage_pipeline': True,
+                'crm_manage_campaigns': True,
+                'crm_view_forecast': True,
             },
             {
                 'name': 'Editor',
@@ -939,6 +981,12 @@ class RoleTemplate(BaseModel):
                 'procurement_approve_pr': False,
                 'procurement_create_po': False,
                 'procurement_send_po': False,
+                # CRM (Phase 5) — Editor: view + create_lead + manage_pipeline.
+                'crm_view': True,
+                'crm_create_lead': True,
+                'crm_manage_pipeline': True,
+                'crm_manage_campaigns': False,
+                'crm_view_forecast': False,
             },
             {
                 'name': 'Help Desk',
@@ -1017,6 +1065,13 @@ class RoleTemplate(BaseModel):
                 'procurement_approve_pr': False,
                 'procurement_create_po': False,
                 'procurement_send_po': False,
+                # CRM (Phase 5) — Help Desk: view only (so they can see
+                # leads/opps without manipulating pipeline).
+                'crm_view': True,
+                'crm_create_lead': False,
+                'crm_manage_pipeline': False,
+                'crm_manage_campaigns': False,
+                'crm_view_forecast': False,
             },
             {
                 'name': 'IT Manager',
@@ -1096,6 +1151,13 @@ class RoleTemplate(BaseModel):
                 'procurement_approve_pr': True,
                 'procurement_create_po': True,
                 'procurement_send_po': True,
+                # CRM (Phase 5) — IT Manager: full pipeline + forecast,
+                # but no campaign management (sales/marketing keeps that).
+                'crm_view': True,
+                'crm_create_lead': True,
+                'crm_manage_pipeline': True,
+                'crm_manage_campaigns': False,
+                'crm_view_forecast': True,
             },
             {
                 'name': 'Documentation Writer',
@@ -1174,6 +1236,12 @@ class RoleTemplate(BaseModel):
                 'procurement_approve_pr': False,
                 'procurement_create_po': False,
                 'procurement_send_po': False,
+                # CRM (Phase 5) — Documentation Writer: no CRM access.
+                'crm_view': False,
+                'crm_create_lead': False,
+                'crm_manage_pipeline': False,
+                'crm_manage_campaigns': False,
+                'crm_view_forecast': False,
             },
             {
                 'name': 'Read-Only',
@@ -1252,6 +1320,12 @@ class RoleTemplate(BaseModel):
                 'procurement_approve_pr': False,
                 'procurement_create_po': False,
                 'procurement_send_po': False,
+                # CRM (Phase 5) — Read-Only: only crm_view.
+                'crm_view': True,
+                'crm_create_lead': False,
+                'crm_manage_pipeline': False,
+                'crm_manage_campaigns': False,
+                'crm_view_forecast': False,
             },
         ]
 

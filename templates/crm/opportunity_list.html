@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}CRM — Opportunities{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item active">Opportunities</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0"><i class="fas fa-handshake"></i> Opportunities</h1>
+    {% if can_manage_pipeline %}
+    <div class="btn-group">
+        <a href="{% url 'crm:pipeline' %}" class="btn btn-outline-secondary"><i class="fas fa-columns"></i> Pipeline</a>
+        <a href="{% url 'crm:opportunity_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New Opportunity</a>
+    </div>
+    {% endif %}
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-3">
+        <select class="form-select" name="stage">
+            <option value="">All stages</option>
+            {% for code, label in stage_choices %}
+            <option value="{{ code }}" {% if stage == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-filter"></i> Filter</button>
+        {% if stage %}<a href="{% url 'crm:opportunity_list' %}" class="btn btn-link">Clear</a>{% endif %}
+    </div>
+</form>
+
+<div class="table-responsive">
+    <table class="table table-sm table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Name</th>
+                <th>Client</th>
+                <th>Stage</th>
+                <th class="text-end">Value</th>
+                <th class="text-end">Weighted</th>
+                <th>Probability</th>
+                <th>Owner</th>
+                <th>Close</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for o in opportunities %}
+            <tr>
+                <td><a href="{% url 'crm:opportunity_detail' o.pk %}">{{ o.name|truncatechars:50 }}</a></td>
+                <td>{{ o.client_org.name|truncatechars:30 }}</td>
+                <td><span class="badge text-bg-info">{{ o.get_stage_display }}</span></td>
+                <td class="text-end">${{ o.estimated_value|floatformat:2|intcomma }}</td>
+                <td class="text-end">${{ o.weighted_value|floatformat:2|intcomma }}</td>
+                <td>{{ o.probability_pct }}%</td>
+                <td><small>{{ o.assigned_to.username|default:"—" }}</small></td>
+                <td><small class="text-muted">{{ o.expected_close_date|date:"M j, Y"|default:"—" }}</small></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-4">No opportunities found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

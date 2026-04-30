@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Lead — {{ lead.company_name }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'crm:lead_list' %}">Leads</a></li>
+        <li class="breadcrumb-item active">{{ lead.company_name }}</li>
+    </ol>
+</nav>
+
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <strong><i class="fas fa-building me-1"></i>{{ lead.company_name }}</strong>
+                {% if lead.status == 'new' %}<span class="badge text-bg-primary">New</span>
+                {% elif lead.status == 'contacted' %}<span class="badge text-bg-info">Contacted</span>
+                {% elif lead.status == 'qualified' %}<span class="badge text-bg-success">Qualified</span>
+                {% elif lead.status == 'disqualified' %}<span class="badge text-bg-secondary">Disqualified</span>
+                {% elif lead.status == 'converted' %}<span class="badge text-bg-dark">Converted</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Contact</dt>
+                    <dd class="col-sm-9">{{ lead.contact_full_name|default:"—" }}{% if lead.contact_title %} · <small class="text-muted">{{ lead.contact_title }}</small>{% endif %}</dd>
+
+                    <dt class="col-sm-3">Email</dt>
+                    <dd class="col-sm-9">{% if lead.contact_email %}<a href="mailto:{{ lead.contact_email }}">{{ lead.contact_email }}</a>{% else %}—{% endif %}</dd>
+
+                    <dt class="col-sm-3">Phone</dt>
+                    <dd class="col-sm-9">{{ lead.contact_phone|default:"—" }}</dd>
+
+                    <dt class="col-sm-3">Website</dt>
+                    <dd class="col-sm-9">{% if lead.website %}<a href="{{ lead.website }}" target="_blank">{{ lead.website }}</a>{% else %}—{% endif %}</dd>
+
+                    <dt class="col-sm-3">Industry</dt>
+                    <dd class="col-sm-9">{{ lead.industry|default:"—" }}</dd>
+
+                    <dt class="col-sm-3">Employees</dt>
+                    <dd class="col-sm-9">{{ lead.employee_count|default:"—" }}</dd>
+
+                    <dt class="col-sm-3">Estimated value</dt>
+                    <dd class="col-sm-9">${{ lead.estimated_value|floatformat:2|intcomma }}</dd>
+
+                    <dt class="col-sm-3">Source</dt>
+                    <dd class="col-sm-9">{{ lead.source|default:"—" }}</dd>
+
+                    <dt class="col-sm-3">Campaign</dt>
+                    <dd class="col-sm-9">{% if lead.campaign %}<a href="{% url 'crm:campaign_detail' lead.campaign.pk %}">{{ lead.campaign.name }}</a>{% else %}—{% endif %}</dd>
+
+                    <dt class="col-sm-3">Assigned to</dt>
+                    <dd class="col-sm-9">{{ lead.assigned_to.username|default:"—" }}</dd>
+
+                    <dt class="col-sm-3">Created</dt>
+                    <dd class="col-sm-9"><small class="text-muted">{{ lead.created_at|date:"M j, Y H:i" }}{% if lead.created_by %} by {{ lead.created_by.username }}{% endif %}</small></dd>
+                </dl>
+            </div>
+        </div>
+
+        {% if lead.notes %}
+        <div class="card mt-3">
+            <div class="card-header py-2"><strong>Notes</strong></div>
+            <div class="card-body"><pre class="mb-0" style="white-space: pre-wrap;">{{ lead.notes }}</pre></div>
+        </div>
+        {% endif %}
+
+        {% if lead.converted_to_opportunity %}
+        <div class="alert alert-success mt-3">
+            <i class="fas fa-check-circle me-1"></i>
+            Converted to opportunity:
+            <a href="{% url 'crm:opportunity_detail' lead.converted_to_opportunity.pk %}">{{ lead.converted_to_opportunity.name }}</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header py-2"><strong>Actions</strong></div>
+            <div class="card-body d-grid gap-2">
+                {% if can_create_lead %}
+                <a href="{% url 'crm:lead_edit' lead.pk %}" class="btn btn-outline-primary"><i class="fas fa-edit"></i> Edit Lead</a>
+                {% endif %}
+
+                {% if can_manage_pipeline and lead.status != 'converted' and lead.status != 'disqualified' %}
+                <form method="post" action="{% url 'crm:lead_convert' lead.pk %}" onsubmit="return confirm('Create a new Organization and Opportunity from this lead?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success w-100"><i class="fas fa-arrow-right"></i> Convert to Org + Opportunity</button>
+                </form>
+
+                <form method="post" action="{% url 'crm:lead_disqualify' lead.pk %}">
+                    {% csrf_token %}
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Disqualification reason (optional)">
+                    <button type="submit" class="btn btn-outline-danger w-100"
+                            onclick="return confirm('Mark this lead as disqualified?');">
+                        <i class="fas fa-times"></i> Disqualify
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

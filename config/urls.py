@@ -50,6 +50,7 @@ urlpatterns = [
     path('psa/ai/', include('psa_ai.urls')),
     path('portal/', include('portal.urls')),
     path('resourcing/', include('resourcing.urls')),
+    path('crm/', include('crm.urls')),
 
     # API
     path('api/', include('api.urls')),

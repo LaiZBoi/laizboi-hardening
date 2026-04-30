@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}CRM — Campaigns{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item active">Campaigns</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0"><i class="fas fa-bullhorn"></i> Campaigns</h1>
+    <a href="{% url 'crm:campaign_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New Campaign</a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-sm table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Name</th>
+                <th>Channel</th>
+                <th>Active</th>
+                <th class="text-end">Budget</th>
+                <th>Start</th>
+                <th>End</th>
+                <th class="text-end">Leads</th>
+                <th class="text-end">Opps</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in campaigns %}
+            <tr>
+                <td><a href="{% url 'crm:campaign_detail' c.pk %}"><strong>{{ c.name }}</strong></a></td>
+                <td><small>{{ c.get_channel_display|default:"—" }}</small></td>
+                <td>{% if c.is_active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
+                <td class="text-end">${{ c.budget|floatformat:2|intcomma }}</td>
+                <td><small class="text-muted">{{ c.start_date|date:"M j, Y"|default:"—" }}</small></td>
+                <td><small class="text-muted">{{ c.end_date|date:"M j, Y"|default:"—" }}</small></td>
+                <td class="text-end">{{ c.lead_count }}</td>
+                <td class="text-end">{{ c.opp_count }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-4">No campaigns yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

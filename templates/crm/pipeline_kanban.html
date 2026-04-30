@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}CRM — Pipeline{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item active">Pipeline</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-baseline mb-2">
+    <h4 class="mb-0"><i class="fas fa-columns me-2"></i>Sales Pipeline</h4>
+    <small class="text-muted"><i class="fas fa-arrows-alt me-1"></i>Drag a card to a different column to change its stage</small>
+</div>
+
+<div class="kanban-board">
+    {% for col in columns %}
+    <div class="kanban-col" data-stage="{{ col.code }}">
+        <div class="kanban-col-header">
+            <strong>{{ col.label }}</strong>
+            <span class="badge text-bg-secondary float-end">{{ col.count }}</span>
+        </div>
+        <div class="kanban-col-body" data-stage="{{ col.code }}">
+            {% for o in col.opps %}
+            <div class="kanban-card" draggable="true" data-opp-id="{{ o.pk }}">
+                <div class="kanban-card-title">
+                    <a href="{% url 'crm:opportunity_detail' o.pk %}">{{ o.name|truncatechars:50 }}</a>
+                </div>
+                <div class="kanban-card-meta">
+                    <small class="text-muted">{{ o.client_org.name|truncatechars:30 }}</small>
+                </div>
+                <div class="kanban-card-meta">
+                    <span class="badge text-bg-light text-dark border">${{ o.weighted_value|floatformat:0|intcomma }}</span>
+                    <small class="text-muted">{{ o.probability_pct }}%</small>
+                    {% if o.assigned_to %}
+                    <small class="text-muted ms-1"><i class="fas fa-user"></i> {{ o.assigned_to.username }}</small>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="kanban-empty text-muted small">·</div>
+            {% endfor %}
+        </div>
+        <div class="kanban-col-footer">
+            <small class="text-muted">Total weighted: <strong>${{ col.weighted|floatformat:2|intcomma }}</strong></small>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="dispatch-toast" id="kanban-toast" role="status"></div>
+
+<style>
+.kanban-board {
+    display: flex; gap: .6rem; overflow-x: auto;
+    padding-bottom: .5rem;
+    align-items: flex-start;
+}
+.kanban-col {
+    flex: 1 1 0; min-width: 200px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    background: var(--bs-tertiary-bg);
+    display: flex; flex-direction: column;
+}
+.kanban-col-header {
+    padding: .5rem .6rem;
+    border-bottom: 1px solid var(--bs-border-color);
+    font-size: .85rem;
+}
+.kanban-col-body {
+    padding: .4rem;
+    min-height: 120px;
+    flex: 1 1 auto;
+    transition: background 120ms;
+}
+.kanban-col-body.drop-target {
+    background: rgba(13, 110, 253, .12);
+    outline: 2px dashed var(--bs-primary);
+    outline-offset: -3px;
+}
+.kanban-col-footer {
+    padding: .35rem .6rem;
+    border-top: 1px solid var(--bs-border-color);
+    font-size: .75rem;
+}
+.kanban-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 4px;
+    padding: .5rem .55rem;
+    margin-bottom: .4rem;
+    cursor: grab;
+    user-select: none;
+    transition: box-shadow 120ms;
+}
+.kanban-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+.kanban-card:active { cursor: grabbing; }
+.kanban-card.dragging { opacity: .4; }
+.kanban-card-title { font-size: .85rem; font-weight: 500; }
+.kanban-card-title a { text-decoration: none; }
+.kanban-card-meta { font-size: .75rem; margin-top: .15rem; }
+.kanban-empty { text-align: center; padding: .75rem 0; font-size: .8rem; }
+
+.dispatch-toast {
+    position: fixed; bottom: 24px; right: 24px;
+    padding: .6rem 1rem; border-radius: 6px;
+    background: var(--bs-success); color: #fff;
+    font-size: .85rem; z-index: 1080;
+    transform: translateY(120%); transition: transform 200ms;
+    box-shadow: 0 4px 12px rgba(0,0,0,.2);
+}
+.dispatch-toast.show { transform: translateY(0); }
+.dispatch-toast.error { background: var(--bs-danger); }
+</style>
+
+<script>
+(function() {
+    const csrf = '{{ csrf_token }}';
+    const toast = document.getElementById('kanban-toast');
+    function showToast(msg, isError) {
+        toast.textContent = msg;
+        toast.classList.toggle('error', !!isError);
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2400);
+    }
+
+    let dragged = null;
+
+    document.querySelectorAll('.kanban-card[draggable="true"]').forEach(card => {
+        card.addEventListener('dragstart', (e) => {
+            dragged = card;
+            card.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', card.dataset.oppId);
+        });
+        card.addEventListener('dragend', () => {
+            if (dragged) dragged.classList.remove('dragging');
+            dragged = null;
+        });
+    });
+
+    document.querySelectorAll('.kanban-col-body[data-stage]').forEach(col => {
+        col.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            col.classList.add('drop-target');
+        });
+        col.addEventListener('dragleave', () => col.classList.remove('drop-target'));
+        col.addEventListener('drop', (e) => {
+            e.preventDefault();
+            col.classList.remove('drop-target');
+            const oppId = e.dataTransfer.getData('text/plain');
+            const targetStage = col.dataset.stage;
+            if (!oppId || !dragged) return;
+
+            const fromCol = dragged.closest('.kanban-col-body');
+            if (fromCol === col) return;  // no-op
+
+            // Optimistic: move card immediately
+            col.appendChild(dragged);
+
+            const fd = new FormData();
+            fd.append('csrfmiddlewaretoken', csrf);
+            fd.append('stage', targetStage);
+            fetch(`/crm/opportunities/${oppId}/stage/`, {method: 'POST', body: fd})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.ok) {
+                        showToast(`Moved to ${data.stage_label || targetStage}`);
+                    } else {
+                        showToast('Failed: ' + (data.error || 'unknown'), true);
+                        setTimeout(() => location.reload(), 1500);
+                    }
+                })
+                .catch(err => {
+                    showToast('Network error', true);
+                    setTimeout(() => location.reload(), 1500);
+                });
+        });
+    });
+})();
+</script>
+{% endblock %}

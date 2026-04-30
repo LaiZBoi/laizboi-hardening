@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'crm:lead_list' %}">Leads</a></li>
+        <li class="breadcrumb-item active">{{ title }}</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="fas fa-user-plus"></i> {{ title }}</h1>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-header py-2"><strong>Company</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Company name *</label>
+                    {{ form.company_name }}{{ form.company_name.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Industry</label>
+                    {{ form.industry }}{{ form.industry.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Employee count</label>
+                    {{ form.employee_count }}{{ form.employee_count.errors }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Website</label>
+                    {{ form.website }}{{ form.website.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Estimated value</label>
+                    {{ form.estimated_value }}{{ form.estimated_value.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Status</label>
+                    {{ form.status }}{{ form.status.errors }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header py-2"><strong>Contact</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">First name</label>
+                    {{ form.contact_first_name }}{{ form.contact_first_name.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Last name</label>
+                    {{ form.contact_last_name }}{{ form.contact_last_name.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Title</label>
+                    {{ form.contact_title }}{{ form.contact_title.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Phone</label>
+                    {{ form.contact_phone }}{{ form.contact_phone.errors }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    {{ form.contact_email }}{{ form.contact_email.errors }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header py-2"><strong>Source &amp; Assignment</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Source</label>
+                    {{ form.source }}{{ form.source.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Campaign</label>
+                    {{ form.campaign }}{{ form.campaign.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Assigned to</label>
+                    {{ form.assigned_to }}{{ form.assigned_to.errors }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    {{ form.notes }}{{ form.notes.errors }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Lead</button>
+    <a href="{% url 'crm:lead_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

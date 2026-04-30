@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'crm:opportunity_list' %}">Opportunities</a></li>
+        <li class="breadcrumb-item active">{{ title }}</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="fas fa-handshake"></i> {{ title }}</h1>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label">Name *</label>
+                    {{ form.name }}{{ form.name.errors }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Stage</label>
+                    {{ form.stage }}{{ form.stage.errors }}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Client organization *</label>
+                    {{ form.client_org }}{{ form.client_org.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Estimated value</label>
+                    {{ form.estimated_value }}{{ form.estimated_value.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Probability %</label>
+                    {{ form.probability_pct }}{{ form.probability_pct.errors }}
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Expected close</label>
+                    {{ form.expected_close_date }}{{ form.expected_close_date.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Actual close</label>
+                    {{ form.actual_close_date }}{{ form.actual_close_date.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Campaign</label>
+                    {{ form.campaign }}{{ form.campaign.errors }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Assigned to</label>
+                    {{ form.assigned_to }}{{ form.assigned_to.errors }}
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Lost reason <small class="text-muted">(only used when closed_lost)</small></label>
+                    {{ form.lost_reason }}{{ form.lost_reason.errors }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    {{ form.description }}{{ form.description.errors }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    {{ form.notes }}{{ form.notes.errors }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Opportunity</button>
+    <a href="{% url 'crm:opportunity_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}
