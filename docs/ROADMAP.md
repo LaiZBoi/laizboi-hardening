@@ -168,6 +168,295 @@ Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentat
 
 ---
 
+# Long-term roadmap — Phases 10-23
+
+The following are **planned / in-progress** items focused on MSP workflow consolidation and operational visibility. None are positioned as fully implemented. Items overlapping with already-shipped phases are noted as "Extends X" so the deltas are explicit. AI-assisted features are clearly marked **OPTIONAL AI**.
+
+## Phase 10 — Advanced Email-to-Ticket Engine **(M)**
+
+**Roadmap item:** Advanced Email Processing & Ticket Intelligence. Extends the basic IMAP poller already shipped (v3.17.83+).
+
+Planned capabilities:
+- Advanced inbound email parsing (HTML + plain-text fallback)
+- Thread reconstruction across replies + forwards
+- Reply correlation by Message-ID + In-Reply-To headers (more reliable than current subject-regex match)
+- Signature stripping
+- Loop detection (ignore auto-responders)
+- Spam scoring before ticket creation
+- Attachment extraction with MIME-type allowlist
+- Automatic contact association (match sender email → existing contact / membership)
+- Per-client parsing rules
+- Ticket categorization (rule-based)
+- Ticket tagging
+- Email security validation (SPF / DKIM / DMARC inspection)
+- Ticket summarization (**OPTIONAL AI**)
+- Intent detection (**OPTIONAL AI**)
+
+**Goal:** Reduce dispatcher and technician overhead while improving ticket workflow accuracy.
+
+## Phase 11 — Advanced Dispatch & Technician Scheduling **(M)**
+
+**Roadmap item:** Dispatch Optimization & Technician Coordination. Extends Phase 2 (resourcing) + the dispatch board (v3.17.112) + skill ranking (v3.17.138).
+
+Planned capabilities:
+- Drag/drop dispatch board *(shipped — v3.17.112)*
+- Technician scheduling *(partial — Phase 2 WorkingHours shipped)*
+- Shift management
+- PTO conflict awareness *(extends Phase 2.2 LeaveRequest)*
+- Calendar conflict detection
+- Recurring onsite scheduling
+- Dispatch prioritization (auto-rank queue by SLA + priority)
+- SLA-aware dispatching
+- Technician utilization metrics *(shipped — Phase 2.3 capacity report)*
+- Geo-aware technician routing
+- Travel time estimation
+- Dispatch heatmaps
+
+**Goal:** Improve technician coordination and service workflow efficiency.
+
+## Phase 12 — Customer Communication Workflows **(M)**
+
+**Roadmap item:** Enhanced Client Communication & Portal Workflows. Extends the existing customer portal.
+
+Planned capabilities:
+- Customer satisfaction (CSAT) surveys post-ticket-close
+- Branded client portals *(extends Phase v3.17.112 per-org branding)*
+- Portal announcements
+- Customer approval workflows
+- Threaded customer communication
+- SMS ticket communication (using existing SMS provider plumbing)
+- Customer escalation workflows
+- Customer-facing knowledge base *(partial — `Document.is_client_visible` shipped)*
+- Customer ticket voting / prioritization
+- Secure customer messaging
+- Customer notification preferences
+
+**Goal:** Improve client interaction visibility and communication consistency.
+
+## Phase 13 — Procurement & Lifecycle Management **(M)**
+
+**Roadmap item:** Advanced Procurement & Asset Lifecycle Management. Extends Phase 4 (Procurement) + the asset lifespan tracking already shipped.
+
+Planned capabilities:
+- Serial lifecycle tracking *(partial — serial capture shipped v3.17.149)*
+- Warranty expiration tracking
+- Vendor inventory checks (live stock from distributor APIs)
+- Procurement approval workflows *(shipped — Phase 4.1 PR/PO)*
+- Purchase receiving workflows *(shipped — Phase 4.2)*
+- Margin analytics on resold hardware
+- RMA tracking (return / replace lifecycle)
+- Asset lifecycle scoring (composite age × usage × warranty)
+- Procurement forecasting from historical PR/PO data
+- Recurring purchasing templates (e.g. "monthly toner refill")
+- Vendor cost history (price-at-time-of-PO trend)
+- Procurement reporting
+
+**Goal:** Improve operational procurement visibility and hardware lifecycle management.
+
+## Phase 14 — Visual Workflow Automation Engine **(L)**
+
+**Roadmap item:** Visual Workflow & Operational Automation Engine. Extends the workflow rules engine (v3.17.111) + visual rule builder (v3.17.112).
+
+Planned capabilities:
+- Visual workflow builder *(partial — visual rule builder shipped v3.17.112)*
+- Conditional workflow routing (branching based on ticket fields)
+- SLA-driven automation
+- Ticket orchestration (multi-step automated sequences)
+- Approval chains (extends Phase 6.1 CAB pattern)
+- Trigger / action workflows
+- Escalation logic (auto-escalate after N hours unanswered)
+- Scheduled automations
+- State-based workflows
+- Dynamic technician assignment (round-robin, skill-match, load-balanced)
+- Workflow templates
+- Cross-module workflow integration (PSA ↔ procurement ↔ CRM)
+- AI-assisted workflow suggestions (**OPTIONAL AI**)
+
+**Goal:** Reduce repetitive operational tasks while improving workflow consistency.
+
+## Phase 15 — Recurring Billing & Contract Management **(M)**
+
+**Roadmap item:** Recurring Billing & Financial Workflow Automation. Extends Phase 1 (contract engine) + invoicing.
+
+Planned capabilities:
+- Recurring invoices (auto-generated from contract bundles)
+- Usage-based billing (per-seat / per-device / per-GB metered)
+- Contract renewals *(partial — auto-renewal cron shipped Phase 1.2)*
+- Proration handling
+- Service bundles *(shipped — Phase 1.2 ContractBundleItem)*
+- Billing reconciliation
+- Late fee automation
+- ACH / payment integrations (Stripe ACH, GoCardless, etc.)
+- MRR forecasting
+- Contract profitability tracking *(partial — Phase 3 profitability-by-contract shipped)*
+- Invoice automation
+- Tax handling support (Avalara / TaxJar integrations)
+- Subscription lifecycle management
+
+**Goal:** Improve recurring service management and operational billing visibility.
+
+## Phase 16 — Documentation Relationship Mapping **(M)**
+
+**Roadmap item:** Infrastructure Relationship Mapping & Dependency Visualization.
+
+Planned capabilities:
+- Asset relationship mapping (parent / child / depends-on)
+- Visual dependency graphs (DAG renders)
+- Topology visualization
+- Nested organization mapping (extends Phase 17 multi-location)
+- Shared infrastructure relationships
+- Automatic asset linking (heuristic — same subnet, same rack, etc.)
+- Infrastructure dependency chains
+- Rack relationship visualization *(partial — racks already shipped)*
+- Service relationship tracking ("Email service depends on Exchange Online + DNS X + Connector Y")
+- Documentation inheritance (child sites inherit parent SOPs)
+
+**Goal:** Improve infrastructure visibility and operational context awareness.
+
+## Phase 17 — Advanced Asset Intelligence **(L)**
+
+**Roadmap item:** Asset Intelligence & Infrastructure Visibility.
+
+Planned capabilities:
+- Asset drift detection (compare current state vs. last-known baseline)
+- Baseline comparison
+- Software compliance auditing
+- Hardware lifecycle scoring (composite — see Phase 13)
+- Warranty lookups (vendor API integrations)
+- Patch correlation (this CVE matches these N assets)
+- Smart asset grouping (auto-cohort by role/version/location)
+- Vulnerability-to-ticket linking
+- Configuration monitoring
+- Operational health scoring per asset
+- Automated remediation suggestions (**OPTIONAL AI**)
+
+**Goal:** Improve infrastructure awareness and proactive operational management.
+
+## Phase 18 — Multi-Location Client Hierarchy **(M)**
+
+**Roadmap item:** Advanced Multi-Location Organization Management.
+
+Planned capabilities:
+- Parent / child organizations (`Organization.parent` self-FK)
+- Multi-site hierarchy
+- Shared infrastructure inheritance
+- Location-specific documentation
+- Location-level contacts
+- Site-level SLA assignment (override parent SLA)
+- Site filtering on every list page
+- Shared services mapping
+- Regional operational views (group sites by region)
+- Multi-location reporting
+
+**Goal:** Improve management of larger MSP client environments.
+
+## Phase 19 — Advanced Reporting & Analytics **(continuous)**
+
+**Roadmap item:** Operational Analytics & Business Intelligence. Extends Phase 3 (Financial Reporting + BI) — these are the next-tier analytics on top of the canonical query layer.
+
+Planned capabilities:
+- Technician utilization reporting *(shipped — Phase 2.3 + 3.2)*
+- SLA forecasting (predict breach risk before it happens)
+- Ticket aging analytics
+- Contract profitability *(shipped — Phase 3.2)*
+- Quote conversion tracking
+- Customer health scoring *(shipped — Phase 3.6B)*
+- Executive dashboards *(shipped — Phase 3.6A scorecard)*
+- KPI dashboards
+- Operational metrics
+- Workflow performance analytics
+- Trend analysis
+- Capacity forecasting
+- Reporting exports (already CSV; add PDF + scheduled email)
+
+**Goal:** Provide MSP operational visibility and business insight.
+
+## Phase 20 — Approval & Change Management Workflows **(M)**
+
+**Roadmap item:** Approval Routing & Change Management. Extends Phase 6.1 (CAB) + the existing approvals queue.
+
+Planned capabilities:
+- Multi-stage approvals (sequential gates: tech lead → manager → CAB)
+- Change advisory workflows *(shipped — Phase 6.1 CAB)*
+- Quote approval routing (gate quotes above threshold)
+- Financial approval chains (POs / invoices over $X)
+- Escalation approvals (auto-escalate idle approvals)
+- Conditional approvals (rules: "if value > $5k, route to owner")
+- Approval audit trails *(partial — single-approver audit shipped)*
+- Workflow enforcement
+- Change tracking
+- Operational sign-off workflows
+
+**Goal:** Improve workflow accountability and operational governance.
+
+## Phase 21 — Advanced Mobile Technician Workflows **(L)**
+
+**Roadmap item:** Mobile Technician Workflow Expansion. Extends Phase 8 (mobile apps + GPS auto-time + Timeclock).
+
+Planned capabilities:
+- Offline workflow support (work without connectivity, sync on reconnect)
+- Camera uploads
+- Barcode scanning *(partial — vehicle inventory QR shipped)*
+- QR scanning *(partial — same)*
+- NFC scanning
+- GPS time tracking *(planned — Phase 8.2)*
+- Technician signatures (canvas signature pad on completion)
+- Onsite checklist enforcement (must complete X before close)
+- Push notifications *(planned — Phase 8.4)*
+- Voice-to-ticket workflows
+- Mobile dispatch routing (turn-by-turn from current GPS to next ticket)
+- Mobile asset lookup
+
+**Goal:** Improve field technician workflow efficiency and mobility.
+
+## Phase 22 — Knowledge Base & SOP Management **(M)**
+
+**Roadmap item:** Knowledge Base & Operational Documentation Expansion. Extends Phase v3.17.128 (KB tree) + v3.17.134 (KB perms).
+
+Planned capabilities:
+- Knowledge base versioning (history of edits, rollback)
+- Article approvals (review-before-publish gate)
+- Article ownership
+- SOP workflows (links the KB to step-by-step Process executions)
+- Review reminders (article hasn't been reviewed in 90 days → email owner)
+- Internal / external KB separation *(partial — `is_client_visible` shipped)*
+- KB analytics (most-viewed, least-viewed, dead links)
+- Public knowledge publishing (selected articles → public URL)
+- Documentation lifecycle management (draft → published → archived)
+- Linked SOP automation (KB article triggers a workflow run)
+
+**Goal:** Improve operational knowledge management and documentation governance.
+
+## Phase 23 — Security Event & Incident Workflows **(L)**
+
+**Roadmap item:** Security Event Correlation & Incident Operations. Extends Phase 9 (security alert ingestion) — these are the next-tier incident workflows on top of the basic alert dashboard.
+
+Planned capabilities:
+- Security event ingestion *(planned — Phase 9.1)*
+- SIEM integrations
+- Vulnerability correlation (CVE → affected assets → exposure)
+- CVE-to-ticket workflows
+- Security incident timelines
+- Exposure scoring
+- Incident SLA tracking
+- Automated remediation workflows
+- Security dashboarding *(planned — Phase 9.3)*
+- Threat visibility
+- Security event reporting *(planned — Phase 9.4)*
+- AI-assisted incident summarization (**OPTIONAL AI**)
+
+Potential integrations:
+- Huntress
+- SentinelOne
+- CrowdStrike
+- Microsoft security ecosystem (Defender, Sentinel)
+- Sophos
+- Other security platforms
+
+**Goal:** Improve operational security visibility and incident response workflows.
+
+---
+
 ## What's explicitly NOT in this plan
 
 - Multi-currency beyond per-record `currency` field
@@ -191,7 +480,23 @@ Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentat
 | 7 — Outsourcing + ecosystem + polish | Continuous | ongoing | runs alongside |
 | 8 — Mobile apps + GPS auto-time + Timeclock | L | 10-13 weeks | Phase 2 (WorkingHours); ideally before Phase 3 |
 | 9 — Security alert ingestion (EDR / AV / Firewall) | M | 5 weeks | none — can run alongside any |
+| 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks | extends existing IMAP poller |
+| 11 — Advanced Dispatch & Tech Scheduling | M | 2-3 weeks | extends Phase 2 + dispatch board |
+| 12 — Customer Communication Workflows | M | 2-3 weeks | extends customer portal |
+| 13 — Procurement & Lifecycle Mgmt | M | 2-3 weeks | extends Phase 4 |
+| 14 — Visual Workflow Automation Engine | L | 4-5 weeks | extends workflow rules engine |
+| 15 — Recurring Billing & Contract Mgmt | M | 3-4 weeks | extends Phase 1 |
+| 16 — Documentation Relationship Mapping | M | 2-3 weeks | none |
+| 17 — Advanced Asset Intelligence | L | 4-5 weeks | extends RMM sync |
+| 18 — Multi-Location Client Hierarchy | M | 2-3 weeks | none |
+| 19 — Advanced Reporting & Analytics | Continuous | ongoing | extends Phase 3 |
+| 20 — Approval & Change Management Workflows | M | 2-3 weeks | extends Phase 6.1 |
+| 21 — Advanced Mobile Technician Workflows | L | 4-6 weeks | requires Phase 8 |
+| 22 — Knowledge Base & SOP Management | M | 2-3 weeks | extends KB v3.17.128/134 |
+| 23 — Security Event & Incident Workflows | L | 4-6 weeks | requires Phase 9 |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.
 
 **Phase 8** adds another ~2.5-3 months on top, but sub-phase 8.1 (web timeclock + GPS APIs) is shippable as a 2-week chunk well before the mobile app itself.
+
+**Phases 10-23**: long-term operational deepening. None should be positioned as fully implemented today; each extends or adds to the foundations already shipped. Items overlapping shipped phases call out the deltas explicitly. AI-assisted features are explicitly **OPTIONAL AI** and gated by `psa_ai_enabled` (existing pattern from v3.17.125 AI Triage).

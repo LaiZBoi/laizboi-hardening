@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.159] - 2026-04-30
+
+### Roadmap
+- Added 14 new long-term roadmap entries (Phases 10–23) to `docs/ROADMAP.md`. None positioned as fully implemented; each labeled planned / in-progress / extends-existing-phase, with deltas vs. shipped work called out. AI-assisted features explicitly tagged **OPTIONAL AI** and tied to the existing `psa_ai_enabled` gate pattern.
+- New phases:
+  - **10** — Advanced Email-to-Ticket Engine (extends IMAP poller)
+  - **11** — Advanced Dispatch & Technician Scheduling (extends Phase 2)
+  - **12** — Customer Communication Workflows (extends customer portal)
+  - **13** — Procurement & Lifecycle Management (extends Phase 4)
+  - **14** — Visual Workflow Automation Engine (extends workflow rules)
+  - **15** — Recurring Billing & Contract Management (extends Phase 1)
+  - **16** — Documentation Relationship Mapping (new)
+  - **17** — Advanced Asset Intelligence (extends RMM sync)
+  - **18** — Multi-Location Client Hierarchy (new)
+  - **19** — Advanced Reporting & Analytics (extends Phase 3)
+  - **20** — Approval & Change Management Workflows (extends Phase 6.1)
+  - **21** — Advanced Mobile Technician Workflows (requires Phase 8)
+  - **22** — Knowledge Base & SOP Management (extends KB v3.17.128/134)
+  - **23** — Security Event & Incident Workflows (requires Phase 9)
+- Sizing table updated with the 14 new rows. Wording is operationally realistic — no hype/buzzwords; focus on MSP workflow consolidation and operational visibility.
+
 ## [3.17.158] - 2026-04-29
 
 ### Added — Phase 6.1: Change requests with CAB approval workflow
