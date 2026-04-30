@@ -83,7 +83,6 @@ def roadmap_status_json(request):
       }
     """
     import re
-    from datetime import datetime
     from pathlib import Path
     from django.conf import settings
     from django.http import JsonResponse
@@ -149,7 +148,7 @@ def roadmap_status_json(request):
         current_version = None
 
     return JsonResponse({
-        'generated_at': datetime.utcnow().isoformat() + 'Z',
+        'generated_at': timezone.now().isoformat(),
         'current_version': current_version,
         'roadmap_source_url': 'https://github.com/agit8or1/clientst0r/blob/main/docs/ROADMAP.md',
         'phase_count': len(phases),
@@ -662,7 +661,6 @@ def report_bug(request):
     from .github_api import format_bug_report_body, generate_github_issue_url
     import sys
     import platform
-    from datetime import datetime
     from config.version import VERSION
 
     if request.method != 'POST':
@@ -708,7 +706,7 @@ def report_bug(request):
         'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         'browser': request.META.get('HTTP_USER_AGENT', 'Unknown'),
         'os': platform.platform(),
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+        'timestamp': timezone.now().strftime('%Y-%m-%d %H:%M:%S UTC')
     }
 
     # Collect reporter information

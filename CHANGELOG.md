@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.173] - 2026-04-30
+
+### Fixed
+- **Bug fix in the bug-report endpoint:** `core/views.py` was using `datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')` to stamp the timestamp on submitted bug reports. `datetime.now()` returns server-local time, but the format string lied and said "UTC" — the recorded timestamp was wrong by the server's UTC offset. Switched to `timezone.now()` (which is UTC when `USE_TZ=True`), so the "UTC" suffix is now accurate.
+
+### Changed
+- **Phase 7 polish:** removed deprecated `datetime.utcnow()` from the `/core/roadmap.json` endpoint and `datetime.now()` from the bug-report endpoint, replaced with `django.utils.timezone.now()`. `datetime.utcnow()` is deprecated in Python 3.12+ and will be removed in a future release. The roadmap-feed `generated_at` field now serializes with an explicit `+00:00` offset instead of a `Z` suffix; both are valid ISO 8601, downstream pollers should handle either.
+
 ## [3.17.172] - 2026-04-30
 
 ### Documentation
