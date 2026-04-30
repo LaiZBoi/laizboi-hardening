@@ -12,10 +12,11 @@ from django_ratelimit.decorators import ratelimit
 from core.middleware import get_request_organization
 from core.decorators import require_write, require_organization_context
 from audit.models import AuditLog
-from .models import Password, PasswordBreachCheck
+from .models import Password, PasswordBreachCheck, VaultAccessRule
 from .forms import PasswordForm
 from .breach_checker import PasswordBreachChecker
 from .encryption import EncryptionError
+from .access_rules import evaluate as _evaluate_vault_access
 from django.conf import settings
 
 # Initialize logger for this module
@@ -179,9 +180,52 @@ def password_detail(request, pk):
         # Organization view: filter by current org
         password = get_object_or_404(Password, pk=pk, organization=org)
 
+    # v3.17.163: VaultAccessRule gate -- GeoIP / IP / time-of-day check.
+    decision = _evaluate_vault_access(password, request.user, request)
+    AuditLog.log(
+        user=request.user,
+        action='read',
+        organization=password.organization,
+        object_type='password',
+        object_id=password.pk,
+        object_repr=password.title,
+        description=(
+            ('ALLOWED' if decision['allowed'] else 'DENIED')
+            + ' password_detail - ' + decision['reason']
+        ),
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+        extra_data={
+            'matched_rule_id': decision.get('matched_rule_id'),
+            'access_ip': decision.get('ip'),
+            'access_country': decision.get('country'),
+        },
+        success=decision['allowed'],
+    )
+    if not decision['allowed']:
+        messages.error(request, decision['reason'])
+        return render(request, 'vault/access_denied.html', {
+            'password': password,
+            'reason': decision['reason'],
+            'access_ip': decision.get('ip'),
+            'access_country': decision.get('country'),
+            'matched_rule_id': decision.get('matched_rule_id'),
+        }, status=403)
+
+    # Count active rules that apply to this password (for the "X access
+    # rules apply" badge on the detail page).
+    active_rules = VaultAccessRule.objects.filter(
+        is_active=True,
+        organization=password.organization,
+    ).order_by('priority', 'pk')
+    applicable_rule_count = sum(
+        1 for r in active_rules if r.matches_target(password, request.user)
+    )
+
     return render(request, 'vault/password_detail.html', {
         'password': password,
         'in_global_view': in_global_view,
+        'applicable_rule_count': applicable_rule_count,
     })
 
 
@@ -219,6 +263,35 @@ def password_reveal(request, pk):
         password = get_object_or_404(Password, pk=pk, organization=org)
 
     if request.method == 'POST':
+        # v3.17.163: VaultAccessRule gate -- GeoIP / IP / time-of-day check.
+        decision = _evaluate_vault_access(password, request.user, request)
+        AuditLog.log(
+            user=request.user,
+            action='read',
+            organization=password.organization,
+            object_type='password',
+            object_id=password.pk,
+            object_repr=password.title,
+            description=(
+                ('ALLOWED' if decision['allowed'] else 'DENIED')
+                + ' password_reveal - ' + decision['reason']
+            ),
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+            extra_data={
+                'matched_rule_id': decision.get('matched_rule_id'),
+                'access_ip': decision.get('ip'),
+                'access_country': decision.get('country'),
+            },
+            success=decision['allowed'],
+        )
+        if not decision['allowed']:
+            return JsonResponse({
+                'error': decision['reason'],
+                'access_denied': True,
+                'matched_rule_id': decision.get('matched_rule_id'),
+            }, status=403)
+
         try:
             plaintext = password.get_password()
 
@@ -804,4 +877,306 @@ def bitwarden_import(request):
     return render(request, 'vault/bitwarden_import.html', {
         'form': form,
         'current_organization': org,
+    })
+
+
+# ---------------------------------------------------------------------------
+# VaultAccessRule management views (v3.17.163)
+# ---------------------------------------------------------------------------
+
+from accounts.permission_utils import user_has_perm as _user_has_perm
+from django.core.exceptions import PermissionDenied
+from django.urls import reverse
+
+
+WEEKDAYS = [
+    (0, 'Mon'), (1, 'Tue'), (2, 'Wed'), (3, 'Thu'),
+    (4, 'Fri'), (5, 'Sat'), (6, 'Sun'),
+]
+COMMON_TIMEZONES = [
+    'UTC', 'America/New_York', 'America/Chicago', 'America/Denver',
+    'America/Los_Angeles', 'America/Toronto', 'America/Vancouver',
+    'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+    'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney',
+]
+
+
+def _require_access_rules_perm(request):
+    if not _user_has_perm(request.user, 'vault_manage_access_rules'):
+        raise PermissionDenied(
+            "You don't have permission to manage vault access rules."
+        )
+
+
+def _parse_csv_codes(raw):
+    """Turn 'US, CA , gb' -> ['US', 'CA', 'GB']. Empty -> []."""
+    if not raw:
+        return []
+    out = []
+    for tok in raw.replace('\n', ',').split(','):
+        tok = tok.strip().upper()
+        if tok:
+            out.append(tok)
+    # Dedup preserving order
+    seen = set()
+    return [t for t in out if not (t in seen or seen.add(t))]
+
+
+def _parse_lines(raw):
+    if not raw:
+        return []
+    out = []
+    for line in raw.replace(',', '\n').splitlines():
+        line = line.strip()
+        if line:
+            out.append(line)
+    seen = set()
+    return [t for t in out if not (t in seen or seen.add(t))]
+
+
+@login_required
+def access_rule_list(request):
+    """Table of every VaultAccessRule for the current org (or all orgs
+    for superuser)."""
+    _require_access_rules_perm(request)
+    org = get_request_organization(request)
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+
+    if in_global_view:
+        rules = VaultAccessRule.objects.all().select_related(
+            'organization', 'target_password', 'target_user',
+        )
+    else:
+        rules = VaultAccessRule.objects.filter(organization=org).select_related(
+            'organization', 'target_password', 'target_user',
+        )
+
+    # Filter chips
+    status_filter = request.GET.get('status', '').lower()
+    if status_filter == 'active':
+        rules = rules.filter(is_active=True)
+    elif status_filter == 'inactive':
+        rules = rules.filter(is_active=False)
+    scope_filter = request.GET.get('scope', '').lower()
+    if scope_filter in {'item', 'user', 'organization'}:
+        rules = rules.filter(scope=scope_filter)
+    password_filter = request.GET.get('password')
+    if password_filter:
+        try:
+            rules = rules.filter(target_password_id=int(password_filter))
+        except (TypeError, ValueError):
+            pass
+
+    rules = rules.order_by('priority', '-updated_at')
+
+    return render(request, 'vault/access_rule_list.html', {
+        'rules': rules,
+        'in_global_view': in_global_view,
+        'status_filter': status_filter,
+        'scope_filter': scope_filter,
+        'password_filter': password_filter,
+    })
+
+
+@login_required
+def access_rule_form(request, pk=None):
+    """Create or edit a VaultAccessRule."""
+    _require_access_rules_perm(request)
+    org = get_request_organization(request)
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+
+    if pk:
+        if in_global_view:
+            rule = get_object_or_404(VaultAccessRule, pk=pk)
+        else:
+            rule = get_object_or_404(VaultAccessRule, pk=pk, organization=org)
+    else:
+        rule = None
+
+    # Pickers
+    if in_global_view:
+        passwords_qs = Password.objects.all().order_by('organization__name', 'title')
+    else:
+        passwords_qs = Password.objects.filter(organization=org).order_by('title')
+
+    from django.contrib.auth.models import User as _User
+    if in_global_view:
+        users_qs = _User.objects.filter(is_active=True).order_by('username')
+    else:
+        # Users that are members of this org
+        from accounts.models import Membership
+        members = Membership.objects.filter(
+            organization=org, is_active=True,
+        ).values_list('user_id', flat=True)
+        users_qs = _User.objects.filter(pk__in=members).order_by('username')
+
+    error = None
+
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        description = (request.POST.get('description') or '').strip()
+        is_active = bool(request.POST.get('is_active'))
+        try:
+            priority = int(request.POST.get('priority') or '100')
+        except (TypeError, ValueError):
+            priority = 100
+        effect = request.POST.get('effect') or 'allow'
+        if effect not in {'allow', 'deny'}:
+            effect = 'allow'
+        scope = request.POST.get('scope') or 'organization'
+        if scope not in {'item', 'user', 'organization'}:
+            scope = 'organization'
+
+        target_password_id = request.POST.get('target_password') or None
+        target_user_id = request.POST.get('target_user') or None
+
+        allowed_countries = _parse_csv_codes(request.POST.get('allowed_countries'))
+        blocked_countries = _parse_csv_codes(request.POST.get('blocked_countries'))
+        allowed_cidrs = _parse_lines(request.POST.get('allowed_cidrs'))
+        blocked_cidrs = _parse_lines(request.POST.get('blocked_cidrs'))
+
+        weekdays = []
+        for day, _ in WEEKDAYS:
+            if request.POST.get(f'weekday_{day}'):
+                weekdays.append(day)
+
+        def _parse_time(val):
+            val = (val or '').strip()
+            if not val:
+                return None
+            try:
+                # Accept HH:MM or HH:MM:SS
+                parts = val.split(':')
+                hour = int(parts[0])
+                minute = int(parts[1]) if len(parts) > 1 else 0
+                from datetime import time as _time
+                return _time(hour=hour, minute=minute)
+            except (ValueError, IndexError):
+                return None
+
+        allowed_hour_start = _parse_time(request.POST.get('allowed_hour_start'))
+        allowed_hour_end = _parse_time(request.POST.get('allowed_hour_end'))
+        timezone_name = (request.POST.get('timezone') or 'UTC').strip()
+
+        if not name:
+            error = 'Name is required.'
+        elif scope == 'item' and not target_password_id:
+            error = 'Target password is required when scope is item.'
+        elif scope == 'user' and not target_user_id:
+            error = 'Target user is required when scope is user.'
+        elif (allowed_hour_start and allowed_hour_end
+              and allowed_hour_end <= allowed_hour_start):
+            error = 'End time must be after start time.'
+
+        if error is None:
+            target_org = (rule.organization if rule else None) or org
+            if target_org is None and in_global_view:
+                # Pick the password's org if scope=item, else first available
+                if scope == 'item' and target_password_id:
+                    try:
+                        tp = Password.objects.get(pk=target_password_id)
+                        target_org = tp.organization
+                    except Password.DoesNotExist:
+                        error = 'Target password not found.'
+            if target_org is None and error is None:
+                error = 'No organization context. Pick an org first.'
+
+        if error is None:
+            if rule is None:
+                rule = VaultAccessRule(
+                    organization=target_org,
+                    created_by=request.user,
+                )
+            rule.name = name
+            rule.description = description
+            rule.is_active = is_active
+            rule.priority = priority
+            rule.effect = effect
+            rule.scope = scope
+            rule.target_password_id = (
+                int(target_password_id) if target_password_id else None
+            )
+            rule.target_user_id = (
+                int(target_user_id) if target_user_id else None
+            )
+            rule.allowed_countries = allowed_countries
+            rule.blocked_countries = blocked_countries
+            rule.allowed_cidrs = allowed_cidrs
+            rule.blocked_cidrs = blocked_cidrs
+            rule.allowed_weekdays = weekdays
+            rule.allowed_hour_start = allowed_hour_start
+            rule.allowed_hour_end = allowed_hour_end
+            rule.timezone = timezone_name or 'UTC'
+            try:
+                rule.full_clean()
+                rule.save()
+                AuditLog.log(
+                    user=request.user,
+                    action='update' if pk else 'create',
+                    organization=rule.organization,
+                    object_type='vault.VaultAccessRule',
+                    object_id=rule.pk,
+                    object_repr=rule.name,
+                    description=(
+                        f'{"Updated" if pk else "Created"} access rule '
+                        f'(scope={rule.scope}, effect={rule.effect})'
+                    ),
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+                )
+                messages.success(
+                    request,
+                    f'Access rule "{rule.name}" '
+                    f'{"updated" if pk else "created"}.',
+                )
+                return redirect('vault:access_rule_list')
+            except Exception as exc:
+                error = str(exc)
+
+    return render(request, 'vault/access_rule_form.html', {
+        'rule': rule,
+        'passwords': passwords_qs,
+        'users': users_qs,
+        'weekdays': WEEKDAYS,
+        'common_timezones': COMMON_TIMEZONES,
+        'error': error,
+        'in_global_view': in_global_view,
+    })
+
+
+@login_required
+def access_rule_delete(request, pk):
+    """Delete an access rule (with confirmation page)."""
+    _require_access_rules_perm(request)
+    org = get_request_organization(request)
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+
+    if in_global_view:
+        rule = get_object_or_404(VaultAccessRule, pk=pk)
+    else:
+        rule = get_object_or_404(VaultAccessRule, pk=pk, organization=org)
+
+    if request.method == 'POST':
+        name = rule.name
+        rule_org = rule.organization
+        rule.delete()
+        AuditLog.log(
+            user=request.user,
+            action='delete',
+            organization=rule_org,
+            object_type='vault.VaultAccessRule',
+            object_id=pk,
+            object_repr=name,
+            description=f'Deleted access rule "{name}"',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+        )
+        messages.success(request, f'Access rule "{name}" deleted.')
+        return redirect('vault:access_rule_list')
+
+    return render(request, 'vault/access_rule_confirm_delete.html', {
+        'rule': rule,
     })

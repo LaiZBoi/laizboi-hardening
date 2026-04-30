@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.163] - 2026-04-30
+
+### Added — Vault GeoIP / IP / Time access rules
+- New `vault.VaultAccessRule` model — gates Password reveal + detail view based on the requester's GeoIP country, source IP / CIDR, and current time-of-day. Rules can be scoped to a specific Password, a specific User, or an Organization (three scopes per the user request).
+- Decision engine in `vault/access_rules.py`: DENY-wins-then-priority semantics. Empty rule set → ALLOW (back-compat). Reuses the existing GeoIP infra from the firewall middleware.
+- Admins manage rules at `/vault/access-rules/` — list, create, edit, delete. Each rule has: scope + target, effect (allow/deny), priority, GeoIP allow/block lists, IP CIDR allow/block lists, time-of-day window with timezone + allowed-weekdays.
+- Every reveal attempt is **audit-logged** with the decision reason, source IP, country, and matched rule ID — even when allowed.
+- Denied attempts render a clear "blocked by access rule" page with the reason, IP, and country.
+- Password detail view shows a "N access rules apply" badge linking back to the filtered rule list.
+- New `vault_manage_access_rules` RoleTemplate boolean (default False; Owner / Admin = True).
+- 7 unit tests in `vault.tests.VaultAccessRuleEngineTests` cover no-rules / country-deny / deny-wins / time-window / CIDR / user-scope / item-scope.
+
+### Migration
+- `vault.0012_vaultaccessrule` (new VaultAccessRule model).
+- `accounts.0025_roletemplate_vault_manage_access_rules` (new RoleTemplate boolean).
+
 ## [3.17.162] - 2026-04-30
 
 ### Added

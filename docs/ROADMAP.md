@@ -573,6 +573,18 @@ Dependencies: this runs alongside the technical phases — the commercial progra
 
 **Goal:** Provide the commercial trust signals an enterprise buyer expects on top of the open-source product.
 
+## Phase 31 — Vault GeoIP / IP / Time Access Rules **(S)** [shipped — v3.17.163]
+
+Per-rule GeoIP / IP / time-of-day gates on top of the vault. New `VaultAccessRule` model, scopable to a specific Password, a specific User, or an Organization (three scopes). Rules carry allowed/blocked country lists (ISO codes), allowed/blocked CIDR lists, allowed weekdays + hour window with IANA timezone, plus priority + active flag. DENY-wins-then-priority engine; empty rule set keeps back-compat ALLOW. Every reveal/view decision is audit-logged with the reason, source IP, country, and matched rule ID. New `vault_manage_access_rules` permission gate.
+
+- `vault.VaultAccessRule` model + migration *(shipped v3.17.163)*
+- Decision engine `vault/access_rules.py` reusing firewall middleware GeoIP helpers *(shipped v3.17.163)*
+- CRUD UI under `/vault/access-rules/` + access-denied page *(shipped v3.17.163)*
+- Detail-view badge: "N access rules apply" *(shipped v3.17.163)*
+- 7 unit tests in `vault.tests.VaultAccessRuleEngineTests` *(shipped v3.17.163)*
+
+---
+
 ## Phase 30 — Endpoint Remote Access (alternative to Phase 24) **(L)**
 
 If Phase 24 (Native RMM) is too large to take on directly, Phase 30 is the smaller-scope remote-access-only slice that doesn't require building a full RMM agent.
@@ -636,6 +648,7 @@ Dependencies: none direct. Strictly smaller than Phase 24.
 | 28 — Browser Extension + Offline Vault Access | L | 4-5 weeks | separate codebase |
 | 29 — Commercial Operations Ecosystem | Continuous · meta | ongoing | runs alongside |
 | 30 — Endpoint Remote Access (alt to Phase 24) | L | 4-6 weeks | none |
+| 31 — Vault GeoIP / IP / Time Access Rules | S | shipped v3.17.163 | extends FirewallMiddleware GeoIP infra |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.
 

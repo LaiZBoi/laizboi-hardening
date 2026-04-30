@@ -28,4 +28,10 @@ urlpatterns = [
     path('personal/<int:pk>/', views.personal_vault_detail, name='personal_vault_detail'),
     path('personal/<int:pk>/edit/', views.personal_vault_edit, name='personal_vault_edit'),
     path('personal/<int:pk>/delete/', views.personal_vault_delete, name='personal_vault_delete'),
+
+    # Access rules — GeoIP / IP / time-of-day gates (v3.17.163)
+    path('access-rules/', views.access_rule_list, name='access_rule_list'),
+    path('access-rules/new/', views.access_rule_form, name='access_rule_create'),
+    path('access-rules/<int:pk>/edit/', views.access_rule_form, name='access_rule_edit'),
+    path('access-rules/<int:pk>/delete/', views.access_rule_delete, name='access_rule_delete'),
 ]

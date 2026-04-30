@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Delete Access Rule - {{ system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r" }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-exclamation-triangle"></i> Delete access rule?
+                </h4>
+            </div>
+            <div class="card-body">
+                <p>You are about to permanently delete this access rule. This cannot be undone.</p>
+                <dl class="row">
+                    <dt class="col-sm-3">Name</dt>
+                    <dd class="col-sm-9"><strong>{{ rule.name }}</strong></dd>
+
+                    <dt class="col-sm-3">Scope</dt>
+                    <dd class="col-sm-9">{{ rule.get_scope_display }}</dd>
+
+                    <dt class="col-sm-3">Effect</dt>
+                    <dd class="col-sm-9">{{ rule.get_effect_display }}</dd>
+
+                    <dt class="col-sm-3">Priority</dt>
+                    <dd class="col-sm-9">{{ rule.priority }}</dd>
+                </dl>
+
+                <form method="post" class="mt-4">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{% url 'vault:access_rule_list' %}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Yes, delete rule
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

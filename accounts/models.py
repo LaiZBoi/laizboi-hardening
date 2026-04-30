@@ -87,6 +87,7 @@ class Membership(BaseModel):
             return SimpleNamespace(
                 vault_view=True, vault_create=True, vault_edit=True, vault_delete=True,
                 vault_export=True, vault_view_password=True,
+                vault_manage_access_rules=True,
                 assets_view=True, assets_create=True, assets_edit=True, assets_delete=True,
                 docs_view=True, docs_create=True, docs_edit=True, docs_delete=True, docs_publish=True,
                 files_view=True, files_upload=True, files_delete=True,
@@ -127,6 +128,7 @@ class Membership(BaseModel):
             return SimpleNamespace(
                 vault_view=True, vault_create=True, vault_edit=True, vault_delete=True,
                 vault_export=True, vault_view_password=True,
+                vault_manage_access_rules=True,
                 assets_view=True, assets_create=True, assets_edit=True, assets_delete=True,
                 docs_view=True, docs_create=True, docs_edit=True, docs_delete=True, docs_publish=True,
                 files_view=True, files_upload=True, files_delete=True,
@@ -168,6 +170,7 @@ class Membership(BaseModel):
             return SimpleNamespace(
                 vault_view=True, vault_create=True, vault_edit=True, vault_delete=False,
                 vault_export=False, vault_view_password=True,
+                vault_manage_access_rules=False,
                 assets_view=True, assets_create=True, assets_edit=True, assets_delete=False,
                 docs_view=True, docs_create=True, docs_edit=True, docs_delete=False, docs_publish=False,
                 files_view=True, files_upload=True, files_delete=False,
@@ -211,6 +214,7 @@ class Membership(BaseModel):
             return SimpleNamespace(
                 vault_view=True, vault_create=False, vault_edit=False, vault_delete=False,
                 vault_export=False, vault_view_password=False,
+                vault_manage_access_rules=False,
                 assets_view=True, assets_create=False, assets_edit=False, assets_delete=False,
                 docs_view=True, docs_create=False, docs_edit=False, docs_delete=False, docs_publish=False,
                 files_view=True, files_upload=False, files_delete=False,
@@ -603,6 +607,10 @@ class RoleTemplate(BaseModel):
     vault_delete = models.BooleanField(default=False, help_text='Delete passwords and secrets')
     vault_export = models.BooleanField(default=False, help_text='Export passwords')
     vault_view_password = models.BooleanField(default=True, help_text='View actual password values')
+    vault_manage_access_rules = models.BooleanField(
+        default=False,
+        help_text='Create / edit / delete vault GeoIP / IP / time access rules.',
+    )
 
     # Assets Permissions
     assets_view = models.BooleanField(default=True, help_text='View assets')
@@ -787,6 +795,7 @@ class RoleTemplate(BaseModel):
                 'vault_delete': True,
                 'vault_export': True,
                 'vault_view_password': True,
+                'vault_manage_access_rules': True,
                 'assets_view': True,
                 'assets_create': True,
                 'assets_edit': True,
@@ -880,6 +889,7 @@ class RoleTemplate(BaseModel):
                 'vault_delete': True,
                 'vault_export': True,
                 'vault_view_password': True,
+                'vault_manage_access_rules': True,
                 'assets_view': True,
                 'assets_create': True,
                 'assets_edit': True,
@@ -974,6 +984,7 @@ class RoleTemplate(BaseModel):
                 'vault_delete': False,
                 'vault_export': False,
                 'vault_view_password': True,
+                'vault_manage_access_rules': False,
                 'assets_view': True,
                 'assets_create': True,
                 'assets_edit': True,
@@ -1069,6 +1080,7 @@ class RoleTemplate(BaseModel):
                 'vault_delete': False,
                 'vault_export': False,
                 'vault_view_password': True,
+                'vault_manage_access_rules': False,
                 'assets_view': True,
                 'assets_create': False,
                 'assets_edit': False,
@@ -1164,6 +1176,7 @@ class RoleTemplate(BaseModel):
                 'vault_delete': False,
                 'vault_export': False,
                 'vault_view_password': False,
+                'vault_manage_access_rules': False,
                 'assets_view': True,
                 'assets_create': True,
                 'assets_edit': True,
@@ -1260,6 +1273,7 @@ class RoleTemplate(BaseModel):
                 'vault_delete': False,
                 'vault_export': False,
                 'vault_view_password': False,
+                'vault_manage_access_rules': False,
                 'assets_view': True,
                 'assets_create': False,
                 'assets_edit': False,
@@ -1354,6 +1368,7 @@ class RoleTemplate(BaseModel):
                 'vault_delete': False,
                 'vault_export': False,
                 'vault_view_password': False,
+                'vault_manage_access_rules': False,
                 'assets_view': True,
                 'assets_create': False,
                 'assets_edit': False,

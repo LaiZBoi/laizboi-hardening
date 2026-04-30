@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Vault Access Rules - {{ system_settings.custom_company_name|default:system_settings.site_name|default:"Client St0r" }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">
+        <i class="fas fa-shield-halved text-primary"></i> Vault Access Rules
+    </h2>
+    <a href="{% url 'vault:access_rule_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> New Rule
+    </a>
+</div>
+
+<p class="text-muted">
+    Rules gate vault password reveal / view based on the requester's GeoIP country, source IP / CIDR, and time-of-day.
+    DENY rules win, lower priority numbers are checked first. If no rule applies, access is allowed (back-compat).
+</p>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-center">
+            <div class="col-auto">
+                <strong>Filters:</strong>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+                    <option value="">Any status</option>
+                    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+                    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" name="scope" onchange="this.form.submit()">
+                    <option value="">Any scope</option>
+                    <option value="item" {% if scope_filter == 'item' %}selected{% endif %}>Specific Password</option>
+                    <option value="user" {% if scope_filter == 'user' %}selected{% endif %}>Specific User</option>
+                    <option value="organization" {% if scope_filter == 'organization' %}selected{% endif %}>Organization</option>
+                </select>
+            </div>
+            {% if password_filter %}
+            <div class="col-auto">
+                <span class="badge bg-info">Password #{{ password_filter }}</span>
+                <a href="?" class="btn btn-sm btn-outline-secondary">clear</a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Scope / Target</th>
+                    <th>Effect</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Updated</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rule in rules %}
+                <tr>
+                    <td>
+                        <strong>{{ rule.name }}</strong>
+                        {% if rule.description %}
+                            <div class="small text-muted">{{ rule.description|truncatechars:80 }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-secondary">{{ rule.get_scope_display }}</span>
+                        {% if rule.scope == 'item' and rule.target_password %}
+                            <a href="{% url 'vault:password_detail' rule.target_password.pk %}">
+                                {{ rule.target_password.title }}
+                            </a>
+                        {% elif rule.scope == 'user' and rule.target_user %}
+                            {{ rule.target_user.username }}
+                        {% elif rule.scope == 'organization' %}
+                            {{ rule.organization.name }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if rule.effect == 'allow' %}
+                            <span class="badge bg-success">Allow</span>
+                        {% else %}
+                            <span class="badge bg-danger">Deny</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ rule.priority }}</td>
+                    <td>
+                        {% if rule.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td><small>{{ rule.updated_at|date:"M j, Y" }}</small></td>
+                    <td class="text-end">
+                        <a href="{% url 'vault:access_rule_edit' rule.pk %}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        <a href="{% url 'vault:access_rule_delete' rule.pk %}" class="btn btn-sm btn-outline-danger">
+                            <i class="fas fa-trash"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">
+                        No access rules. <a href="{% url 'vault:access_rule_create' %}">Create one</a> to start gating
+                        vault access by GeoIP, IP / CIDR, or time-of-day.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

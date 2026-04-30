@@ -1,6 +1,7 @@
 """
 Vault models - Password storage with encryption
 """
+from django.conf import settings as django_settings
 from django.db import models
 from django.contrib.auth.models import User
 from core.models import Organization, Tag, BaseModel
@@ -609,3 +610,142 @@ def password_visible_to_portal_user(self, user):
 
 
 Password.add_to_class('visible_to_portal_user', password_visible_to_portal_user)
+
+
+# ---------------------------------------------------------------------------
+# VaultAccessRule (v3.17.163) — GeoIP / IP / time-of-day access gates for
+# vault Passwords. Decision engine lives in `vault/access_rules.py`.
+# ---------------------------------------------------------------------------
+
+
+class VaultAccessRule(models.Model):
+    """
+    Access rule that gates a vault Password's reveal/view based on
+    the requester's GeoIP country, source IP / CIDR, and current time.
+
+    Rules are scoped to one of: a specific Password, a specific User,
+    or an Organization. Multiple rules can apply -- DENY rules win,
+    then highest-priority ALLOW. If no rule matches, default is ALLOW
+    (back-compat with installs that have no rules configured).
+    """
+    SCOPE_CHOICES = [
+        ('item', 'Specific Password'),
+        ('user', 'Specific User'),
+        ('organization', 'Organization'),
+    ]
+    EFFECT_CHOICES = [
+        ('allow', 'Allow access'),
+        ('deny', 'Deny access'),
+    ]
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='vault_access_rules',
+        help_text='Tenant that owns the rule. For organization-scoped '
+                  'rules this is also the target.',
+    )
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    priority = models.PositiveIntegerField(
+        default=100,
+        help_text='Lower number = checked first.',
+    )
+    effect = models.CharField(
+        max_length=20, choices=EFFECT_CHOICES, default='allow',
+    )
+
+    scope = models.CharField(max_length=20, choices=SCOPE_CHOICES)
+    target_password = models.ForeignKey(
+        'vault.Password', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='access_rules',
+        help_text='Required when scope=item.',
+    )
+    target_user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='vault_access_rules',
+        help_text='Required when scope=user.',
+    )
+    # scope=organization uses the `organization` FK above
+
+    # GeoIP restrictions -- list of ISO 3166-1 alpha-2 codes
+    allowed_countries = models.JSONField(
+        default=list, blank=True,
+        help_text='ISO codes that pass. Empty = no country restriction. '
+                  'Example: ["US", "CA", "GB"].',
+    )
+    blocked_countries = models.JSONField(
+        default=list, blank=True,
+        help_text='ISO codes that fail (overrides allowed_countries).',
+    )
+
+    # IP restrictions -- list of CIDR strings
+    allowed_cidrs = models.JSONField(
+        default=list, blank=True,
+        help_text='Source IP CIDRs that pass. Empty = no IP restriction. '
+                  'Example: ["10.0.0.0/8", "203.0.113.0/24"].',
+    )
+    blocked_cidrs = models.JSONField(
+        default=list, blank=True,
+        help_text='Source IP CIDRs that fail (overrides allowed_cidrs).',
+    )
+
+    # Time-of-day restrictions
+    allowed_weekdays = models.JSONField(
+        default=list, blank=True,
+        help_text='List of weekday integers 0=Monday .. 6=Sunday. '
+                  'Empty = all days allowed.',
+    )
+    allowed_hour_start = models.TimeField(
+        null=True, blank=True,
+        help_text='Earliest hour (in `timezone`) that access is allowed. '
+                  'Blank = no time floor.',
+    )
+    allowed_hour_end = models.TimeField(
+        null=True, blank=True,
+        help_text='Latest hour. Blank = no time ceiling.',
+    )
+    timezone = models.CharField(
+        max_length=60, default='UTC',
+        help_text='IANA timezone name for the time window.',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        db_table = 'vault_access_rules'
+        ordering = ['priority', '-updated_at']
+        indexes = [
+            models.Index(fields=['organization', 'is_active']),
+            models.Index(fields=['scope', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_scope_display()} - {self.get_effect_display()})'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.scope == 'item' and not self.target_password_id:
+            raise ValidationError({'target_password': 'Required when scope=item.'})
+        if self.scope == 'user' and not self.target_user_id:
+            raise ValidationError({'target_user': 'Required when scope=user.'})
+        if self.allowed_hour_start and self.allowed_hour_end and \
+                self.allowed_hour_end <= self.allowed_hour_start:
+            raise ValidationError({
+                'allowed_hour_end': 'End time must be after start time.',
+            })
+
+    def matches_target(self, password, user):
+        """True if this rule's scope-target matches (password, user)."""
+        if self.scope == 'item':
+            return self.target_password_id == password.pk
+        if self.scope == 'user':
+            return user is not None and self.target_user_id == user.pk
+        if self.scope == 'organization':
+            return self.organization_id == password.organization_id
+        return False
