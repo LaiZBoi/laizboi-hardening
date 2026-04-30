@@ -66,7 +66,8 @@ Unsure where to begin? Look for issues labeled:
 2. **Check code style**: Follow PEP 8
 3. **Update documentation**: Document new features
 4. **Update CHANGELOG**: Add entry for your changes
-5. **Rebase on main**: Ensure your branch is up to date
+5. **Update ROADMAP** *(mandatory if your change touches a roadmap item)*: see [Roadmap discipline](#roadmap-discipline) below
+6. **Rebase on main**: Ensure your branch is up to date
 
 ### PR Checklist
 
@@ -74,9 +75,29 @@ Unsure where to begin? Look for issues labeled:
 - [ ] Tests written and passing
 - [ ] Documentation updated
 - [ ] CHANGELOG.md updated
+- [ ] **ROADMAP.md updated** if the change touches a roadmap item (mark shipped phases, annotate sub-phases with version numbers, move planned items to in-progress, add new items as planned)
 - [ ] No merge conflicts
 - [ ] Commit messages are clear
 - [ ] Security considerations addressed
+
+### Roadmap discipline
+
+`docs/ROADMAP.md` is the single source of truth for shipped + in-progress + planned features. It's rendered live in three places:
+
+- **In-app** at `/core/roadmap/`
+- **About page** card (`/core/about/`)
+- **GitHub** at the file directly
+
+**Rule**: every release that adds, extends, or completes a feature MUST update `docs/ROADMAP.md` in the same commit. Don't split it.
+
+How to apply:
+- Annotate the matching bullet with the version: `*(shipped v3.17.NNN)*` or `*(partial — X shipped v3.17.NNN; Y deferred)*`
+- When a phase completes, change its header to `**— complete**` or `[complete]`
+- For new feature requests not yet on the roadmap, ADD them as planned items first
+- Update the **Sizing table** at the bottom when adding new phases
+- AI-assisted features must be tagged **OPTIONAL AI**
+
+**Wording rule**: roadmap prose may not position the project as "X parity" or "matches Y's wedge" against named competitors. Describe what the product does on its own merits. Integration listings (e.g. "We integrate with ConnectWise Manage") ARE factual feature statements and should remain.
 
 ### PR Description Template
 

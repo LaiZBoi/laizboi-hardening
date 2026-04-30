@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.162] - 2026-04-30
+
+### Added
+- **Roadmap-update rule** codified: every release that adds, extends, or completes a feature MUST update `docs/ROADMAP.md` in the same commit. Documented in three durable places:
+  - New `CLAUDE.md` at the repo root — auto-loaded by AI assistants working on the project; spells out the rule + release pattern + wording conventions.
+  - `CONTRIBUTING.md` — new "Roadmap discipline" section under PR Process, plus a checklist item: "ROADMAP.md updated if the change touches a roadmap item".
+  - Persistent assistant memory.
+
+### Changed — Removed competitive framing from roadmap prose
+- Roadmap title was "Roadmap to PSA-mature parity (ConnectWise / Autotask / Halo)" → now just "Client St0r — Roadmap". The project is described on its own merits.
+- Phase 5 narrative: "ConnectWise's wedge: PSA covers sales-pipeline-to-invoice…" → "A mature PSA covers sales-pipeline-to-invoice…".
+- Phase 24 RMM intro: dropped the explicit list of competing RMM products from the prose; the integration framework reference stays generic.
+- Phase 29 migration scripts: rewrote "Migration scripts for ConnectWise, Autotask, Halo, IT Glue, Hudu" → "Migration scripts for inbound data imports from common existing platforms".
+- About-page Platform Overview line: "PSA Integration: ConnectWise Manage, Autotask, and more" → "PSA Integrations: Multiple external PSA providers via the integrations framework (see Integrations table below)".
+- The factual integration tables on the About page + README + FEATURES (which list real product capabilities like "we integrate with ConnectWise Manage / Autotask / HaloPSA") stay — those are not marketing positioning, they're feature statements.
+
 ## [3.17.161] - 2026-04-30
 
 ### Roadmap

@@ -1,4 +1,4 @@
-# Roadmap to PSA-mature parity (ConnectWise / Autotask / Halo)
+# Client St0r — Roadmap
 
 > Living plan. Phase 1 in progress. Update as phases complete.
 
@@ -62,7 +62,7 @@ Builds on existing distributor integrations (Ingram/Pax8/Synnex). Adds the workf
 
 ## Phase 5 — CRM / sales pipeline **(L)** **— complete**
 
-ConnectWise's wedge: PSA covers sales-pipeline-to-invoice. Currently we have quotes; we need everything *before* the quote.
+A mature PSA covers sales-pipeline-to-invoice. Currently we have quotes; we need everything *before* the quote.
 
 - `Lead`, `Opportunity`, `Campaign`, `Commission` models *(5.1 — shipped v3.17.152; 5.2 — shipped v3.17.153)*
 - Lead scoring + conversion funnel report *(5.2 — shipped v3.17.153)*
@@ -457,7 +457,7 @@ Potential integrations:
 
 ## Phase 24 — Native RMM Agent + Endpoint Management **(XL — major undertaking)**
 
-**Roadmap item:** First-party RMM stack — patch management, scripting, remote access. Today the project integrates with external RMMs (Tactical RMM, NinjaOne, Datto, Atera, ConnectWise Automate); this phase adds an in-house alternative for installs that want a self-hosted RMM.
+**Roadmap item:** First-party RMM stack — patch management, scripting, remote access. Today the project integrates with external RMMs via the existing integration framework; this phase adds an in-house alternative for installs that want a self-hosted RMM.
 
 Planned capabilities:
 - Lightweight cross-platform agent (Go or Python) that registers via secure token
@@ -557,7 +557,7 @@ Dependencies: existing vault model + AES-GCM key infra. Browser extension is a s
 Planned capabilities:
 - Tiered commercial support offering (Bronze / Silver / Gold / Platinum) with response-time SLAs
 - Paid onboarding service — installation, data migration, integration setup
-- Migration scripts for ConnectWise, Autotask, Halo, IT Glue, Hudu (one-time imports)
+- Migration scripts for inbound data imports from common existing platforms (one-time imports for new customers onboarding from another tool)
 - Architect-led implementation packages for installs > 50 techs
 - Per-customer commercial-support portal (dedicated case queue, escalation path)
 - Public status page (https://status.huduglue.example) with planned-maintenance windows
