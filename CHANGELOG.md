@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.171] - 2026-04-30
+
+### Fixed
+- **Audit logging on `/api/passwords/<id>/`, `/reveal/`, and `/otp/` no longer crashes.** The API password endpoints called `AuditLog.objects.create(... details=...)` but the model field is `description` — passing `details=` raised `TypeError` and 500'd every successful API password retrieve / reveal / OTP-generate. Latent bug since the initial commit (Jan 2026); never surfaced because no test exercised the success path. Found while rebuilding the tenant-isolation suite below.
+
+### Tests
+- **Rebuilt `core.tests.test_tenant_isolation`.** The file had rotted since v2.20.0 (Jan 2026) when `accounts.UserProfile.user` got `related_name='profile'` and org binding moved from `UserProfile.organization` to the `Membership` table. All 10 tests were erroring on `'User' object has no attribute 'userprofile'` — silently failing security regression coverage. Rewrite uses `Membership(user, organization, role=Role.OWNER, is_active=True)`, `force_login()` to bypass django-axes (which needs a real request), and `current_organization_id` on the test session to match the production `CurrentOrganizationMiddleware` flow. Also fixed: `Document.body` (not `content`), `/docs/<slug>/` (not `/docs/documents/<id>/`), `/vault/<id>/` (not `/vault/passwords/<id>/`). The "manager enforces isolation" test rewritten to exercise the real API (`OrganizationManager.for_organization()`) instead of a `set_current_organization()` helper that never existed. 10/10 passing in 30s; full battery (core + resourcing + processes + security_alerts) 45/45 in 86s.
+
 ## [3.17.170] - 2026-04-30
 
 ### Changed

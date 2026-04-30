@@ -159,7 +159,7 @@ class PasswordViewSet(OrganizationScopedViewSet):
             object_type='password',
             object_id=instance.id,
             object_repr=instance.title,
-            details=f"Password '{instance.title}' accessed via API",
+            description=f"Password '{instance.title}' accessed via API",
             ip_address=request.META.get('REMOTE_ADDR'),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:255]
         )
@@ -184,7 +184,7 @@ class PasswordViewSet(OrganizationScopedViewSet):
             object_type='password',
             object_id=password.id,
             object_repr=password.title,
-            details=f"Password '{password.title}' revealed via API",
+            description=f"Password '{password.title}' revealed via API",
             ip_address=request.META.get('REMOTE_ADDR'),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:255]
         )
@@ -222,7 +222,7 @@ class PasswordViewSet(OrganizationScopedViewSet):
             object_type='password',
             object_id=password.id,
             object_repr=password.title,
-            details=f"OTP generated for '{password.title}' via API",
+            description=f"OTP generated for '{password.title}' via API",
             ip_address=request.META.get('REMOTE_ADDR'),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:255]
         )
