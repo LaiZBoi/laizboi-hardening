@@ -1714,3 +1714,65 @@ body { font-size: 0.92rem; }
 /* Page-title h2 — slightly smaller, less vertical bloat */
 main h2 { font-size: 1.35rem; }
 main h2 + .badge { font-size: 0.7rem; }
+
+/* ========================================================================
+   NAVBAR FIT (v3.17.161 — 2026-04-30)
+   With 7+ top-level dropdowns (Dashboard / Assets / Vault / Docs / PSA /
+   CRM / Operations / Reports / Admin) + brand + search + clock + org pill
+   + user dropdown, the navbar at default 100% browser font-size cuts off
+   on common laptop widths (1366-1600px). Tighten nav-link spacing +
+   icon padding so everything fits without forcing a hamburger collapse.
+   ======================================================================== */
+
+@media (min-width: 992px) {
+    /* Lighter nav-link padding when expanded */
+    .navbar-expand-lg .navbar-nav .nav-link {
+        padding-left: 0.55rem !important;
+        padding-right: 0.55rem !important;
+        font-size: 0.88rem;
+    }
+    /* Drop the icon-margin gap — icon + label share less horizontal space */
+    .navbar-nav .nav-link i.fas,
+    .navbar-nav .nav-link i.fab,
+    .navbar-nav .nav-link i.bi {
+        margin-right: 0.2rem !important;
+    }
+    /* Search box narrower at default size */
+    .navbar form input[type="search"] {
+        width: 130px !important;
+        font-size: 0.82rem;
+    }
+    /* Org pill — cap width so it doesn't push everything off */
+    .org-pill { max-width: 140px !important; font-size: .72rem; }
+    /* Live clock — drop a few pixels */
+    #nav-clock { font-size: 0.72rem !important; }
+    /* User dropdown badge */
+    .navbar .badge { font-size: 0.65rem; }
+}
+
+/* Even tighter at narrow desktop sizes (1280-1500px) */
+@media (min-width: 992px) and (max-width: 1500px) {
+    .navbar-expand-lg .navbar-nav .nav-link {
+        padding-left: 0.4rem !important;
+        padding-right: 0.4rem !important;
+        font-size: 0.82rem;
+    }
+    .navbar form input[type="search"] {
+        width: 110px !important;
+    }
+    /* Hide the live clock at narrow desktop sizes — it's nice-to-have */
+    #nav-clock { display: none !important; }
+    /* Hide the verbose "Staff" pill on user dropdown */
+    .navbar .nav-item.dropdown #userDropdown .badge { display: none; }
+    /* Truncate org pill harder */
+    .org-pill { max-width: 100px !important; }
+    .org-pill-name { font-size: .68rem !important; }
+}
+
+/* Make the navbar container itself permit wrap as a final fallback */
+.navbar-container {
+    flex-wrap: wrap;
+}
+.navbar-container > .navbar-collapse {
+    flex-wrap: wrap;
+}

@@ -455,6 +455,141 @@ Potential integrations:
 
 **Goal:** Improve operational security visibility and incident response workflows.
 
+## Phase 24 — Native RMM Agent + Endpoint Management **(XL — major undertaking)**
+
+**Roadmap item:** First-party RMM stack — patch management, scripting, remote access. Today the project integrates with external RMMs (Tactical RMM, NinjaOne, Datto, Atera, ConnectWise Automate); this phase adds an in-house alternative for installs that want a self-hosted RMM.
+
+Planned capabilities:
+- Lightweight cross-platform agent (Go or Python) that registers via secure token
+- Endpoint inventory (CPU / RAM / disk / installed software / network state)
+- **Patch management** — Windows Update / apt / yum / Homebrew push + scheduling + rollback. Extends OS Package Scanner shipped earlier.
+- **Scripting / automation against endpoints** — sandboxed PowerShell / Bash / Python with audit log + approval gate for high-risk scripts
+- **Remote access** — browser-launched session over WebSocket relay (no third-party agent install). Optional fallback to existing ScreenConnect / RustDesk integration.
+- Health monitoring + drift detection (extends Phase 17)
+- Performance metrics + alerting
+- Software deployment + uninstall
+- Background task queue (push command → agent ack → result back via webhook)
+
+Dependencies: Phase 9 (security framework — auth + audit), Phase 17 (asset intelligence baselines). Significantly larger scope than other phases — likely a multi-quarter program. Recommended only if customer demand for self-hosted RMM is strong.
+
+**Goal:** Provide a self-hosted RMM option that integrates natively with the existing PSA + asset stack instead of requiring a third-party RMM.
+
+## Phase 25 — Mature Timesheet Approval Workflows **(M)**
+
+**Roadmap item:** Formal time-entry approval pipeline. Today `psa.TicketTimeEntry` is logged ad-hoc by techs; there's no formal weekly approval before billing.
+
+Planned capabilities:
+- Weekly timesheet model — groups a tech's TicketTimeEntry rows for a payroll period
+- Submit → review → approve / reject pipeline (reuses Phase 6.1 CAB approval pattern)
+- Multi-tier approval (tech → team lead → finance)
+- Per-entry rejection with note ("re-classify this billable entry as project work")
+- Lock approved timesheets — entries can't be retroactively edited after approval
+- Auto-reminder cron at end of payroll period for un-submitted timesheets
+- Bulk-approve UI for managers
+- Export approved timesheets to payroll (CSV / QuickBooks Time / Gusto)
+- Audit trail per entry: who approved, when, with what note
+
+Dependencies: extends Phase 2 (BillableTarget + utilization) + the existing approval queue pattern.
+
+**Goal:** Add billing-grade rigor to time entries before they flow into invoices and commissions.
+
+## Phase 26 — Custom Report Writer + Saved Queries **(L)**
+
+**Roadmap item:** User-defined reports without writing Python. Today reports are templated (Phase 3 ships ~15 canned reports); this phase lets non-developers build their own.
+
+Planned capabilities:
+- Visual query builder — pick model (Ticket / Invoice / TimeEntry / Asset / etc), filters, group-by, aggregates, sort, limit
+- Saved query model — per-org or shared
+- Run as report (renders as table + auto-chart for numeric columns)
+- Schedule a saved query as a recurring email-PDF (extends Phase 3.6 scheduled-reports runner)
+- Pin a saved query as a dashboard widget (extends Phase 3.5 widget registry)
+- Export to CSV / JSON / Excel
+- SQL escape hatch for power users (gated behind a separate permission; sandboxed read-only DB connection)
+- Report-template marketplace — share / import community report definitions
+
+Dependencies: Phase 3.5 (dashboards), Phase 3.6 (scheduled reports).
+
+**Goal:** Reduce the gap between what owners want to know and what's pre-templated.
+
+## Phase 27 — Advanced Accounting Reconciliation **(M)**
+
+**Roadmap item:** Deeper accounting integration than the basic invoice push that ships today (QBO + Xero — Phase shipped earlier). Adds true reconciliation between Client St0r's books and the accounting system.
+
+Planned capabilities:
+- Bidirectional payment sync — when a payment lands in QBO/Xero, mark the source Invoice as paid
+- Invoice deduplication detection (catch double-pushes)
+- Unpaid-vs-pushed reconciliation report (what's invoiced here but missing in QBO?)
+- Per-invoice line-item mapping to GL accounts (revenue vs. cost-of-services-sold splits)
+- Tax reconciliation (compare what we calculated vs. what QBO recorded)
+- Accounts receivable aging tied directly back to QBO/Xero AR
+- Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches)
+- Refund / credit-memo workflows (today only credit-charge type exists)
+- Multi-entity / multi-book support for MSPs operating multiple legal entities
+- Audit trail of every accounting-system interaction (req/resp pairs stored encrypted)
+
+Dependencies: existing AccountingConnection pattern. Builds on Phase 15.
+
+**Goal:** Eliminate manual cross-checking between Client St0r and the accounting system.
+
+## Phase 28 — Browser Extension + Offline Vault Access **(L)**
+
+**Roadmap item:** Chrome / Firefox / Edge extension for password autofill from the vault, plus an offline-capable PWA mode for read-access to the vault.
+
+Planned capabilities:
+- WebExtension (cross-browser via WebExtensions API)
+- One-click autofill on login pages from `vault.Password` matched by URL pattern
+- Master-password unlock (re-derive AES-GCM key locally; never transmit master)
+- Per-organization isolation (extension UI matches the active org context in-app)
+- Offline-encrypted vault cache — last-fetched passwords are stored encrypted under a session key, valid for N hours so a tech can still pull a credential when the server is unreachable
+- TOTP code generation in-extension (existing `totp_secret` field on Password)
+- Audit log of every autofill (logged when the extension reconnects)
+- Generate-strong-password helper (matches the existing in-app generator)
+- Browser-extension specific permissions on RoleTemplate (`vault_extension_use`, `vault_extension_offline_cache`)
+
+Dependencies: existing vault model + AES-GCM key infra. Browser extension is a separate codebase + store-submission process.
+
+**Goal:** Match the IT Glue / Bitwarden experience that techs already expect.
+
+## Phase 29 — Commercial Operations Ecosystem **(continuous · meta)**
+
+**Roadmap item:** Not a feature — the *commercial* support stack around the open-source product: SLAs, professional onboarding, commercial support tiers. This is the ecosystem an enterprise buyer evaluates before adopting a self-hosted MSP platform.
+
+Planned capabilities:
+- Tiered commercial support offering (Bronze / Silver / Gold / Platinum) with response-time SLAs
+- Paid onboarding service — installation, data migration, integration setup
+- Migration scripts for ConnectWise, Autotask, Halo, IT Glue, Hudu (one-time imports)
+- Architect-led implementation packages for installs > 50 techs
+- Per-customer commercial-support portal (dedicated case queue, escalation path)
+- Public status page (https://status.huduglue.example) with planned-maintenance windows
+- Roadmap voting page where commercial customers can prioritize phases
+- Quarterly customer advisory board
+- Public security-disclosure / responsible-disclosure program with bug-bounty
+- SOC 2 readiness (controls inventory + audit trail + auditor-ready evidence pack)
+- Trust portal: vendor security questionnaire pre-answers, DPIA, sub-processor list
+- Commercial license / EULA optionality for enterprise buyers who can't accept MIT-only
+- Reseller / partner program for IT consultancies who deploy on customer premises
+
+Dependencies: this runs alongside the technical phases — the commercial program matures with the product. Items here are not unit-testable; they're operational + organizational.
+
+**Goal:** Provide the commercial trust signals an enterprise buyer expects on top of the open-source product.
+
+## Phase 30 — Endpoint Remote Access (alternative to Phase 24) **(L)**
+
+If Phase 24 (Native RMM) is too large to take on directly, Phase 30 is the smaller-scope remote-access-only slice that doesn't require building a full RMM agent.
+
+Planned capabilities:
+- WebSocket relay service: tech browser ↔ relay ↔ end-user agent
+- Browser-only client (canvas-based VNC-over-WebSocket or RDP-relay)
+- Lightweight per-endpoint helper agent (Windows / macOS / Linux) — accepts inbound relay sessions only; no scripting / no scheduling
+- Recording of sessions (opt-in per client) for audit
+- Per-session approval prompt on the user's screen
+- Permission gates: `remote_access_view`, `remote_access_initiate`, `remote_access_record`
+- Optional integration with existing ScreenConnect / RustDesk / MeshCentral (preferred for installs that already have one)
+
+Dependencies: none direct. Strictly smaller than Phase 24.
+
+**Goal:** Provide remote access without building a full RMM stack.
+
 ---
 
 ## What's explicitly NOT in this plan
@@ -494,9 +629,18 @@ Potential integrations:
 | 21 — Advanced Mobile Technician Workflows | L | 4-6 weeks | requires Phase 8 |
 | 22 — Knowledge Base & SOP Management | M | 2-3 weeks | extends KB v3.17.128/134 |
 | 23 — Security Event & Incident Workflows | L | 4-6 weeks | requires Phase 9 |
+| 24 — Native RMM Agent + Endpoint Mgmt | XL | 6+ months | major undertaking — see notes |
+| 25 — Mature Timesheet Approval Workflows | M | 2-3 weeks | extends Phase 2 + approvals |
+| 26 — Custom Report Writer + Saved Queries | L | 4-5 weeks | extends Phase 3.5 + 3.6 |
+| 27 — Advanced Accounting Reconciliation | M | 2-3 weeks | extends QBO/Xero connection |
+| 28 — Browser Extension + Offline Vault Access | L | 4-5 weeks | separate codebase |
+| 29 — Commercial Operations Ecosystem | Continuous · meta | ongoing | runs alongside |
+| 30 — Endpoint Remote Access (alt to Phase 24) | L | 4-6 weeks | none |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.
 
 **Phase 8** adds another ~2.5-3 months on top, but sub-phase 8.1 (web timeclock + GPS APIs) is shippable as a 2-week chunk well before the mobile app itself.
 
-**Phases 10-23**: long-term operational deepening. None should be positioned as fully implemented today; each extends or adds to the foundations already shipped. Items overlapping shipped phases call out the deltas explicitly. AI-assisted features are explicitly **OPTIONAL AI** and gated by `psa_ai_enabled` (existing pattern from v3.17.125 AI Triage).
+**Phases 10-30**: long-term operational deepening. None should be positioned as fully implemented today; each extends or adds to the foundations already shipped. Items overlapping shipped phases call out the deltas explicitly. AI-assisted features are explicitly **OPTIONAL AI** and gated by `psa_ai_enabled` (existing pattern from v3.17.125 AI Triage).
+
+**Phase 24** is by far the largest — building a self-hosted RMM agent + patch management + scripting + remote access is a multi-quarter program. Phase 30 is the smaller "remote access only" alternative for installs that don't need full RMM.

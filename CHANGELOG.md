@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.161] - 2026-04-30
+
+### Roadmap
+- Added **7 new long-term phases** (24–30) to `docs/ROADMAP.md`, completing the user's requested feature list:
+  - **24** Native RMM Agent + Endpoint Management (XL — patch mgmt + scripting + remote access; alternative to integrating external RMMs)
+  - **25** Mature Timesheet Approval Workflows
+  - **26** Custom Report Writer + Saved Queries
+  - **27** Advanced Accounting Reconciliation (extends QBO/Xero)
+  - **28** Browser Extension + Offline Vault Access
+  - **29** Commercial Operations Ecosystem (continuous · meta — SLA tiers, onboarding, SOC 2 readiness, partner program)
+  - **30** Endpoint Remote Access (smaller alternative to Phase 24)
+- Sizing table updated; total roadmap now spans 30 phases. Items overlapping shipped phases continue to call out the deltas.
+
+### Added — Roadmap published in About page
+- `/core/about/` now has a prominent **Public Roadmap** card with summary of shipped / in-progress / planned phases + buttons to the live in-app roadmap, the GitHub source, and the full CHANGELOG.
+
+### Fixed — Top navbar getting cut off at 100% browser font-size
+With 7+ top-level dropdowns plus brand + search + clock + org pill + user dropdown, the navbar was overflowing on common laptop widths (1366–1600px). Tightened nav-link padding (0.4–0.55rem), shrunk nav-link font to 0.82–0.88rem, narrowed the search box, capped the org-pill width, hid the live clock at narrow desktop sizes, and added flex-wrap fallback so anything still over-running wraps cleanly instead of clipping. Mobile / tablet menus unchanged.
+
 ## [3.17.160] - 2026-04-30
 
 ### Added — Phase 6.2: Problem records + Root-Cause Analysis (ITIL)
