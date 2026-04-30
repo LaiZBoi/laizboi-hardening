@@ -33,7 +33,7 @@ from audit.models import AuditLog
 from core.models import Organization
 
 from .forms import CampaignForm, LeadForm, OpportunityForm
-from .models import Campaign, Lead, Opportunity
+from .models import Campaign, Commission, CommissionRule, Lead, Opportunity
 
 
 # ---------------------------------------------------------------------------
@@ -411,11 +411,41 @@ def opportunity_set_stage(request, pk):
         description=f'Moved opportunity "{opp.name}" {old_stage} → {new_stage}',
         extra={'old_stage': old_stage, 'new_stage': new_stage},
     )
+
+    # Phase 5.2: when transitioning to closed_won, run the commission engine
+    # to create / update a Commission row for the assignee.
+    commission_info = None
+    if new_stage == 'closed_won':
+        from .services import compute_commission_for_opportunity
+        commission = compute_commission_for_opportunity(opp)
+        if commission is not None:
+            _audit(
+                request, action='create', obj=commission,
+                description=(
+                    f'Commission created for "{opp.name}": '
+                    f'${commission.amount} → {commission.user.username} '
+                    f'(rule "{commission.rule.name if commission.rule_id else "—"}")'
+                ),
+                extra={
+                    'opportunity_id': opp.pk,
+                    'commission_id': commission.pk,
+                    'amount': str(commission.amount),
+                    'rule_id': commission.rule_id,
+                },
+            )
+            commission_info = {
+                'id': commission.pk,
+                'amount': str(commission.amount),
+                'user': commission.user.username,
+                'rule': commission.rule.name if commission.rule_id else '',
+            }
+
     return JsonResponse({
         'ok': True,
         'stage': opp.stage,
         'stage_label': opp.get_stage_display(),
         'weighted_value': str(opp.weighted_value.quantize(Decimal('0.01'))),
+        'commission': commission_info,
     })
 
 
@@ -539,4 +569,143 @@ def campaign_detail(request, pk):
         'won_count': won_count,
         'won_value': won_value.quantize(Decimal('0.01')),
         'roi': roi,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.2: Commissions + Commission rules
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm('crm_manage_pipeline')
+def commission_list(request):
+    """Staff list of all commissions, filterable by status / user / period."""
+    qs = Commission.objects.select_related(
+        'opportunity', 'opportunity__client_org', 'user', 'rule',
+    )
+    # Tenant scope: filter by opportunity.organization for current org users
+    if not request.user.is_superuser:
+        org = _current_org(request)
+        if org:
+            qs = qs.filter(opportunity__organization=org)
+        else:
+            qs = qs.none()
+    status = (request.GET.get('status') or '').strip()
+    if status:
+        qs = qs.filter(status=status)
+    user_q = (request.GET.get('user') or '').strip()
+    if user_q:
+        qs = qs.filter(user__username__icontains=user_q)
+    qs = qs.order_by('-earned_at')[:500]
+
+    # Aggregate totals for the filtered subset
+    totals = {
+        'pending': Decimal('0'),
+        'approved': Decimal('0'),
+        'paid': Decimal('0'),
+        'cancelled': Decimal('0'),
+    }
+    for c in qs:
+        totals[c.status] = totals.get(c.status, Decimal('0')) + (c.amount or Decimal('0'))
+
+    ctx = {
+        'commissions': qs,
+        'status': status,
+        'user_q': user_q,
+        'status_choices': Commission.STATUS_CHOICES,
+        'totals': totals,
+        'can_view_forecast': user_has_perm(request.user, 'crm_view_forecast'),
+    }
+    return render(request, 'crm/commission_list.html', ctx)
+
+
+@login_required
+@require_perm('crm_manage_pipeline')
+@require_POST
+def commission_decide(request, pk):
+    """POST action=approve|cancel|paid + reference. Audit-log."""
+    qs = Commission.objects.select_related('opportunity', 'user')
+    if not request.user.is_superuser:
+        org = _current_org(request)
+        if org:
+            qs = qs.filter(opportunity__organization=org)
+        else:
+            qs = qs.none()
+    commission = get_object_or_404(qs, pk=pk)
+
+    action = (request.POST.get('action') or '').strip().lower()
+    reference = (request.POST.get('reference') or '').strip()
+
+    update_fields = []
+    if action == 'approve':
+        commission.status = 'approved'
+        commission.approved_at = timezone.now()
+        commission.approved_by = request.user
+        update_fields = ['status', 'approved_at', 'approved_by']
+        verb = 'Approved'
+    elif action == 'cancel':
+        commission.status = 'cancelled'
+        update_fields = ['status']
+        verb = 'Cancelled'
+    elif action == 'paid':
+        commission.status = 'paid'
+        commission.paid_at = timezone.now()
+        if reference:
+            commission.paid_reference = reference[:80]
+            update_fields.append('paid_reference')
+        update_fields += ['status', 'paid_at']
+        verb = 'Marked paid'
+    else:
+        return HttpResponseBadRequest('invalid action')
+
+    commission.save(update_fields=update_fields)
+    _audit(
+        request, action='update', obj=commission,
+        description=f'{verb} commission #{commission.pk} (${commission.amount}) for {commission.user.username}',
+        extra={'action': action, 'reference': reference},
+    )
+    messages.success(request, f'Commission {verb.lower()}.')
+    return redirect('crm:commission_list')
+
+
+@login_required
+@require_perm('crm_view_forecast')
+def commission_rule_list(request):
+    """Manage commission rules. Sensitive — gated on `crm_view_forecast`."""
+    qs = _scope_qs(request, CommissionRule.objects.select_related('applies_to_user'))
+    qs = qs.order_by('priority', 'name')
+    return render(request, 'crm/commission_rule_list.html', {
+        'rules': qs,
+    })
+
+
+@login_required
+@require_perm('crm_view_forecast')
+def commission_rule_form(request, pk=None):
+    """Create or edit a commission rule."""
+    from .forms import CommissionRuleForm
+    instance = None
+    if pk:
+        instance = get_object_or_404(_scope_qs(request, CommissionRule.objects.all()), pk=pk)
+    if request.method == 'POST':
+        form = CommissionRuleForm(request.POST, instance=instance)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            if not instance:
+                obj.organization = _current_org(request)
+            obj.save()
+            _audit(
+                request,
+                action='update' if instance else 'create',
+                obj=obj,
+                description=f'{"Updated" if instance else "Created"} commission rule {obj.name}',
+            )
+            messages.success(request, 'Commission rule saved.')
+            return redirect('crm:commission_rule_list')
+    else:
+        form = CommissionRuleForm(instance=instance)
+    return render(request, 'crm/commission_rule_form.html', {
+        'form': form,
+        'instance': instance,
+        'title': 'Edit Commission Rule' if instance else 'New Commission Rule',
     })

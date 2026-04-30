@@ -4,7 +4,7 @@ work for create + edit views.
 """
 from django import forms
 
-from .models import Campaign, Lead, Opportunity
+from .models import Campaign, CommissionRule, Lead, Opportunity
 
 
 _BS_CTRL = {'class': 'form-control'}
@@ -55,6 +55,26 @@ class LeadForm(forms.ModelForm):
             'source': forms.TextInput(attrs=_BS_CTRL),
             'campaign': forms.Select(attrs=_BS_SELECT),
             'assigned_to': forms.Select(attrs=_BS_SELECT),
+            'notes': forms.Textarea(attrs={**_BS_CTRL, 'rows': 3}),
+        }
+
+
+class CommissionRuleForm(forms.ModelForm):
+    class Meta:
+        model = CommissionRule
+        fields = [
+            'name', 'is_active', 'priority',
+            'applies_to_user', 'min_value',
+            'rate_pct', 'flat_amount', 'notes',
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs=_BS_CTRL),
+            'is_active': forms.CheckboxInput(attrs=_BS_CHECK),
+            'priority': forms.NumberInput(attrs={**_BS_CTRL, 'min': 0}),
+            'applies_to_user': forms.Select(attrs=_BS_SELECT),
+            'min_value': forms.NumberInput(attrs={**_BS_CTRL, 'step': '0.01', 'min': 0}),
+            'rate_pct': forms.NumberInput(attrs={**_BS_CTRL, 'step': '0.01', 'min': 0, 'max': 100}),
+            'flat_amount': forms.NumberInput(attrs={**_BS_CTRL, 'step': '0.01', 'min': 0}),
             'notes': forms.Textarea(attrs={**_BS_CTRL, 'rows': 3}),
         }
 

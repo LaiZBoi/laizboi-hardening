@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Campaign, Lead, Opportunity
+from .models import Campaign, Commission, CommissionRule, Lead, Opportunity
 
 
 @admin.register(Campaign)
@@ -40,3 +40,28 @@ class OpportunityAdmin(admin.ModelAdmin):
     )
     raw_id_fields = ('client_org', 'organization', 'source_lead', 'quote')
     readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(CommissionRule)
+class CommissionRuleAdmin(admin.ModelAdmin):
+    list_display = (
+        'name', 'organization', 'is_active', 'priority',
+        'applies_to_user', 'min_value', 'rate_pct', 'flat_amount',
+    )
+    list_filter = ('is_active', 'organization')
+    search_fields = ('name', 'notes')
+    autocomplete_fields = ('applies_to_user',)
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(Commission)
+class CommissionAdmin(admin.ModelAdmin):
+    list_display = (
+        'opportunity', 'user', 'amount', 'status',
+        'rule', 'earned_at', 'paid_at',
+    )
+    list_filter = ('status',)
+    search_fields = ('user__username', 'paid_reference')
+    autocomplete_fields = ('user', 'rule', 'approved_by')
+    raw_id_fields = ('opportunity',)
+    readonly_fields = ('earned_at',)

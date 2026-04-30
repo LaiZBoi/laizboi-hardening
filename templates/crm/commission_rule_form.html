@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'crm:commission_rule_list' %}">Commission Rules</a></li>
+        <li class="breadcrumb-item active">{{ title }}</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="fas fa-cogs"></i> {{ title }}</h1>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-header">Identity</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label">Rule name *</label>
+                    {{ form.name }}{{ form.name.errors }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Priority</label>
+                    {{ form.priority }}{{ form.priority.errors }}
+                    <small class="text-muted">Lower = higher priority.</small>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="form-check">
+                        {{ form.is_active }}
+                        <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Active</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Match clauses (all must match — empty = match-all)</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Applies to user</label>
+                    {{ form.applies_to_user }}{{ form.applies_to_user.errors }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Min opportunity value ($)</label>
+                    {{ form.min_value }}{{ form.min_value.errors }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Computation</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Rate (%)</label>
+                    {{ form.rate_pct }}{{ form.rate_pct.errors }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Flat bonus ($)</label>
+                    {{ form.flat_amount }}{{ form.flat_amount.errors }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    {{ form.notes }}{{ form.notes.errors }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Rule</button>
+    <a href="{% url 'crm:commission_rule_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

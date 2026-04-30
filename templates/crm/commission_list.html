@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}CRM — Commissions{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'crm:home' %}">CRM</a></li>
+        <li class="breadcrumb-item active">Commissions</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0"><i class="fas fa-hand-holding-usd"></i> Commissions</h1>
+    {% if can_view_forecast %}
+    <a href="{% url 'crm:commission_rule_list' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-cogs"></i> Manage Rules
+    </a>
+    {% endif %}
+</div>
+
+<div class="row mb-3 g-2">
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <small class="text-muted">Pending</small>
+                <h5 class="mb-0">${{ totals.pending|floatformat:2|intcomma }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <small class="text-muted">Approved</small>
+                <h5 class="mb-0">${{ totals.approved|floatformat:2|intcomma }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body py-2">
+                <small class="text-muted">Paid</small>
+                <h5 class="mb-0">${{ totals.paid|floatformat:2|intcomma }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-secondary">
+            <div class="card-body py-2">
+                <small class="text-muted">Cancelled</small>
+                <h5 class="mb-0">${{ totals.cancelled|floatformat:2|intcomma }}</h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-3">
+        <select name="status" class="form-select">
+            <option value="">All statuses</option>
+            {% for code, label in status_choices %}
+            <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <input type="text" name="user" value="{{ user_q }}" class="form-control" placeholder="Filter by user...">
+    </div>
+    <div class="col-md-2">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
+    </div>
+</form>
+
+<div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>Opportunity</th>
+                <th>User</th>
+                <th>Rule</th>
+                <th class="text-end">Amount</th>
+                <th>Status</th>
+                <th>Earned</th>
+                <th>Paid Ref</th>
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in commissions %}
+            <tr>
+                <td>
+                    <a href="{% url 'crm:opportunity_detail' c.opportunity_id %}">
+                        {{ c.opportunity.name|truncatechars:40 }}
+                    </a>
+                    {% if c.opportunity.client_org %}
+                    <br><small class="text-muted">{{ c.opportunity.client_org.name }}</small>
+                    {% endif %}
+                </td>
+                <td>{{ c.user.username }}</td>
+                <td><small>{{ c.rule.name|default:"—" }}</small></td>
+                <td class="text-end"><strong>${{ c.amount|floatformat:2|intcomma }}</strong></td>
+                <td>
+                    {% if c.status == 'pending' %}<span class="badge text-bg-warning">{{ c.get_status_display }}</span>
+                    {% elif c.status == 'approved' %}<span class="badge text-bg-info">{{ c.get_status_display }}</span>
+                    {% elif c.status == 'paid' %}<span class="badge text-bg-success">{{ c.get_status_display }}</span>
+                    {% else %}<span class="badge text-bg-secondary">{{ c.get_status_display }}</span>{% endif %}
+                </td>
+                <td><small class="text-muted">{{ c.earned_at|date:"M j, Y" }}</small></td>
+                <td><small class="text-muted">{{ c.paid_reference|default:"—" }}</small></td>
+                <td class="text-end">
+                    {% if c.status == 'pending' %}
+                    <form method="post" action="{% url 'crm:commission_decide' c.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="approve">
+                        <button class="btn btn-sm btn-outline-info" title="Approve"><i class="fas fa-check"></i></button>
+                    </form>
+                    <form method="post" action="{% url 'crm:commission_decide' c.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="cancel">
+                        <button class="btn btn-sm btn-outline-secondary" title="Cancel"><i class="fas fa-ban"></i></button>
+                    </form>
+                    {% endif %}
+                    {% if c.status == 'approved' %}
+                    <form method="post" action="{% url 'crm:commission_decide' c.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="paid">
+                        <input type="text" name="reference" placeholder="Payroll ref" class="form-control form-control-sm d-inline-block" style="width: 110px;">
+                        <button class="btn btn-sm btn-outline-success" title="Mark Paid"><i class="fas fa-money-check"></i></button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-4">No commissions yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

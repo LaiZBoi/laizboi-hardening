@@ -101,6 +101,10 @@ class Lead(models.Model):
         related_name='+', null=True, blank=True,
     )
 
+    # Phase 5.2: lead scoring (auto-computed in save())
+    score = models.PositiveSmallIntegerField(default=0,
+        help_text='0-100 auto-computed by the lead scoring service. Higher = hotter.')
+
     created_by = models.ForeignKey(
         django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='created_leads',
@@ -123,6 +127,16 @@ class Lead(models.Model):
     @property
     def contact_full_name(self):
         return ' '.join(filter(None, [self.contact_first_name, self.contact_last_name]))
+
+    def save(self, *args, **kwargs):
+        """Auto-score on each save unless explicitly skipped via skip_score=True."""
+        if not kwargs.pop('skip_score', False):
+            from .services import score_lead
+            try:
+                self.score = score_lead(self)
+            except Exception:
+                pass
+        super().save(*args, **kwargs)
 
 
 class Opportunity(models.Model):
@@ -204,3 +218,114 @@ class Opportunity(models.Model):
     def weighted_value(self):
         from decimal import Decimal
         return (self.estimated_value or Decimal('0')) * Decimal(self.probability_pct) / Decimal('100')
+
+
+class CommissionRule(models.Model):
+    """
+    Per-tenant rule that decides how to compute commission on a closed-won
+    Opportunity. Multiple rules can match — the highest-priority active
+    rule wins (deterministic via `priority` int).
+    """
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='crm_commission_rules',
+    )
+    name = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True)
+    priority = models.PositiveIntegerField(default=100,
+        help_text='Lower number = higher priority (matches first).')
+
+    # Match clauses — all must match (empty = match-all)
+    applies_to_user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        help_text='Restrict to a specific tech/sales user. Blank = applies to anyone.',
+    )
+    min_value = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+        help_text='Only opportunities with estimated_value >= this. 0 = no floor.')
+
+    # Computation
+    rate_pct = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+        help_text='Commission as a % of opportunity estimated_value.')
+    flat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+        help_text='Fixed bonus on top of % (or instead, when rate_pct=0).')
+
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_commission_rules'
+        ordering = ['priority', 'name']
+        indexes = [models.Index(fields=['organization', 'is_active', 'priority'])]
+
+    def __str__(self):
+        return f'{self.name} ({self.rate_pct}% + ${self.flat_amount})'
+
+    def matches(self, opportunity):
+        if not self.is_active:
+            return False
+        if self.applies_to_user_id and opportunity.assigned_to_id != self.applies_to_user_id:
+            return False
+        if self.min_value and (opportunity.estimated_value or 0) < self.min_value:
+            return False
+        return True
+
+    def compute(self, opportunity):
+        from decimal import Decimal
+        ev = opportunity.estimated_value or Decimal('0')
+        return (ev * Decimal(self.rate_pct) / Decimal('100')) + (self.flat_amount or Decimal('0'))
+
+
+class Commission(models.Model):
+    """
+    Commission earned by a user on a closed-won Opportunity. Created by
+    the engine when an Opportunity transitions to closed_won. One row
+    per (opportunity, user) — typically just the assigned_to.
+
+    Status pipeline: pending → approved → paid; or cancelled.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('approved', 'Approved'),
+        ('paid', 'Paid'),
+        ('cancelled', 'Cancelled'),
+    ]
+    opportunity = models.ForeignKey(
+        'crm.Opportunity', on_delete=models.CASCADE,
+        related_name='commissions',
+    )
+    user = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='crm_commissions',
+    )
+    rule = models.ForeignKey(
+        CommissionRule, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='commissions',
+        help_text='Which rule produced this commission (audit).',
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    earned_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    paid_at = models.DateTimeField(null=True, blank=True)
+    paid_reference = models.CharField(max_length=80, blank=True,
+        help_text='Payroll reference / batch ID.')
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'crm_commissions'
+        ordering = ['-earned_at']
+        unique_together = [['opportunity', 'user']]
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['opportunity']),
+        ]
+
+    def __str__(self):
+        return f'{self.user.username}: ${self.amount} ({self.get_status_display()})'

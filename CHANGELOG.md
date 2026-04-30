@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.153] - 2026-04-29
+
+### Added — Phase 5.2: Commission engine + Lead scoring + Sales funnel report
+- New `crm.CommissionRule` model — per-tenant rule with `priority` ordering, optional user/value match clauses, `rate_pct` + `flat_amount` payout. Highest-priority active rule wins.
+- New `crm.Commission` model — pending → approved → paid pipeline. Auto-created when an Opportunity transitions to `closed_won` via the new `compute_commission_for_opportunity()` engine. Idempotent: re-runs update, never duplicate.
+- New `Lead.score` field (0-100) auto-computed in `Lead.save()` via a heuristic scorer in `crm/services.py` — bumps for estimated_value, target industries, employee count, contact data completeness, website, campaign attribution, ownership.
+- New report `/reports/crm/sales-funnel/` — visual funnel from Leads → Qualified → Opportunities → Proposal → Closed Won with stage-to-stage conversion %. Date-range selector. Permission: `crm_view_forecast`.
+- New CRM pages: `/crm/commissions/` + `/crm/commission-rules/`. Decide endpoint approves / cancels / marks paid with payroll reference + audit log.
+- Tests in `crm.tests` cover rule matching, computation, engine idempotence, scoring, funnel.
+
+Phase 5 sub-phase left: 5.3 Sales-activity timeline + lead capture endpoints (web form / IMAP / API).
+
+### Migrations
+`crm.0002_lead_score_commissionrule_commission_and_more` (CommissionRule, Commission, Lead.score).
+
 ## [3.17.152] - 2026-04-29
 
 ### Added — Phase 5.1: CRM foundation (Lead / Opportunity / Campaign + pipeline Kanban)

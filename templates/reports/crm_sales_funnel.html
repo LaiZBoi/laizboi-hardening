@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Sales Funnel Report{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+            <li class="breadcrumb-item active">Sales Funnel</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h2 mb-0"><i class="fas fa-funnel-dollar"></i> Sales Funnel</h1>
+        <small class="text-muted">{{ start|date:"M j, Y" }} → {{ end|date:"M j, Y" }}</small>
+    </div>
+
+    <form method="get" class="mb-4">
+        <div class="btn-group" role="group" aria-label="Date range">
+            <a href="?days=7" class="btn btn-{% if days_label == '7' %}primary{% else %}outline-primary{% endif %}">7d</a>
+            <a href="?days=30" class="btn btn-{% if days_label == '30' %}primary{% else %}outline-primary{% endif %}">30d</a>
+            <a href="?days=90" class="btn btn-{% if days_label == '90' %}primary{% else %}outline-primary{% endif %}">90d</a>
+            <a href="?days=YTD" class="btn btn-{% if days_label == 'YTD' %}primary{% else %}outline-primary{% endif %}">YTD</a>
+        </div>
+    </form>
+
+    <!-- Headline KPIs -->
+    <div class="row mb-4 g-3">
+        <div class="col-md-4">
+            <div class="card border-success">
+                <div class="card-body">
+                    <small class="text-muted">Total Won (period)</small>
+                    <h2 class="mb-0">${{ funnel.total_won_value|floatformat:0|intcomma }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-info">
+                <div class="card-body">
+                    <small class="text-muted">Lead-to-Won conversion</small>
+                    <h2 class="mb-0">{{ funnel.conversion_rates.lead_to_won }}%</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-warning">
+                <div class="card-body">
+                    <small class="text-muted">Proposal-to-Won conversion</small>
+                    <h2 class="mb-0">{{ funnel.conversion_rates.proposal_to_closed_won }}%</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Funnel visualization -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Funnel</h5>
+        </div>
+        <div class="card-body">
+            {% with stages=funnel.stages %}
+            {% for stage in stages %}
+                {% with sf=forloop.counter0 %}
+                {# Bar width shrinks with each stage. Use the first non-zero count
+                   as the divisor so the chart is meaningful even with empty stages. #}
+                {% if forloop.first %}
+                    {% with first_count=stage.count %}
+                    <div class="d-flex align-items-center mb-2">
+                        <div style="width: 130px;"><strong>{{ stage.name }}</strong></div>
+                        <div class="flex-grow-1">
+                            <div class="progress" style="height: 32px;">
+                                <div class="progress-bar bg-primary"
+                                     role="progressbar"
+                                     style="width: 100%;"
+                                     aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">
+                                    {{ stage.count }}{% if stage.value %} — ${{ stage.value|floatformat:0|intcomma }}{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endwith %}
+                {% else %}
+                    {# Compute width as percentage of stage[0].count
+                       Fall-through approach: use raw stage.count and let div size show shrinkage. #}
+                    <div class="d-flex align-items-center mb-2">
+                        <div style="width: 130px;"><strong>{{ stage.name }}</strong></div>
+                        <div class="flex-grow-1">
+                            <div class="progress" style="height: 32px;">
+                                <div class="progress-bar bg-{% if forloop.last %}success{% elif forloop.counter0 == 1 %}info{% elif forloop.counter0 == 2 %}primary{% else %}warning{% endif %}"
+                                     role="progressbar"
+                                     data-stage-count="{{ stage.count }}"
+                                     style="width: {% widthratio stage.count stages.0.count 100 %}%;">
+                                    {{ stage.count }}{% if stage.value %} — ${{ stage.value|floatformat:0|intcomma }}{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+
+                {# Conversion-rate chip between stages #}
+                {% if not forloop.last %}
+                    <div class="text-center text-muted mb-2" style="margin-left: 130px;">
+                        <small>
+                            <i class="fas fa-arrow-down"></i>
+                            {% if forloop.counter0 == 0 %}
+                                {{ funnel.conversion_rates.lead_to_qualified }}% lead → qualified
+                            {% elif forloop.counter0 == 1 %}
+                                {{ funnel.conversion_rates.qualified_to_opp }}% qualified → opportunity
+                            {% elif forloop.counter0 == 2 %}
+                                {{ funnel.conversion_rates.opp_to_proposal }}% opp → proposal
+                            {% elif forloop.counter0 == 3 %}
+                                {{ funnel.conversion_rates.proposal_to_closed_won }}% proposal → won
+                            {% endif %}
+                        </small>
+                    </div>
+                {% endif %}
+                {% endwith %}
+            {% endfor %}
+            {% endwith %}
+        </div>
+    </div>
+
+    <!-- Detail table -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Stage detail</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Stage</th>
+                        <th class="text-end">Count</th>
+                        <th class="text-end">Pipeline Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in funnel.stages %}
+                    <tr>
+                        <td><strong>{{ s.name }}</strong></td>
+                        <td class="text-end">{{ s.count }}</td>
+                        <td class="text-end">{% if s.value %}${{ s.value|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

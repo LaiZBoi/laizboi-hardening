@@ -44,6 +44,7 @@
                 <th>Contact</th>
                 <th>Email</th>
                 <th>Status</th>
+                <th class="text-end">Score</th>
                 <th class="text-end">Value</th>
                 <th>Campaign</th>
                 <th>Owner</th>
@@ -65,13 +66,16 @@
                     {% else %}<span class="badge text-bg-secondary">{{ l.get_status_display }}</span>
                     {% endif %}
                 </td>
+                <td class="text-end">
+                    <span class="badge text-bg-{% if l.score >= 70 %}danger{% elif l.score >= 40 %}warning{% else %}light text-dark{% endif %}">{{ l.score }}</span>
+                </td>
                 <td class="text-end">${{ l.estimated_value|floatformat:2|intcomma }}</td>
                 <td><small>{{ l.campaign.name|default:"—" }}</small></td>
                 <td><small>{{ l.assigned_to.username|default:"—" }}</small></td>
                 <td><small class="text-muted">{{ l.created_at|date:"M j, Y" }}</small></td>
             </tr>
             {% empty %}
-            <tr><td colspan="8" class="text-center text-muted py-4">No leads found.</td></tr>
+            <tr><td colspan="9" class="text-center text-muted py-4">No leads found.</td></tr>
             {% endfor %}
         </tbody>
     </table>

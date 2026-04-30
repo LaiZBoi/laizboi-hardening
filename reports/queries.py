@@ -1325,3 +1325,81 @@ def client_health_scores_all(organization_filter=None):
         if s:
             rows.append(s)
     return sorted(rows, key=lambda r: r['score'])
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.2 — CRM sales funnel
+# ---------------------------------------------------------------------------
+
+def sales_funnel(start_date, end_date, organization=None):
+    """
+    Sales funnel conversion rates across the period.
+
+    Stages tracked:
+      Leads created → Leads qualified → Opportunities created
+      → Proposal stage → Closed Won
+
+    Returns dict:
+      {
+        'stages': [
+          {'name': 'Leads', 'count': N, 'value': 0},
+          {'name': 'Qualified', 'count': N, 'value': 0},
+          {'name': 'Opportunities', 'count': N, 'value': sum estimated_value},
+          {'name': 'Proposal', 'count': N, 'value': sum},
+          {'name': 'Closed Won', 'count': N, 'value': sum},
+        ],
+        'conversion_rates': {  # stage_to_stage percentages
+          'lead_to_qualified': float,
+          'qualified_to_opp': float,
+          'opp_to_proposal': float,
+          'proposal_to_closed_won': float,
+          'lead_to_won': float,  # end-to-end
+        },
+        'total_won_value': float,
+      }
+    """
+    from crm.models import Lead, Opportunity
+    leads_qs = Lead.objects.filter(
+        created_at__date__gte=start_date, created_at__date__lte=end_date,
+    )
+    if organization is not None:
+        leads_qs = leads_qs.filter(organization=organization)
+    leads_n = leads_qs.count()
+    qualified_n = leads_qs.filter(status__in=['qualified', 'converted']).count()
+
+    opps_qs = Opportunity.objects.filter(
+        created_at__date__gte=start_date, created_at__date__lte=end_date,
+    )
+    if organization is not None:
+        opps_qs = opps_qs.filter(organization=organization)
+    opps_n = opps_qs.count()
+    opps_value = float(sum((o.estimated_value or 0) for o in opps_qs))
+
+    proposal_qs = opps_qs.filter(stage__in=['proposal', 'negotiation', 'closed_won'])
+    proposal_n = proposal_qs.count()
+    proposal_value = float(sum((o.estimated_value or 0) for o in proposal_qs))
+
+    won_qs = opps_qs.filter(stage='closed_won')
+    won_n = won_qs.count()
+    won_value = float(sum((o.estimated_value or 0) for o in won_qs))
+
+    def pct(num, den):
+        return round((num / den * 100) if den else 0.0, 1)
+
+    return {
+        'stages': [
+            {'name': 'Leads', 'count': leads_n, 'value': 0},
+            {'name': 'Qualified', 'count': qualified_n, 'value': 0},
+            {'name': 'Opportunities', 'count': opps_n, 'value': opps_value},
+            {'name': 'Proposal', 'count': proposal_n, 'value': proposal_value},
+            {'name': 'Closed Won', 'count': won_n, 'value': won_value},
+        ],
+        'conversion_rates': {
+            'lead_to_qualified': pct(qualified_n, leads_n),
+            'qualified_to_opp': pct(opps_n, qualified_n),
+            'opp_to_proposal': pct(proposal_n, opps_n),
+            'proposal_to_closed_won': pct(won_n, proposal_n),
+            'lead_to_won': pct(won_n, leads_n),
+        },
+        'total_won_value': won_value,
+    }

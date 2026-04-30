@@ -50,6 +50,7 @@ def reports_home(request):
         'view_capacity': user_has_perm(request.user, 'reports_view_capacity'),
         'manage_dashboards': user_has_perm(request.user, 'reports_manage_dashboards'),
         'manage_scheduled': user_has_perm(request.user, 'reports_manage_scheduled'),
+        'crm_view_forecast': user_has_perm(request.user, 'crm_view_forecast'),
     }
 
     context = {
@@ -1803,4 +1804,40 @@ def psa_client_health(request):
         return resp
     return render(request, 'reports/psa_client_health.html', {
         'rows': rows, 'summary': summary,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.2 — CRM sales funnel report
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm('crm_view_forecast')
+def crm_sales_funnel(request):
+    """
+    Visual funnel from Leads → Qualified → Opportunities → Proposal → Closed
+    Won, with stage-to-stage conversion rates. Date-range selector via
+    ?days=7|30|90|YTD; defaults to 30.
+    """
+    from .queries import sales_funnel
+    today = date.today()
+    days_raw = (request.GET.get('days') or '30').strip()
+    if days_raw.upper() == 'YTD':
+        days_label = 'YTD'
+        start = date(today.year, 1, 1)
+        days = (today - start).days + 1
+    else:
+        try:
+            days = max(1, int(days_raw))
+        except (TypeError, ValueError):
+            days = 30
+        days_label = str(days)
+        start = today - timedelta(days=days - 1)
+    funnel = sales_funnel(start, today)
+    return render(request, 'reports/crm_sales_funnel.html', {
+        'funnel': funnel,
+        'days': days,
+        'days_label': days_label,
+        'start': start,
+        'end': today,
     })

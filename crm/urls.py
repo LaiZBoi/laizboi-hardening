@@ -28,4 +28,11 @@ urlpatterns = [
     path('campaigns/new/', views.campaign_form, name='campaign_create'),
     path('campaigns/<int:pk>/', views.campaign_detail, name='campaign_detail'),
     path('campaigns/<int:pk>/edit/', views.campaign_form, name='campaign_edit'),
+
+    # Phase 5.2 — Commissions + Commission Rules
+    path('commissions/', views.commission_list, name='commission_list'),
+    path('commissions/<int:pk>/decide/', views.commission_decide, name='commission_decide'),
+    path('commission-rules/', views.commission_rule_list, name='commission_rule_list'),
+    path('commission-rules/new/', views.commission_rule_form, name='commission_rule_create'),
+    path('commission-rules/<int:pk>/edit/', views.commission_rule_form, name='commission_rule_edit'),
 ]

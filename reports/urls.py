@@ -76,5 +76,7 @@ urlpatterns = [
     path('exec-scorecard/', views.exec_scorecard, name='exec_scorecard'),
     # Phase 3.6 wave B — Client-health score (v3.17.147)
     path('psa/client-health/', views.psa_client_health, name='psa_client_health'),
+    # Phase 5.2 — CRM sales funnel
+    path('crm/sales-funnel/', views.crm_sales_funnel, name='crm_sales_funnel'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]
