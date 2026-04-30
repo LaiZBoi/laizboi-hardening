@@ -43,7 +43,8 @@ Most-requested feature class. Big surface, but builds entirely on Phase 1+2 foun
 - **Margin analytics** by service line *(3.4 — shipped v3.17.143)*
 - **Custom dashboards** — drag-and-drop widgets sourced from the canonical query layer *(3.5 — shipped v3.17.142)*
 - **Scheduled reports** — cron-style, email PDF/CSV *(3.6 wave B — shipped v3.17.147)*
-- **Wallboard view** — TV-ready big-number display (active tickets, breaches, MTTR, queue depth) *(3.6 wave A — shipped v3.17.146)*
+- **Wallboard view** — TV-ready big-number display (active tickets, breaches, MTTR, queue depth) *(3.6 wave A — shipped v3.17.146; basic 6-tile fixed layout)*
+- **Configurable wallboards with widgets** *(planned)* — multiple named wallboards per org, drag-to-reorder widget grid, pick widgets from the existing dashboard widget registry (v3.17.142), per-wallboard refresh interval, "rotate through wallboards" mode for NOC TVs
 - **Executive scorecard** — single page rolling 30-day MSP KPIs *(3.6 wave A — shipped v3.17.146)*
 - **Client-health score** — composite of SLA hits, ticket velocity, NPS proxy, billing aging *(3.6 wave B — shipped v3.17.147)*
 
@@ -83,7 +84,7 @@ Extends existing tickets + approvals; doesn't fork into a separate model layer.
 - **Service-catalog governance** — approval gate on catalog item changes *(6.3 — shipped v3.17.165)*
 - MSP-named sample role templates seeded by `RoleTemplate.get_or_create_system_templates()`: Client, Client Admin, Technician, Tech Manager, Office Manager, Full Admin (in addition to the existing Owner/Administrator/Editor/Help Desk/IT Manager/Documentation Writer/Read-Only) *(shipped v3.17.164)*
 
-## Phase 7 — Outsourcing, integrations, polish **(continuous track)**
+## Phase 7 — Outsourcing, integrations, polish **(continuous track)** [in progress]
 
 Not a single phase — runs alongside 1-6.
 

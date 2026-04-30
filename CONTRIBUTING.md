@@ -82,20 +82,29 @@ Unsure where to begin? Look for issues labeled:
 
 ### Roadmap discipline
 
-`docs/ROADMAP.md` is the single source of truth for shipped + in-progress + planned features. It's rendered live in three places:
+`docs/ROADMAP.md` is the single source of truth for shipped + in-progress + planned features. It's rendered live in **four** places:
 
-- **In-app** at `/core/roadmap/`
+- **In-app HTML** at `/core/roadmap/`
 - **About page** card (`/core/about/`)
 - **GitHub** at the file directly
+- **Polling JSON feed** at `/core/roadmap.json` — for external dashboards / status pages / customer portals
 
 **Rule**: every release that adds, extends, or completes a feature MUST update `docs/ROADMAP.md` in the same commit. Don't split it.
 
-How to apply:
+How to apply (sub-bullet version annotations):
 - Annotate the matching bullet with the version: `*(shipped v3.17.NNN)*` or `*(partial — X shipped v3.17.NNN; Y deferred)*`
-- When a phase completes, change its header to `**— complete**` or `[complete]`
 - For new feature requests not yet on the roadmap, ADD them as planned items first
 - Update the **Sizing table** at the bottom when adding new phases
 - AI-assisted features must be tagged **OPTIONAL AI**
+
+How to apply (phase-header status — REQUIRED for the JSON feed):
+- The JSON feed parses each `## Phase N — Title ...` header to compute status. Use **one of these markers** on the header line:
+  - `[planned]` (or no marker)
+  - `[in progress]`
+  - `[shipped — v3.17.NNN]` ← preferred when a single-version phase completes
+  - `[complete]` ← preferred when the entire phase including sub-phases is done
+  - `**— shipped**` or `**— complete**` (legacy inline form, still parseable)
+- **When a phase completes, always update the header marker** — otherwise the website's polling shows it as planned. The JSON feed enums status as `planned` / `in_progress` / `shipped` / `complete`.
 
 **Wording rule**: roadmap prose may not position the project as "X parity" or "matches Y's wedge" against named competitors. Describe what the product does on its own merits. Integration listings (e.g. "We integrate with ConnectWise Manage") ARE factual feature statements and should remain.
 

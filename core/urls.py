@@ -23,6 +23,7 @@ urlpatterns = [
     path('documentation/', views.documentation, name='documentation'),
     path('about/', views.about, name='about'),
     path('roadmap/', views.roadmap, name='roadmap'),
+    path('roadmap.json', views.roadmap_status_json, name='roadmap_status_json'),
     path('free-consult/', views.free_consult, name='free_consult'),
     path('free-consult/requests/', views.consult_requests, name='consult_requests'),
     path('install/', views.install_app, name='install_app'),

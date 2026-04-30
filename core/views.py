@@ -58,6 +58,106 @@ def roadmap(request):
     })
 
 
+def roadmap_status_json(request):
+    """
+    Polling-friendly JSON view of roadmap phase status, parsed from
+    `docs/ROADMAP.md`. Lets external dashboards / status pages /
+    customer portals refresh themselves without scraping HTML.
+
+    Convention (CLAUDE.md): each top-level phase header looks like:
+        ## Phase N — Title **(SIZE)** [STATUS]
+    where STATUS is one of `complete` / `in progress` / `shipped`
+    (with optional version e.g. `[shipped — v3.17.NNN]` or
+    `**— shipped**`). Sub-bullets carry per-item status via
+    `*(shipped vN.N.N)*` or `*(planned)*` annotations.
+
+    Response shape:
+      {
+        "generated_at": "2026-04-30T...",
+        "current_version": "3.17.NNN",
+        "phases": [
+          {"number": 1, "title": "...", "status": "complete",
+           "size": "M · foundation", "version": null},
+          ...
+        ]
+      }
+    """
+    import re
+    from datetime import datetime
+    from pathlib import Path
+    from django.conf import settings
+    from django.http import JsonResponse
+    from django.views.decorators.cache import cache_page
+
+    base = getattr(settings, 'BASE_DIR', Path(__file__).resolve().parent.parent)
+    path = Path(base) / 'docs' / 'ROADMAP.md'
+    try:
+        raw = path.read_text(encoding='utf-8')
+    except OSError:
+        return JsonResponse(
+            {'error': 'roadmap not found', 'phases': []}, status=503
+        )
+
+    # Match `## Phase N — Title  **(SIZE)** [optional status]`
+    # Handles `[complete]`, `[in progress]`, `[shipped — v3.17.NNN]`,
+    # and inline `**— shipped**` / `**— complete**` markers.
+    phase_re = re.compile(
+        r'^##\s+Phase\s+(?P<num>\d+(?:\.\d+)?)'
+        r'\s*[—\-]\s*(?P<title>.+?)'
+        r'(?:\s*\*\*\((?P<size>[^)]+)\)\*\*)?'
+        r'(?:\s*\*\*[—\-]\s*(?P<inline_status>shipped|complete)\*\*)?'
+        r'(?:\s*\[(?P<bracket_status>[^\]]+)\])?'
+        r'\s*$',
+        re.MULTILINE,
+    )
+    version_re = re.compile(r'v(\d+\.\d+\.\d+)')
+
+    phases = []
+    for m in phase_re.finditer(raw):
+        bracket = (m.group('bracket_status') or '').strip().lower()
+        inline = (m.group('inline_status') or '').strip().lower()
+        # Normalize status into one of: complete / shipped / in_progress / planned
+        status = 'planned'
+        if 'complete' in bracket or inline == 'complete':
+            status = 'complete'
+        elif 'shipped' in bracket or inline == 'shipped':
+            status = 'shipped'
+        elif 'in progress' in bracket or 'in-progress' in bracket:
+            status = 'in_progress'
+
+        # Pull a version number out of the bracket if present
+        v = version_re.search(bracket) if bracket else None
+        version = v.group(1) if v else None
+
+        try:
+            phase_num = float(m.group('num')) if '.' in m.group('num') else int(m.group('num'))
+        except (ValueError, TypeError):
+            phase_num = m.group('num')
+
+        phases.append({
+            'number': phase_num,
+            'title': m.group('title').strip(),
+            'size': (m.group('size') or '').strip() or None,
+            'status': status,
+            'version': version,
+        })
+
+    # Current installed version
+    try:
+        from config.version import VERSION as current_version
+    except Exception:
+        current_version = None
+
+    return JsonResponse({
+        'generated_at': datetime.utcnow().isoformat() + 'Z',
+        'current_version': current_version,
+        'roadmap_source_url': 'https://github.com/agit8or1/clientst0r/blob/main/docs/ROADMAP.md',
+        'phase_count': len(phases),
+        'shipped_count': sum(1 for p in phases if p['status'] in ('shipped', 'complete')),
+        'phases': phases,
+    })
+
+
 def about(request):
     """
     About page with version and system information.

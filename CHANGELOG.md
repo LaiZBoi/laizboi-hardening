@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.167] - 2026-04-30
+
+### Added — Roadmap status JSON feed for external pollers
+- New endpoint **`GET /core/roadmap.json`** — parses `docs/ROADMAP.md` and emits a structured JSON feed of phase status. Lets external dashboards / status pages / customer portals refresh themselves without HTML scraping.
+- Response shape: `{generated_at, current_version, phase_count, shipped_count, phases: [{number, title, size, status, version}, ...]}`. Status enum: `planned` / `in_progress` / `shipped` / `complete`.
+- Verified parser: 31 phases extracted, 6 currently shipped/complete on the production checkout.
+
+### Added — Roadmap entry: Configurable wallboards with widgets
+- Added under Phase 3 (Financial Reporting + BI) as a planned extension of the existing v3.17.146 fixed wallboard. Multiple named wallboards per org, drag-to-reorder widget grid sourced from the existing dashboard widget registry, per-wallboard refresh interval, "rotate through wallboards" mode for NOC TVs.
+
+### Changed — Roadmap-update rule expanded for the JSON feed
+- `CLAUDE.md`, `CONTRIBUTING.md`, and persistent assistant memory now require **phase-header status markers** in addition to the existing per-bullet version annotations.
+- Each `## Phase N — Title ...` header should carry one of: `[planned]` / `[in progress]` / `[shipped — v3.17.NNN]` / `[complete]` (or the legacy `**— shipped**` / `**— complete**` inline form).
+- When a phase completes, **always update the header marker** — otherwise the website's polling shows it as planned. Phase 7's header is now `[in progress]` reflecting the partial-shipped state from v3.17.166.
+
 ## [3.17.166] - 2026-04-30
 
 ### Added — Phase 7 (partial): Outsourcing workflow + Integration SDK skeleton
