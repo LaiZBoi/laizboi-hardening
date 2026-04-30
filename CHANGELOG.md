@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.157] - 2026-04-29
+
+### Fixed — Generated Reports list now actionable for legacy + failed rows
+User reported they had no way to view or download reports at `/reports/generated/`. Root cause: rows generated before the v3.17.154 file-save fix have `status='completed'` but no `report.file` populated — and the templates only rendered View/Download buttons when `report.file` was truthy. So legacy completed-without-file rows had only a "View Details" link with no recovery path.
+
+Fixed:
+- **List page** Actions cell now shows a yellow **Re-generate** button when `report.file` is missing — POSTs to `reports:generate_report` with the original format. Works for legacy rows AND for previously-failed rows.
+- **Status footnote** under Actions: shows the truncated error message inline for failed rows; shows "File missing — re-generate" for completed-but-fileless rows.
+- **Detail page** mirrors the same logic: Re-generate button in the header when there's no file; alert banner inside the card explaining whether the file is missing (legacy) or the generation failed (with the full error message in a `<pre>`).
+- Distinguished the "View Details" icon button (info) from the actual "View PDF" / "Download X" action buttons (primary / success) so users can tell at a glance which control downloads vs. which inspects metadata.
+
 ## [3.17.156] - 2026-04-29
 
 ### Fixed

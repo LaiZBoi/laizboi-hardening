@@ -15,20 +15,28 @@
                     </h4>
                     <div class="btn-group">
                         {% if report.file %}
-                        {% with ext=report.format|lower %}
-                        {% if ext == 'pdf' %}
-                        <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-primary" target="_blank" rel="noopener">
-                            <i class="bi bi-eye me-2"></i>View PDF
-                        </a>
-                        {% else %}
-                        <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-success">
-                            <i class="bi bi-download me-2"></i>Download {{ ext|upper }}
-                        </a>
-                        {% endif %}
-                        <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-outline-secondary" title="Download original file">
-                            <i class="bi bi-file-earmark-arrow-down me-2"></i>Download original
-                        </a>
-                        {% endwith %}
+                            {% with ext=report.format|lower %}
+                            {% if ext == 'pdf' %}
+                            <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-primary" target="_blank" rel="noopener">
+                                <i class="bi bi-eye me-2"></i>View PDF
+                            </a>
+                            {% else %}
+                            <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-success">
+                                <i class="bi bi-download me-2"></i>Download {{ ext|upper }}
+                            </a>
+                            {% endif %}
+                            <a href="{% url 'reports:generated_download' report.pk %}" class="btn btn-outline-secondary" title="Download original file">
+                                <i class="bi bi-file-earmark-arrow-down me-2"></i>Download original
+                            </a>
+                            {% endwith %}
+                        {% elif report.template_id %}
+                            <form method="post" action="{% url 'reports:generate_report' report.template_id %}" class="d-inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="format" value="{{ report.format }}">
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="bi bi-arrow-clockwise me-2"></i>Re-generate
+                                </button>
+                            </form>
                         {% endif %}
                         <a href="{% url 'reports:generated_list' %}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left me-2"></i>Back to List
@@ -36,6 +44,25 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    {% if report.status == 'completed' and not report.file %}
+                    <div class="alert alert-warning d-flex align-items-start gap-2 mb-3">
+                        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                        <div>
+                            <strong>Report file missing.</strong>
+                            This report was marked completed but no file is attached on disk.
+                            This typically affects reports created before v3.17.154 (which fixed the file-save flow).
+                            Click <strong>Re-generate</strong> above to recreate the artifact.
+                        </div>
+                    </div>
+                    {% elif report.status == 'failed' and report.error_message %}
+                    <div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
+                        <i class="bi bi-x-circle-fill fs-5"></i>
+                        <div>
+                            <strong>Generation failed.</strong>
+                            <pre class="mb-0 mt-1 small" style="white-space: pre-wrap;">{{ report.error_message }}</pre>
+                        </div>
+                    </div>
+                    {% endif %}
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <h6 class="text-muted">Template</h6>
