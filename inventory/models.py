@@ -85,6 +85,14 @@ class InventoryItem(BaseModel):
     reorder_quantity = models.IntegerField(default=0, help_text='Quantity to reorder when low')
     reorder_link = models.URLField(blank=True, help_text='URL to purchase / reorder this item')
 
+    # Phase 4.3 — auto-replenish hints
+    preferred_vendor = models.ForeignKey(
+        'assets.Vendor', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='preferred_inventory_items',
+        help_text='Vendor to suggest in auto-replenish.',
+    )
+    last_replenished_at = models.DateTimeField(null=True, blank=True)
+
     # Cost
     unit_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 

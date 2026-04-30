@@ -2201,6 +2201,16 @@ class PurchaseOrder(models.Model):
         related_name='purchase_orders', null=True, blank=True,
     )
     po_number = models.CharField(max_length=30, unique=True)  # PO-YYYY-NNNNN
+    # Phase 4.3 — link to assets.Vendor for procurement metadata.
+    # vendor_name / email / phone / address remain as snapshot fields so
+    # historic POs render correctly even if the vendor row is later edited.
+    vendor = models.ForeignKey(
+        'assets.Vendor',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='purchase_orders',
+        help_text='Link to assets.Vendor for procurement metadata; '
+                  'snapshot fields below are auto-filled at save time.',
+    )
     vendor_name = models.CharField(max_length=200)
     vendor_email = models.EmailField(blank=True)
     vendor_phone = models.CharField(max_length=40, blank=True)

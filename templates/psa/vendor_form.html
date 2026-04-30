@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}{% if vendor %}Edit{% else %}New{% endif %} Vendor — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:vendor_list' %}">Vendors</a></li>
+        <li class="breadcrumb-item active">{% if vendor %}{{ vendor.name }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h4 class="mb-2">{% if vendor %}Edit Vendor — {{ vendor.name }}{% else %}New Vendor{% endif %}</h4>
+
+<form method="post" class="card vendor-form">
+    {% csrf_token %}
+    <div class="card-body py-2">
+        <div class="row g-2 small">
+            <div class="col-md-8">
+                <label class="form-label">Vendor name</label>
+                <input type="text" name="name" class="form-control form-control-sm"
+                       required value="{{ vendor.name|default:'' }}">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="is_active" name="is_active"
+                           {% if not vendor or vendor.is_active %}checked{% endif %}>
+                    <label class="form-check-label" for="is_active">Active</label>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <label class="form-label">Description</label>
+                <textarea name="description" rows="2" class="form-control form-control-sm">{{ vendor.description|default:'' }}</textarea>
+            </div>
+
+            <div class="col-12 mt-3"><h6 class="mb-1">Procurement metadata</h6></div>
+
+            <div class="col-md-3">
+                <label class="form-label">Lead time (days)</label>
+                <input type="number" min="0" max="365" name="default_lead_time_days"
+                       class="form-control form-control-sm"
+                       value="{{ vendor.default_lead_time_days|default:7 }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Payment terms</label>
+                <select name="payment_terms" class="form-select form-select-sm">
+                    <option value="" {% if not vendor.payment_terms %}selected{% endif %}>—</option>
+                    {% for code, label in payment_terms_choices %}
+                    <option value="{{ code }}" {% if vendor.payment_terms == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Preferred contact</label>
+                <select name="preferred_contact_method" class="form-select form-select-sm">
+                    <option value="" {% if not vendor.preferred_contact_method %}selected{% endif %}>—</option>
+                    {% for code, label in contact_method_choices %}
+                    <option value="{{ code }}" {% if vendor.preferred_contact_method == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Distributor link</label>
+                <select name="distributor_provider" class="form-select form-select-sm">
+                    <option value="" {% if not vendor.distributor_provider %}selected{% endif %}>—</option>
+                    <option value="ingram" {% if vendor.distributor_provider == 'ingram' %}selected{% endif %}>Ingram</option>
+                    <option value="pax8" {% if vendor.distributor_provider == 'pax8' %}selected{% endif %}>Pax8</option>
+                    <option value="synnex" {% if vendor.distributor_provider == 'synnex' %}selected{% endif %}>Synnex</option>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Contact email</label>
+                <input type="email" name="contact_email" class="form-control form-control-sm"
+                       value="{{ vendor.contact_email|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Contact phone</label>
+                <input type="text" name="contact_phone" class="form-control form-control-sm"
+                       value="{{ vendor.contact_phone|default:'' }}">
+            </div>
+
+            <div class="col-md-8">
+                <label class="form-label">Billing address</label>
+                <textarea name="billing_address" rows="2" class="form-control form-control-sm">{{ vendor.billing_address|default:'' }}</textarea>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Account number</label>
+                <input type="text" name="account_number" class="form-control form-control-sm"
+                       value="{{ vendor.account_number|default:'' }}">
+            </div>
+
+            <div class="col-12 mt-3"><h6 class="mb-1">Support / general info</h6></div>
+
+            <div class="col-md-6">
+                <label class="form-label">Website</label>
+                <input type="url" name="website" class="form-control form-control-sm"
+                       value="{{ vendor.website|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Support URL</label>
+                <input type="url" name="support_url" class="form-control form-control-sm"
+                       value="{{ vendor.support_url|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Support phone</label>
+                <input type="text" name="support_phone" class="form-control form-control-sm"
+                       value="{{ vendor.support_phone|default:'' }}">
+            </div>
+
+            <div class="col-12">
+                <label class="form-label">Notes</label>
+                <textarea name="notes" rows="3" class="form-control form-control-sm">{{ vendor.notes|default:'' }}</textarea>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer py-2">
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        {% if vendor %}
+        <a href="{% url 'psa:vendor_detail' vendor.pk %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+        {% else %}
+        <a href="{% url 'psa:vendor_list' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+        {% endif %}
+    </div>
+</form>
+
+<style>
+.vendor-form .form-label { margin-bottom: .15rem; font-size: .8rem; color: var(--bs-secondary-color); }
+</style>
+{% endblock %}

@@ -3139,3 +3139,148 @@ class POReceivingTests(TestCase):
         bo.refresh_from_db()
         self.assertEqual(bo.status, 'cancelled')
         self.assertIsNotNone(bo.closed_at)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.3 — Vendor metadata + auto-replenish
+# ---------------------------------------------------------------------------
+
+class VendorMetadataTests(TestCase):
+    """assets.Vendor procurement metadata + PO vendor-FK auto-fill."""
+
+    def test_vendor_default_lead_time(self):
+        from assets.models import Vendor
+        v = Vendor.objects.create(name='ACME Distribution', slug='acme-dist')
+        self.assertEqual(v.default_lead_time_days, 7)
+        self.assertEqual(v.payment_terms, '')
+        self.assertEqual(v.preferred_contact_method, '')
+        self.assertTrue(v.is_active)
+
+    def test_vendor_metadata_fields_persist(self):
+        from assets.models import Vendor
+        v = Vendor.objects.create(
+            name='Ingram', slug='ingram',
+            default_lead_time_days=14,
+            payment_terms='net_30',
+            preferred_contact_method='email',
+            contact_email='orders@ingram.com',
+            contact_phone='555-1212',
+            billing_address='1 Main St',
+            account_number='ACCT-99',
+            distributor_provider='ingram',
+            notes='Primary distributor.',
+        )
+        v.refresh_from_db()
+        self.assertEqual(v.default_lead_time_days, 14)
+        self.assertEqual(v.payment_terms, 'net_30')
+        self.assertEqual(v.contact_email, 'orders@ingram.com')
+        self.assertEqual(v.distributor_provider, 'ingram')
+
+    def test_po_vendor_fk_link(self):
+        """PurchaseOrder.vendor FK persists alongside snapshot fields."""
+        from assets.models import Vendor
+        from psa.models import PurchaseOrder
+        v = Vendor.objects.create(
+            name='Vendor X', slug='vendor-x',
+            contact_email='x@v.com', default_lead_time_days=10,
+        )
+        org = Organization.objects.create(name='POVendorCo', slug='povc')
+        po = PurchaseOrder.objects.create(
+            organization=org, vendor=v, vendor_name='Vendor X',
+            vendor_email='x@v.com', title='FK test',
+        )
+        po.refresh_from_db()
+        self.assertEqual(po.vendor_id, v.pk)
+        # purchase_orders related_name on Vendor
+        self.assertEqual(v.purchase_orders.count(), 1)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class AutoReplenishTests(TestCase):
+    """psa_auto_replenish_suggestions: scan + grouping + dedupe."""
+
+    def setUp(self):
+        from inventory.models import InventoryItem
+        from assets.models import Vendor
+        # MSP org for the command's PR-creation step
+        self.org = Organization.objects.create(
+            name='ReplenishCo', slug='replenish-co', is_active=True,
+        )
+        self.vendor = Vendor.objects.create(name='Auto Vendor', slug='auto-vendor')
+        # Below-minimum item with a preferred vendor
+        self.item = InventoryItem.objects.create(
+            organization=self.org,
+            name='Patch cable 6ft', sku='PC-6',
+            quantity=1, min_quantity=5,
+            reorder_quantity=10,
+            preferred_vendor=self.vendor,
+            unit_cost='3.50',
+        )
+        # Below-minimum item with NO vendor — should still log
+        self.item_no_vendor = InventoryItem.objects.create(
+            organization=self.org,
+            name='Cat6 jack', sku='J-CAT6',
+            quantity=0, min_quantity=20,
+        )
+
+    def test_scan_finds_below_minimum_items(self):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        call_command('psa_auto_replenish_suggestions', '--dry-run', stdout=out)
+        text = out.getvalue()
+        self.assertIn('Patch cable 6ft', text)
+        self.assertIn('Cat6 jack', text)
+        self.assertIn('Found 2 items below minimum', text)
+
+    def test_create_prs_groups_by_vendor(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from inventory.models import InventoryItem
+        from psa.models import PurchaseRequisition
+
+        # Add 2nd item from same vendor — should land in same PR
+        InventoryItem.objects.create(
+            organization=self.org,
+            name='Patch cable 25ft', sku='PC-25',
+            quantity=0, min_quantity=5,
+            reorder_quantity=10,
+            preferred_vendor=self.vendor,
+        )
+
+        out = StringIO()
+        call_command('psa_auto_replenish_suggestions', '--create-prs', stdout=out)
+
+        # Two vendors total: Auto Vendor (2 items) + null (Cat6 jack)
+        prs = PurchaseRequisition.objects.filter(status='draft')
+        # One PR per vendor
+        self.assertGreaterEqual(prs.count(), 1)
+        auto_pr = prs.filter(title__icontains='Auto Vendor').first()
+        self.assertIsNotNone(auto_pr)
+        self.assertEqual(auto_pr.line_items.count(), 2)
+
+    def test_skips_items_already_on_open_pr(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from psa.models import PurchaseRequisition, PurchaseRequisitionLineItem
+
+        # Create an existing draft PR with the SKU we'd otherwise auto-suggest
+        existing = PurchaseRequisition.objects.create(
+            organization=self.org, title='Manual PR', status='draft',
+        )
+        PurchaseRequisitionLineItem.objects.create(
+            requisition=existing, description='Patch cable 6ft',
+            sku='PC-6', quantity=1, unit_price=0,
+        )
+
+        out = StringIO()
+        call_command('psa_auto_replenish_suggestions', '--create-prs', stdout=out)
+
+        # Auto-replenish should not create a new PR with PC-6 since it's
+        # already on an open PR. Item without a SKU (Cat6 jack — has SKU
+        # 'J-CAT6' which isn't on any PR) WILL get a new PR.
+        new_prs = PurchaseRequisition.objects.filter(
+            title__icontains='Auto-replenish').all()
+        for pr in new_prs:
+            for li in pr.line_items.all():
+                self.assertNotEqual(li.sku, 'PC-6')

@@ -4357,6 +4357,10 @@ def po_form(request, pk=None):
 
     client_orgs = Organization.objects.filter(is_active=True).order_by('name')
 
+    # Phase 4.3: list of selectable vendors for the FK dropdown
+    from assets.models import Vendor as ProcurementVendor
+    vendor_choices = ProcurementVendor.objects.filter(is_active=True).order_by('name')
+
     def _render():
         return render(request, 'psa/po_form.html', {
             'item': item,
@@ -4364,6 +4368,7 @@ def po_form(request, pk=None):
             'status_choices': PurchaseOrder.STATUS_CHOICES,
             'line_items': item.line_items.all() if item else [],
             'selected_org_id': item.organization_id if item else (org.pk if org else None),
+            'vendor_choices': vendor_choices,
         })
 
     if request.method == 'POST':
@@ -4380,8 +4385,22 @@ def po_form(request, pk=None):
             messages.error(request, 'Please choose an MSP organization for this PO.')
             return _render()
 
+        # Phase 4.3 — vendor FK lookup (optional). If set, snapshot fields
+        # auto-fill from the vendor row when the corresponding form field
+        # is blank.
+        vendor_obj = None
+        vendor_id = (request.POST.get('vendor') or '').strip()
+        if vendor_id:
+            try:
+                vendor_obj = ProcurementVendor.objects.get(pk=int(vendor_id))
+            except (ProcurementVendor.DoesNotExist, ValueError, TypeError):
+                vendor_obj = None
+
         title = (request.POST.get('title') or '').strip()
         vendor_name = (request.POST.get('vendor_name') or '').strip()
+        # If user picked a vendor and didn't type a name, fall back to vendor.name
+        if not vendor_name and vendor_obj:
+            vendor_name = vendor_obj.name
         if not title or not vendor_name:
             messages.error(request, 'Title and vendor name are required.')
             return _render()
@@ -4401,15 +4420,37 @@ def po_form(request, pk=None):
             )
         item.organization = item_org
         item.client_org = client_org
+        item.vendor = vendor_obj
         item.title = title[:200]
         item.vendor_name = vendor_name[:200]
-        item.vendor_email = (request.POST.get('vendor_email') or '').strip()[:254]
-        item.vendor_phone = (request.POST.get('vendor_phone') or '').strip()[:40]
-        item.vendor_address = (request.POST.get('vendor_address') or '').strip()
+        # Auto-fill snapshot fields from the vendor when the form field is blank
+        posted_vendor_email = (request.POST.get('vendor_email') or '').strip()
+        posted_vendor_phone = (request.POST.get('vendor_phone') or '').strip()
+        posted_vendor_address = (request.POST.get('vendor_address') or '').strip()
+        if vendor_obj:
+            posted_vendor_email = posted_vendor_email or (vendor_obj.contact_email or '')
+            posted_vendor_phone = posted_vendor_phone or (vendor_obj.contact_phone or '')
+            posted_vendor_address = posted_vendor_address or (vendor_obj.billing_address or '')
+        item.vendor_email = posted_vendor_email[:254]
+        item.vendor_phone = posted_vendor_phone[:40]
+        item.vendor_address = posted_vendor_address
         item.notes = (request.POST.get('notes') or '').strip()
         item.status = request.POST.get('status') or 'draft'
         item.issue_date = request.POST.get('issue_date') or None
-        item.expected_delivery_date = request.POST.get('expected_delivery_date') or None
+        # Auto-fill expected delivery from issue_date + vendor lead time when
+        # blank and a vendor is set.
+        expected = request.POST.get('expected_delivery_date') or None
+        if not expected and vendor_obj and item.issue_date:
+            from datetime import timedelta as _td
+            try:
+                expected = (item.issue_date + _td(days=vendor_obj.default_lead_time_days)).isoformat() \
+                    if hasattr(item.issue_date, 'isoformat') else None
+            except Exception:
+                expected = None
+        elif not expected and vendor_obj:
+            from datetime import date as _d, timedelta as _td
+            expected = (_d.today() + _td(days=vendor_obj.default_lead_time_days)).isoformat()
+        item.expected_delivery_date = expected or None
         item.is_drop_ship = request.POST.get('is_drop_ship') == 'on'
         item.ship_to_name = (request.POST.get('ship_to_name') or '').strip()[:200]
         item.ship_to_address = (request.POST.get('ship_to_address') or '').strip()
@@ -4725,3 +4766,156 @@ def back_order_cancel(request, pk):
     else:
         messages.info(request, 'Back-order is not open; nothing changed.')
     return redirect('psa:back_order_list')
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.3 — Vendor CRUD (procurement metadata on assets.Vendor)
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+def vendor_list(request):
+    """List all procurement vendors with key metadata + open POs counts."""
+    from assets.models import Vendor
+    from .models import PurchaseOrder
+    from datetime import timedelta as _td
+    from django.db.models import Count, Sum, Q
+    from accounts.permission_utils import user_has_perm
+
+    cutoff = timezone.now() - _td(days=30)
+    open_statuses = ['draft', 'sent', 'acknowledged', 'partial']
+    vendors = Vendor.objects.annotate(
+        open_pos_count=Count(
+            'purchase_orders',
+            filter=Q(purchase_orders__status__in=open_statuses),
+        ),
+        spend_30d=Sum(
+            'purchase_orders__total',
+            filter=Q(purchase_orders__created_at__gte=cutoff),
+        ),
+    ).order_by('name')
+
+    show_inactive = (request.GET.get('show_inactive') or '0') == '1'
+    if not show_inactive:
+        vendors = vendors.filter(is_active=True)
+
+    return render(request, 'psa/vendor_list.html', {
+        'vendors': vendors,
+        'show_inactive': show_inactive,
+        'can_edit': user_has_perm(request.user, 'procurement_create_po'),
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_view')
+def vendor_detail(request, pk):
+    """Vendor detail: metadata header, open POs, recent POs, 90d spend."""
+    from assets.models import Vendor
+    from .models import PurchaseOrder
+    from datetime import timedelta as _td
+    from decimal import Decimal as _Dec
+    from django.db.models import Sum
+    from accounts.permission_utils import user_has_perm
+
+    vendor = get_object_or_404(Vendor, pk=pk)
+
+    pos = PurchaseOrder.objects.filter(vendor=vendor)
+    open_statuses = ['draft', 'sent', 'acknowledged', 'partial']
+    closed_statuses = ['received', 'cancelled', 'void']
+
+    open_pos = pos.filter(status__in=open_statuses).select_related(
+        'client_org', 'organization').order_by('-created_at')
+    recent_pos = pos.filter(status__in=closed_statuses).select_related(
+        'client_org', 'organization').order_by('-created_at')[:10]
+
+    cutoff = timezone.now() - _td(days=90)
+    spend_90d = pos.filter(created_at__gte=cutoff).aggregate(
+        total=Sum('total'))['total'] or _Dec('0')
+
+    return render(request, 'psa/vendor_detail.html', {
+        'vendor': vendor,
+        'open_pos': open_pos,
+        'recent_pos': recent_pos,
+        'spend_90d': spend_90d,
+        'can_edit': user_has_perm(request.user, 'procurement_create_po'),
+    })
+
+
+@login_required
+@require_psa_enabled
+@require_perm('procurement_create_po')
+@require_http_methods(['GET', 'POST'])
+def vendor_form(request, pk=None):
+    """Create or edit a procurement vendor."""
+    from assets.models import Vendor
+    from django.utils.text import slugify
+
+    vendor = get_object_or_404(Vendor, pk=pk) if pk else None
+
+    if request.method == 'POST':
+        name = (request.POST.get('name') or '').strip()
+        if not name:
+            messages.error(request, 'Vendor name is required.')
+            return render(request, 'psa/vendor_form.html', {
+                'vendor': vendor,
+                'payment_terms_choices': Vendor.PAYMENT_TERMS_CHOICES,
+                'contact_method_choices': Vendor.CONTACT_METHOD_CHOICES,
+            })
+
+        if vendor is None:
+            base = slugify(name) or 'vendor'
+            slug = base
+            i = 2
+            while Vendor.objects.filter(slug=slug).exists():
+                slug = f'{base}-{i}'
+                i += 1
+            vendor = Vendor(name=name, slug=slug)
+        else:
+            vendor.name = name[:200]
+
+        # Basic fields
+        vendor.website = (request.POST.get('website') or '').strip()[:200]
+        vendor.support_url = (request.POST.get('support_url') or '').strip()[:200]
+        vendor.support_phone = (request.POST.get('support_phone') or '').strip()[:50]
+        vendor.description = (request.POST.get('description') or '').strip()
+        vendor.is_active = (request.POST.get('is_active') == 'on')
+
+        # Procurement metadata
+        try:
+            lt = int(request.POST.get('default_lead_time_days') or 7)
+            vendor.default_lead_time_days = max(0, min(lt, 365))
+        except (TypeError, ValueError):
+            vendor.default_lead_time_days = 7
+        valid_terms = {c[0] for c in Vendor.PAYMENT_TERMS_CHOICES}
+        terms = (request.POST.get('payment_terms') or '').strip()
+        vendor.payment_terms = terms if terms in valid_terms else ''
+        valid_methods = {c[0] for c in Vendor.CONTACT_METHOD_CHOICES}
+        method = (request.POST.get('preferred_contact_method') or '').strip()
+        vendor.preferred_contact_method = method if method in valid_methods else ''
+        vendor.contact_email = (request.POST.get('contact_email') or '').strip()[:254]
+        vendor.contact_phone = (request.POST.get('contact_phone') or '').strip()[:40]
+        vendor.billing_address = (request.POST.get('billing_address') or '').strip()
+        vendor.account_number = (request.POST.get('account_number') or '').strip()[:80]
+        vendor.notes = (request.POST.get('notes') or '').strip()
+        vendor.distributor_provider = (request.POST.get('distributor_provider') or '').strip()[:40]
+
+        vendor.save()
+
+        AuditLog.log(
+            user=request.user, action='update' if pk else 'create',
+            organization=None,
+            object_type='assets.Vendor', object_id=vendor.pk,
+            object_repr=vendor.name,
+            description=f'{"Updated" if pk else "Created"} vendor {vendor.name}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        messages.success(request, f'Saved vendor "{vendor.name}".')
+        return redirect('psa:vendor_detail', pk=vendor.pk)
+
+    return render(request, 'psa/vendor_form.html', {
+        'vendor': vendor,
+        'payment_terms_choices': Vendor.PAYMENT_TERMS_CHOICES,
+        'contact_method_choices': Vendor.CONTACT_METHOD_CHOICES,
+    })

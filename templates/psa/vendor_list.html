@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}PSA — Vendors{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item active">Vendors</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="fas fa-truck me-2"></i>Vendors</h2>
+    {% if can_edit %}
+    <a href="{% url 'psa:vendor_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> New Vendor</a>
+    {% endif %}
+</div>
+
+<form method="get" class="mb-3">
+    <div class="form-check form-check-inline">
+        <input type="checkbox" name="show_inactive" value="1" id="show_inactive"
+               class="form-check-input" {% if show_inactive %}checked{% endif %}
+               onchange="this.form.submit()">
+        <label class="form-check-label small" for="show_inactive">Show inactive</label>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Name</th>
+                    <th>Payment terms</th>
+                    <th>Lead time</th>
+                    <th class="text-end">Open POs</th>
+                    <th class="text-end">Spend (30d)</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in vendors %}
+                <tr>
+                    <td>
+                        <a href="{% url 'psa:vendor_detail' v.pk %}"><strong>{{ v.name }}</strong></a>
+                        {% if v.distributor_provider %}
+                        <span class="badge text-bg-light ms-1">{{ v.distributor_provider }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ v.get_payment_terms_display|default:'—' }}</td>
+                    <td>{{ v.default_lead_time_days }}d</td>
+                    <td class="text-end">{{ v.open_pos_count|default:0 }}</td>
+                    <td class="text-end">${{ v.spend_30d|default:'0.00' }}</td>
+                    <td>
+                        {% if v.is_active %}
+                        <span class="badge text-bg-success">Active</span>
+                        {% else %}
+                        <span class="badge text-bg-secondary">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-nowrap">
+                        <a href="{% url 'psa:vendor_detail' v.pk %}" class="btn btn-sm btn-outline-secondary" title="View"><i class="fas fa-eye"></i></a>
+                        {% if can_edit %}
+                        <a href="{% url 'psa:vendor_edit' v.pk %}" class="btn btn-sm btn-outline-secondary" title="Edit"><i class="fas fa-pen"></i></a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">No vendors yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

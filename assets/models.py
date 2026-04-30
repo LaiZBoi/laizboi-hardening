@@ -663,6 +663,45 @@ class Vendor(BaseModel):
         help_text="Additional vendor metadata"
     )
 
+    # ---- Procurement-specific vendor relationship metadata (Phase 4.3) ----
+    PAYMENT_TERMS_CHOICES = [
+        ('net_15', 'Net 15'),
+        ('net_30', 'Net 30'),
+        ('net_45', 'Net 45'),
+        ('net_60', 'Net 60'),
+        ('cod', 'Cash on Delivery'),
+        ('prepaid', 'Prepaid'),
+        ('credit_card', 'Credit Card'),
+    ]
+    CONTACT_METHOD_CHOICES = [
+        ('email', 'Email'),
+        ('phone', 'Phone'),
+        ('portal', 'Vendor Portal'),
+    ]
+
+    default_lead_time_days = models.PositiveSmallIntegerField(
+        default=7,
+        help_text='Typical days from PO sent to delivery. Used for auto-replenish '
+                  'expected_delivery_date.',
+    )
+    payment_terms = models.CharField(
+        max_length=40, blank=True,
+        choices=PAYMENT_TERMS_CHOICES,
+    )
+    preferred_contact_method = models.CharField(
+        max_length=20, blank=True,
+        choices=CONTACT_METHOD_CHOICES,
+    )
+    contact_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=40, blank=True)
+    billing_address = models.TextField(blank=True)
+    account_number = models.CharField(max_length=80, blank=True)
+    notes = models.TextField(blank=True)
+    distributor_provider = models.CharField(
+        max_length=40, blank=True,
+        help_text='Optional link to existing distributor integration: ingram / pax8 / synnex / etc.',
+    )
+
     class Meta:
         db_table = 'vendors'
         ordering = ['name']

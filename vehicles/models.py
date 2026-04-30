@@ -268,6 +268,14 @@ class VehicleInventoryItem(BaseModel):
         help_text="Link to reorder (Amazon, eBay, supplier website, etc.)"
     )
 
+    # Phase 4.3 — auto-replenish hints
+    preferred_vendor = models.ForeignKey(
+        'assets.Vendor', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='preferred_vehicle_inventory_items',
+        help_text='Vendor to suggest in auto-replenish.',
+    )
+    last_replenished_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = 'vehicle_inventory_items'
         ordering = ['category', 'name']
@@ -888,6 +896,14 @@ class ShopInventoryItem(BaseModel):
     # Reordering
     qr_code = models.CharField(max_length=200, blank=True)
     reorder_link = models.URLField(max_length=500, blank=True)
+
+    # Phase 4.3 — auto-replenish hints
+    preferred_vendor = models.ForeignKey(
+        'assets.Vendor', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='preferred_shop_inventory_items',
+        help_text='Vendor to suggest in auto-replenish.',
+    )
+    last_replenished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'vehicle_shop_inventory'

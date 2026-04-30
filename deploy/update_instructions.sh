@@ -229,6 +229,15 @@ if ! crontab -l 2>/dev/null | grep -q "run_scheduled_reports"; then
         || log "[WARN] Scheduled reports cron setup failed (non-critical)"
 fi
 
+# Auto-replenish scan — daily at 06:00, log only (no auto-PR creation)
+# (v3.17.150 — Phase 4.3) PR creation via --create-prs is admin-triggered.
+PSA_REPLENISH="0 6 * * * $VENV_DIR/bin/python $BASE_DIR/manage.py psa_auto_replenish_suggestions >/dev/null 2>&1"
+if ! crontab -l 2>/dev/null | grep -q "psa_auto_replenish_suggestions"; then
+    ( (crontab -l 2>/dev/null; echo "$PSA_REPLENISH") | crontab - \
+        && log "Cron job configured for stock-minimum scan" ) \
+        || log "[WARN] Stock-minimum scan cron setup failed (non-critical)"
+fi
+
 # =====================================================================
 # Step 5: Clear Python bytecode cache + graceful reload
 # =====================================================================

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}{{ vendor.name }} — Vendor — PSA{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+        <li class="breadcrumb-item"><a href="{% url 'psa:ticket_list' %}">PSA</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'psa:vendor_list' %}">Vendors</a></li>
+        <li class="breadcrumb-item active">{{ vendor.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">
+        <i class="fas fa-truck me-2"></i>{{ vendor.name }}
+        {% if not vendor.is_active %}<span class="badge text-bg-secondary ms-2">Inactive</span>{% endif %}
+    </h2>
+    {% if can_edit %}
+    <a href="{% url 'psa:vendor_edit' vendor.pk %}" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-pen"></i> Edit
+    </a>
+    {% endif %}
+</div>
+
+<div class="row g-2">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-body py-2 small">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <div class="text-muted small">Lead time</div>
+                        <div><strong>{{ vendor.default_lead_time_days }} days</strong></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small">Payment terms</div>
+                        <div><strong>{{ vendor.get_payment_terms_display|default:'—' }}</strong></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small">Preferred contact</div>
+                        <div><strong>{{ vendor.get_preferred_contact_method_display|default:'—' }}</strong></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Email</div>
+                        <div>{{ vendor.contact_email|default:'—' }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Phone</div>
+                        <div>{{ vendor.contact_phone|default:'—' }}</div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="text-muted small">Billing address</div>
+                        <div style="white-space: pre-wrap;">{{ vendor.billing_address|default:'—' }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small">Account number</div>
+                        <div>{{ vendor.account_number|default:'—' }}</div>
+                    </div>
+                    {% if vendor.distributor_provider %}
+                    <div class="col-md-4">
+                        <div class="text-muted small">Distributor link</div>
+                        <div><span class="badge text-bg-light">{{ vendor.distributor_provider }}</span></div>
+                    </div>
+                    {% endif %}
+                    {% if vendor.website %}
+                    <div class="col-md-4">
+                        <div class="text-muted small">Website</div>
+                        <div><a href="{{ vendor.website }}" target="_blank" rel="noopener">{{ vendor.website }}</a></div>
+                    </div>
+                    {% endif %}
+                    {% if vendor.notes %}
+                    <div class="col-12 mt-2">
+                        <div class="text-muted small">Notes</div>
+                        <div style="white-space: pre-wrap;">{{ vendor.notes }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body py-3 text-center">
+                <div class="text-muted small">Total spend (90d)</div>
+                <h3 class="mb-0">${{ spend_90d|default:'0.00' }}</h3>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-body py-2 small">
+                <div class="d-flex justify-content-between"><span class="text-muted">Open POs</span><strong>{{ open_pos|length }}</strong></div>
+                <div class="d-flex justify-content-between"><span class="text-muted">Recent closed POs</span><strong>{{ recent_pos|length }}</strong></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header py-2"><strong>Open POs</strong></div>
+    <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+                <tr><th>Number</th><th>Title</th><th>Client</th><th>Status</th><th class="text-end">Total</th><th>Issued</th></tr>
+            </thead>
+            <tbody>
+                {% for po in open_pos %}
+                <tr>
+                    <td><a href="{% url 'psa:po_detail' po.pk %}">{{ po.po_number }}</a></td>
+                    <td>{{ po.title|truncatechars:50 }}</td>
+                    <td>{{ po.client_org.name|default:'—' }}</td>
+                    <td>
+                        {% if po.status == 'draft' %}<span class="badge text-bg-secondary">Draft</span>
+                        {% elif po.status == 'sent' %}<span class="badge text-bg-primary">Sent</span>
+                        {% elif po.status == 'acknowledged' %}<span class="badge text-bg-info">Acknowledged</span>
+                        {% elif po.status == 'partial' %}<span class="badge text-bg-warning">Partial</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ po.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td class="text-end">${{ po.total }}</td>
+                    <td>{{ po.issue_date|default:'—' }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-3">No open POs.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header py-2"><strong>Recent closed POs</strong></div>
+    <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+                <tr><th>Number</th><th>Title</th><th>Client</th><th>Status</th><th class="text-end">Total</th><th>Issued</th></tr>
+            </thead>
+            <tbody>
+                {% for po in recent_pos %}
+                <tr>
+                    <td><a href="{% url 'psa:po_detail' po.pk %}">{{ po.po_number }}</a></td>
+                    <td>{{ po.title|truncatechars:50 }}</td>
+                    <td>{{ po.client_org.name|default:'—' }}</td>
+                    <td>
+                        {% if po.status == 'received' %}<span class="badge text-bg-success">Received</span>
+                        {% elif po.status == 'cancelled' %}<span class="badge text-bg-secondary">Cancelled</span>
+                        {% elif po.status == 'void' %}<span class="badge text-bg-dark">Void</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ po.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td class="text-end">${{ po.total }}</td>
+                    <td>{{ po.issue_date|default:'—' }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-3">No recent closed POs.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -13,6 +13,8 @@ For 'table', 'list': {'columns': [str], 'rows': [[any]]}
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.db import models
+
 
 def _last_n_days(n=30):
     today = date.today()
@@ -243,6 +245,22 @@ def client_health_breakdown(params):
     return {'labels': list(counts.keys()), 'data': list(counts.values())}
 
 
+# ---- Phase 4.3 — Auto-replenish ------------------------------------------
+
+def low_stock_items(params):
+    """Top N items below minimum stock — grouped by name only."""
+    rows = []
+    try:
+        from inventory.models import InventoryItem
+        for it in InventoryItem.objects.filter(
+            quantity__lte=models.F('min_quantity')
+        ).exclude(min_quantity=0)[:10]:
+            rows.append([str(it), str(it.quantity), str(it.min_quantity)])
+    except Exception:
+        pass
+    return {'columns': ['Item', 'In stock', 'Minimum'], 'rows': rows}
+
+
 # ---- Registry --------------------------------------------------------------
 
 REGISTRY = {
@@ -264,6 +282,8 @@ REGISTRY = {
     'hours_split_pie': hours_split_pie,
     'sla_breach_trend': sla_breach_trend,
     'client_health_breakdown': client_health_breakdown,
+    # phase 4.3
+    'low_stock_items': low_stock_items,
 }
 
 DATA_SOURCE_CHOICES = [
@@ -283,6 +303,7 @@ DATA_SOURCE_CHOICES = [
     ('hours_split_pie', 'Billable vs non-billable (pie chart)', 'chart_pie'),
     ('sla_breach_trend', 'SLA breach trend 30d (line chart)', 'chart_line'),
     ('client_health_breakdown', 'Client health breakdown (pie)', 'chart_pie'),
+    ('low_stock_items', 'Low stock items (table)', 'table'),
 ]
 
 

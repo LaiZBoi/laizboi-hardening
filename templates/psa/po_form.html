@@ -51,29 +51,44 @@
             </div>
 
             <div class="col-md-4">
+                <label class="form-label">Vendor (Phase 4.3)</label>
+                <select name="vendor" id="po-vendor-select" class="form-select form-select-sm">
+                    <option value="" data-name="" data-email="" data-phone="" data-address="" data-lead="">— None —</option>
+                    {% for v in vendor_choices %}
+                    <option value="{{ v.pk }}"
+                            data-name="{{ v.name }}"
+                            data-email="{{ v.contact_email }}"
+                            data-phone="{{ v.contact_phone }}"
+                            data-address="{{ v.billing_address }}"
+                            data-lead="{{ v.default_lead_time_days }}"
+                            {% if item.vendor_id == v.pk %}selected{% endif %}>{{ v.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
                 <label class="form-label">Vendor name</label>
-                <input type="text" name="vendor_name" class="form-control form-control-sm" required value="{{ item.vendor_name|default:'' }}">
+                <input type="text" name="vendor_name" id="po-vendor-name" class="form-control form-control-sm" required value="{{ item.vendor_name|default:'' }}">
             </div>
             <div class="col-md-4">
                 <label class="form-label">Vendor email</label>
-                <input type="email" name="vendor_email" class="form-control form-control-sm" value="{{ item.vendor_email|default:'' }}">
+                <input type="email" name="vendor_email" id="po-vendor-email" class="form-control form-control-sm" value="{{ item.vendor_email|default:'' }}">
             </div>
             <div class="col-md-4">
                 <label class="form-label">Vendor phone</label>
-                <input type="text" name="vendor_phone" class="form-control form-control-sm" value="{{ item.vendor_phone|default:'' }}">
+                <input type="text" name="vendor_phone" id="po-vendor-phone" class="form-control form-control-sm" value="{{ item.vendor_phone|default:'' }}">
             </div>
             <div class="col-12">
                 <label class="form-label">Vendor address</label>
-                <textarea name="vendor_address" rows="2" class="form-control form-control-sm">{{ item.vendor_address|default:'' }}</textarea>
+                <textarea name="vendor_address" id="po-vendor-address" rows="2" class="form-control form-control-sm">{{ item.vendor_address|default:'' }}</textarea>
             </div>
 
             <div class="col-md-3">
                 <label class="form-label">Issue date</label>
-                <input type="date" name="issue_date" class="form-control form-control-sm" value="{{ item.issue_date|date:'Y-m-d'|default:'' }}">
+                <input type="date" name="issue_date" id="po-issue-date" class="form-control form-control-sm" value="{{ item.issue_date|date:'Y-m-d'|default:'' }}">
             </div>
             <div class="col-md-3">
                 <label class="form-label">Expected delivery</label>
-                <input type="date" name="expected_delivery_date" class="form-control form-control-sm" value="{{ item.expected_delivery_date|date:'Y-m-d'|default:'' }}">
+                <input type="date" name="expected_delivery_date" id="po-expected-date" class="form-control form-control-sm" value="{{ item.expected_delivery_date|date:'Y-m-d'|default:'' }}">
             </div>
             <div class="col-md-2">
                 <label class="form-label">Currency</label>
@@ -255,6 +270,38 @@
         recomputeAll();
     });
     recomputeAll();
+})();
+
+// Phase 4.3 — vendor dropdown auto-fill
+(function() {
+    const sel = document.getElementById('po-vendor-select');
+    if (!sel) return;
+    const fName = document.getElementById('po-vendor-name');
+    const fEmail = document.getElementById('po-vendor-email');
+    const fPhone = document.getElementById('po-vendor-phone');
+    const fAddr = document.getElementById('po-vendor-address');
+    const fIssue = document.getElementById('po-issue-date');
+    const fExp = document.getElementById('po-expected-date');
+
+    function applyVendor() {
+        const opt = sel.options[sel.selectedIndex];
+        if (!opt || !opt.value) return;
+        const name = opt.getAttribute('data-name') || '';
+        const email = opt.getAttribute('data-email') || '';
+        const phone = opt.getAttribute('data-phone') || '';
+        const addr = opt.getAttribute('data-address') || '';
+        const lead = parseInt(opt.getAttribute('data-lead') || '0', 10);
+        if (fName && !fName.value) fName.value = name;
+        if (fEmail && !fEmail.value) fEmail.value = email;
+        if (fPhone && !fPhone.value) fPhone.value = phone;
+        if (fAddr && !fAddr.value) fAddr.value = addr;
+        if (fExp && !fExp.value && lead) {
+            const base = fIssue && fIssue.value ? new Date(fIssue.value) : new Date();
+            base.setDate(base.getDate() + lead);
+            fExp.value = base.toISOString().slice(0, 10);
+        }
+    }
+    sel.addEventListener('change', applyVendor);
 })();
 </script>
 

@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.150] - 2026-04-29
+
+### Added — Phase 4.3: Vendor relationship + stock minimums + auto-replenish
+- Extended `assets.Vendor` with procurement metadata: `default_lead_time_days` (default 7), `payment_terms` (Net 15 / 30 / 45 / 60 / COD / Prepaid / CC), `preferred_contact_method` (email / phone / portal), `contact_email/phone`, `billing_address`, `account_number`, `notes`, `distributor_provider` (ingram / pax8 / synnex link). Reused the existing global `assets.Vendor` model rather than introducing a separate procurement-only one — keeps the manufacturer-facing vendor catalog and the buy-from-vendor catalog in one place.
+- `PurchaseOrder.vendor` FK alongside the existing `vendor_name` snapshot text. Picking a vendor on the PO form auto-fills `vendor_name`, `vendor_email`, `vendor_phone`, `vendor_address`, and `expected_delivery_date` (issue_date + `default_lead_time_days`) — both client-side (JS, fills blanks on change) and server-side (idempotent fallback when the form fields are blank).
+- Vendor CRUD pages at `/psa/vendors/` (list / create / detail / edit) under the Procurement nav. Detail page shows: header card with metadata, Open POs (status not in cancelled/void/received), Recent closed POs (last 10), 90-day spend total, and an Edit button. List view shows payment terms, lead time, open POs count, and 30-day spend.
+- Inventory items get optional `preferred_vendor` FK + `last_replenished_at` (existing `min_quantity` and `reorder_quantity` already cover stock minimums). Added to `inventory.InventoryItem`, `vehicles.VehicleInventoryItem`, and `vehicles.ShopInventoryItem`.
+- New management command `psa_auto_replenish_suggestions` scans all three inventory surfaces for rows where `quantity <= min_quantity`. `--dry-run` lists them; `--create-prs` builds draft `PurchaseRequisition` rows grouped by `preferred_vendor` (one PR per vendor), skipping items whose SKU is already on an open PR. Quantity to order = `reorder_quantity` if set, else `2*min - current`.
+- Daily cron at 06:00 logs scan results (PR creation is opt-in via `--create-prs` — admins decide whether to convert).
+- New "Low stock items" dashboard widget surfaces top 10 items below minimum stock.
+- Permissions: `procurement_view` to view vendors, `procurement_create_po` to create / edit.
+- 6 new tests in `psa.tests` cover vendor metadata defaults / persistence / FK link, scan, PR grouping, dedupe.
+
+Phase 4 sub-phase left: 4.4 — One-click PO from accepted quote.
+
+### Migrations
+`assets.0015_vendor_account_number_vendor_billing_address_and_more`, `inventory.0002_inventoryitem_last_replenished_at_and_more`, `psa.0021_purchaseorder_vendor`, `vehicles.0008_vendor_metadata`.
+
 ## [3.17.149] - 2026-04-29
 
 ### Added — Phase 4.2: PO Receiving + back-orders + serial capture
