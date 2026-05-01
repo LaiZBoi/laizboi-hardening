@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.190] - 2026-05-01
+
+### Documentation
+- **Phase 10 marked `[complete]`.** With sub-phases 10.1 → 10.4 all shipped (v3.17.176, v3.17.177, v3.17.188, v3.17.189), the phase header status marker flips from `[in progress]` to `[complete]`. The `/core/roadmap.json` feed will report Phase 10 with `status: complete` going forward.
+- **Phase 7 wave-1 closure marker added.** A new bullet at the bottom of Phase 7's polish-backlog list reads "Wave 1 closed (v3.17.171 → v3.17.187)" — every item from the original Phase 7 polish survey has been delivered or explicitly deferred (reCAPTCHA needs Google credentials; scheduler email-send + welcome-email are feature gaps not polish). Phase 7 stays `[in progress]` by design (it's a continuous track); the next wave fires when new polish items surface from a bug-bash audit or user reports.
+- **"Living plan" header updated** at the top of `docs/ROADMAP.md`: now reads "Phases 1–6 + 9 + 10 + 31 complete. Phase 7 in progress (continuous track; Wave 1 closed at v3.17.187)."
+- **Sizing-table row for Phase 10** updated to "all sub-phases complete (10.1 v3.17.176; 10.2 v3.17.177; 10.3 v3.17.188; 10.4 v3.17.189)".
+
 ## [3.17.189] - 2026-05-01
 
 ### Added — Phase 10.4: Outbound threading + per-ticket conversation panel

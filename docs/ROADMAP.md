@@ -1,6 +1,6 @@
 # Client St0r — Roadmap
 
-> Living plan. Phases 1–6 + 9 + 31 (Vault Access Rules) complete. Phase 7 in progress (continuous track). Update as phases complete.
+> Living plan. Phases 1–6 + 9 + 10 + 31 (Vault Access Rules) complete. Phase 7 in progress (continuous track; Wave 1 closed at v3.17.187). Update as phases complete.
 
 ## Phasing principle
 
@@ -105,6 +105,8 @@ Not a single phase — runs alongside 1-6.
   - Documentation refresh: 8 new screenshots for Phase 9 + integration forms + the roadmap page; README updated with annotated captions; screenshot script extended with the new pages *(shipped v3.17.186)*
   - Baseline test coverage for `imports/` app — 34 tests across org-matcher fuzzy logic, ImportJob lifecycle, rollback flow (matched orgs preserved, created orgs deleted), unique-together constraints on mapping models, CSV preview helper *(shipped v3.17.187)*
 
+  ➡ **Wave 1 closed (v3.17.171 → v3.17.187)** — every item from the original Phase 7 polish survey has been delivered or explicitly deferred (reCAPTCHA needs Google credentials; scheduler email-send + welcome-email are feature gaps not polish). Phase 7 stays `[in progress]` by design (continuous track) — the next wave will be triggered by user-reported issues + the next bug-bash audit.
+
 ## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)** [shipped — v3.17.168]
 
 MSPs run a stack of security tools that all alert independently — SentinelOne, CrowdStrike, Defender, Sophos, Bitdefender, Webroot, Fortinet, Palo Alto, Sonicwall, etc. The PSA dashboard should aggregate alerts from all of them, surface critical issues per client, and let techs triage from one screen.
@@ -146,7 +148,7 @@ MSPs run a stack of security tools that all alert independently — SentinelOne,
 
 The following are **planned / in-progress** items focused on MSP workflow consolidation and operational visibility. None are positioned as fully implemented. Items overlapping with already-shipped phases are noted as "Extends X" so the deltas are explicit. AI-assisted features are clearly marked **OPTIONAL AI**.
 
-## Phase 10 — Advanced Email-to-Ticket Engine **(M)** [in progress]
+## Phase 10 — Advanced Email-to-Ticket Engine **(M)** [complete]
 
 **Roadmap item:** Advanced Email Processing & Ticket Intelligence. Extends the basic IMAP poller already shipped (v3.17.83+).
 
@@ -747,7 +749,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 6 — ITIL | M | 2-3 weeks | none |
 | 7 — Outsourcing + ecosystem + polish | Continuous | ongoing | runs alongside |
 | 9 — Security alert ingestion (EDR / AV / Firewall) | M | 5 weeks — **framework + 1 reference adapter shipped v3.17.168** | none — can run alongside any |
-| 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks — **10.1 + 10.2 shipped (v3.17.176 / v3.17.177); 10.3 + 10.4 in flight** | extends existing IMAP poller |
+| 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks — **all sub-phases complete (10.1 v3.17.176; 10.2 v3.17.177; 10.3 v3.17.188; 10.4 v3.17.189)** | extends existing IMAP poller |
 | 11 — Advanced Dispatch & Tech Scheduling | M | 2-3 weeks | extends Phase 2 + dispatch board |
 | 12 — Customer Communication Workflows | M | 2-3 weeks | extends customer portal |
 | 13 — Procurement & Lifecycle Mgmt | M | 2-3 weeks | extends Phase 4 |
