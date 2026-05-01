@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.178] - 2026-05-01
+
+### Documentation
+- **Roadmap Sizing-table row for Phase 10 brought up to date.** v3.17.176 + v3.17.177 already annotated the phase header, top-level bullets, and sub-phase blocks, but the Sizing table at the bottom still showed the original "2-3 weeks | extends existing IMAP poller" estimate with no progress note. Now reads "2-3 weeks — **10.1 + 10.2 shipped (v3.17.176 / v3.17.177); 10.3 + 10.4 in flight**". The JSON feed at `/core/roadmap.json` (which parses phase headers, not the table) was already correct — Phase 10 reports `status: in_progress`.
+
 ## [3.17.177] - 2026-05-01
 
 ### Added — Phase 10.2: Email body cleanup + attachment ingestion

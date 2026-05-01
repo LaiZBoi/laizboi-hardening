@@ -731,7 +731,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 6 — ITIL | M | 2-3 weeks | none |
 | 7 — Outsourcing + ecosystem + polish | Continuous | ongoing | runs alongside |
 | 9 — Security alert ingestion (EDR / AV / Firewall) | M | 5 weeks — **framework + 1 reference adapter shipped v3.17.168** | none — can run alongside any |
-| 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks | extends existing IMAP poller |
+| 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks — **10.1 + 10.2 shipped (v3.17.176 / v3.17.177); 10.3 + 10.4 in flight** | extends existing IMAP poller |
 | 11 — Advanced Dispatch & Tech Scheduling | M | 2-3 weeks | extends Phase 2 + dispatch board |
 | 12 — Customer Communication Workflows | M | 2-3 weeks | extends customer portal |
 | 13 — Procurement & Lifecycle Mgmt | M | 2-3 weeks | extends Phase 4 |
