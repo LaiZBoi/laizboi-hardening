@@ -637,7 +637,7 @@ def system_status(request):
             )
             if 'gunicorn' in result.stdout:
                 services_status['gunicorn'] = True
-        except:
+        except Exception:
             pass  # Fallback to True since we're running
 
         # Check PSA Sync - check if scheduled task exists and is enabled

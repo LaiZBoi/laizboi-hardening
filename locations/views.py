@@ -99,7 +99,7 @@ def location_detail(request, location_id):
     try:
         from assets.models import Asset
         assets = Asset.objects.filter(location=location)
-    except:
+    except Exception:
         assets = []
 
     # Get property appraiser info for this location

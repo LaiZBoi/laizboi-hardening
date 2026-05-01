@@ -1307,7 +1307,7 @@ def organization_merge(request):
                         from assets.models import Device
                         devices_moved = Device.objects.filter(organization=source_org).update(organization=target_org)
                         merge_stats['devices'] += devices_moved
-                    except:
+                    except Exception:
                         pass
                     
                     # Move Contacts
@@ -1315,7 +1315,7 @@ def organization_merge(request):
                         from contacts.models import Contact
                         contacts_moved = Contact.objects.filter(organization=source_org).update(organization=target_org)
                         merge_stats['contacts'] += contacts_moved
-                    except:
+                    except Exception:
                         pass
                     
                     # Move Documents
@@ -1323,7 +1323,7 @@ def organization_merge(request):
                         from docs.models import Document
                         docs_moved = Document.objects.filter(organization=source_org).update(organization=target_org)
                         merge_stats['documents'] += docs_moved
-                    except:
+                    except Exception:
                         pass
                     
                     # Move Tickets
@@ -1331,7 +1331,7 @@ def organization_merge(request):
                         from tickets.models import Ticket
                         tickets_moved = Ticket.objects.filter(organization=source_org).update(organization=target_org)
                         merge_stats['tickets'] += tickets_moved
-                    except:
+                    except Exception:
                         pass
                     
                     # Move Memberships
@@ -1344,7 +1344,7 @@ def organization_merge(request):
                         from integrations.models import RMMConnection
                         rmm_moved = RMMConnection.objects.filter(organization=source_org).update(organization=target_org)
                         merge_stats['rmm_connections'] += rmm_moved
-                    except:
+                    except Exception:
                         pass
                     
                     # Move PSA Connections
@@ -1352,7 +1352,7 @@ def organization_merge(request):
                         from integrations.models import PSAConnection
                         psa_moved = PSAConnection.objects.filter(organization=source_org).update(organization=target_org)
                         merge_stats['psa_connections'] += psa_moved
-                    except:
+                    except Exception:
                         pass
 
                     # Move ExternalObjectMap entries (PSA company mappings)

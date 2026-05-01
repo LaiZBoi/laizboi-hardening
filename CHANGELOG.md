@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.184] - 2026-05-01
+
+### Fixed
+- **Bare `except:` clauses replaced with `except Exception:` across the codebase** (Phase 7 polish — 24 sites). A bare `except:` clause catches `SystemExit` and `KeyboardInterrupt` along with normal exceptions, which is almost always wrong: it can prevent a developer from killing a hung command with Ctrl-C, and can swallow genuine system-shutdown signals during graceful termination. Each site was spot-checked first to confirm the catch was defensive (optional imports of missing apps in org-merge, font-loading fallback in diagram previews, datetime parsing of vendor strings, subprocess errors during apt-cache update) — none were intentionally targeting `SystemExit`. Sites:
+  - `accounts/views.py` — 6 sites in the org-merge flow (defensive imports of optional apps: Devices / Contacts / Documents / Tickets / RMMConnection / PSAConnection)
+  - `config/settings.py:322` — defensive socket inspection during dev settings
+  - `core/management/commands/scan_system_packages.py` — 3 sites around `apt-get update` subprocess fallback
+  - `core/search_views.py:99, 110` — search-result decode fallback
+  - `core/settings_views.py:640` — settings-import fallback
+  - `core/updater.py:231` — version-check fallback
+  - `core/views.py:962, 1306` — view-handler fallbacks
+  - `docs/management/commands/generate_diagram_previews.py:89` — image-generation fallback
+  - `docs/services/ai_documentation_generator.py:658` — AI-response parse fallback
+  - `docs/utils.py:44, 113` — `ImageFont.truetype()` font-load fallback
+  - `integrations/providers/psa/rangermsp.py:464, 474` — vendor API parse fallback
+  - `integrations/providers/rmm/datto.py:381` — `datetime.strptime` parse fallback
+  - `locations/views.py:102` — geo-import fallback
+- Behavior preserved: `ImportError`, `OSError`, `ValueError`, `subprocess.CalledProcessError` etc. are all `Exception` subclasses, so the new `except Exception:` still catches everything the old code did. The sites that need *narrower* catches (e.g. `except (TimeoutExpired, FileNotFoundError):`) are tracked as a separate polish item — this release is a uniform safety improvement, not a per-site narrowing.
+
+### Tests
+- 48/48 across `accounts`, `core.tests`, `integrations`, `docs` — no regressions. Each touched module also import-checked individually.
+
 ## [3.17.183] - 2026-05-01
 
 ### Changed — Form polish round 2

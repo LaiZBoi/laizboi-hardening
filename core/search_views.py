@@ -96,7 +96,7 @@ def global_search(request):
             ).filter(
                 connection__organization=org
             )[:10]
-        except:
+        except Exception:
             pass
 
         # Search PSA Contacts
@@ -107,7 +107,7 @@ def global_search(request):
             ).filter(
                 connection__organization=org
             )[:10]
-        except:
+        except Exception:
             pass
 
         # Calculate total

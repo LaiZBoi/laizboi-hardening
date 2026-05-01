@@ -86,7 +86,7 @@ class Command(BaseCommand):
             title_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 32)
             text_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
             small_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 16)
-        except:
+        except Exception:
             title_font = ImageFont.load_default()
             text_font = ImageFont.load_default()
             small_font = ImageFont.load_default()

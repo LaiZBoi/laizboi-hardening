@@ -319,7 +319,7 @@ elif DEBUG:
                     f'http://{ip}:8000',
                     f'https://{ip}:8000',
                 ])
-    except:
+    except Exception:
         pass
 else:
     # In production, auto-generate from ALLOWED_HOSTS

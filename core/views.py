@@ -959,7 +959,7 @@ def download_mobile_app(request, app_type):
                     # Delete failed status file so we show clean state
                     try:
                         os.remove(status_file)
-                    except:
+                    except Exception:
                         pass
 
                     # Show friendly "not created yet" page instead of error
@@ -1303,7 +1303,7 @@ def download_mobile_app(request, app_type):
                 # Delete failed status file so we show clean state
                 try:
                     os.remove(status_file)
-                except:
+                except Exception:
                     pass
 
                 # Show friendly "not created yet" page instead of error

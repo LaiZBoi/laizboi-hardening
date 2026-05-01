@@ -41,7 +41,7 @@ def generate_diagram_thumbnail(diagram, width=300, height=200):
         # Try to use a system font
         font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
         font_type = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
-    except:
+    except Exception:
         # Fallback to default font
         font_title = ImageFont.load_default()
         font_type = ImageFont.load_default()
@@ -110,7 +110,7 @@ def generate_document_preview_image(document, width=300, height=200):
     try:
         font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
         font_label = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
-    except:
+    except Exception:
         font_title = ImageFont.load_default()
         font_label = ImageFont.load_default()
 

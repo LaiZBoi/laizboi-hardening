@@ -111,7 +111,7 @@ class Command(BaseCommand):
                 else:
                     if not self.json_output:
                         self.stdout.write(self.style.WARNING('⚠ Could not update package cache (no sudo access)'))
-            except:
+            except Exception:
                 if not self.json_output:
                     self.stdout.write(self.style.WARNING('⚠ Could not update package cache (sudo not available)'))
 
@@ -174,7 +174,7 @@ class Command(BaseCommand):
                 )
                 if result.returncode == 0:
                     scan_data['total_packages'] = len([l for l in result.stdout.splitlines() if l.startswith('ii')])
-            except:
+            except Exception:
                 # Fallback: count from dpkg query
                 try:
                     result = subprocess.run(
@@ -185,7 +185,7 @@ class Command(BaseCommand):
                     )
                     if result.returncode == 0:
                         scan_data['total_packages'] = len(result.stdout.splitlines())
-                except:
+                except Exception:
                     scan_data['total_packages'] = 0
 
         except subprocess.TimeoutExpired:

@@ -100,6 +100,7 @@ Not a single phase — runs alongside 1-6.
   - Vault password mutation audit logging — `password_edit` + `password_delete` now write per-action AuditLog rows on success and on every failure mode (form validation, EncryptionError); 2 new tests in `vault.tests.PasswordMutationAuditTests` *(shipped v3.17.181)*
   - Phase 9 forms (Auto-Ticket Rule + Vendor Connection) rewritten with proper card-section layout, Bootstrap widget classes, copy-to-clipboard webhook helpers, "ALL must match" semantic hint on rule clauses *(shipped v3.17.182)*
   - UniFi + M365 connection forms rewritten with the same card-section layout (the only other forms using the sloppy generic field-loop pattern; audit confirmed the rest of the integration forms were already clean) *(shipped v3.17.183)*
+  - Bare `except:` clauses replaced with `except Exception:` across 24 sites in 12 modules — no more accidental `SystemExit`/`KeyboardInterrupt` swallowing *(shipped v3.17.184)*
 
 ## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)** [shipped — v3.17.168]
 

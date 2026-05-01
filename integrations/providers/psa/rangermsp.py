@@ -461,7 +461,7 @@ class RangerMSPProvider(BaseProvider):
             # RangerMSP uses ISO 8601 format
             from dateutil import parser
             return parser.parse(date_string)
-        except:
+        except Exception:
             return None
 
     def _parse_date(self, date_string):
@@ -471,5 +471,5 @@ class RangerMSPProvider(BaseProvider):
         try:
             from dateutil import parser
             return parser.parse(date_string).date()
-        except:
+        except Exception:
             return None

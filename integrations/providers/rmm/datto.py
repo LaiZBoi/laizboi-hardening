@@ -378,7 +378,7 @@ class DattoRMMProvider(BaseRMMProvider):
         if install_date_str:
             try:
                 install_date = datetime.strptime(install_date_str, '%Y-%m-%d')
-            except:
+            except Exception:
                 pass
 
         return {

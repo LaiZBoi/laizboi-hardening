@@ -655,7 +655,7 @@ Do NOT wrap the response in JSON or code blocks. Provide clean, ready-to-use mar
                             parsed = json.loads(json_str)
                             if isinstance(parsed, dict):
                                 return parsed
-                        except:
+                        except Exception:
                             pass
 
             # Try to extract JSON directly (find first { to last })

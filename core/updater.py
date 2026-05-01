@@ -228,7 +228,7 @@ class UpdateService:
                     if latest_version_parsed is None or tag_version > latest_version_parsed:
                         latest_version_parsed = tag_version
                         latest_tag = tag
-                except:
+                except Exception:
                     # Skip non-semantic version tags
                     continue
 
