@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.185] - 2026-05-01
+
+### Changed
+- **Finished the `core/security_views.py` inline-check sweep started in v3.17.180.** The remaining 7 endpoints in the package + Python scanners (`package_scanner_dashboard`, `scan_detail`, `get_dashboard_widget_data`, `python_scanner_dashboard`, `run_python_scan`, `python_scan_detail`, `get_python_scanner_widget_data`) all carried duplicated `if not (request.user.is_superuser or request.user.is_staff):` guards. Now use either:
+  - `@_staff_or_superuser_view` (HTML pages — flash + redirect) — new decorator paired alongside the existing `_staff_or_superuser_api`. 4 page endpoints converted.
+  - `@_staff_or_superuser_api` (JSON endpoints — 403 JSON) — 3 endpoints converted.
+- All 9 staff/superuser endpoints in the file now use the same decorator pattern. `remediate_python_package` keeps its stricter superuser-only check (running pip-install commands needs a tighter gate than staff).
+- **Found another silent `except Exception` in passing.** `run_python_scan`'s outer catch returned a generic "Scan failed" 500 with no signal — same shape as the bug fixed for `run_package_scan` in v3.17.180. Now logs the real exception via `logger.exception('Manual Python package scan failed')` before returning the same response.
+
+### Tests
+- `core.tests` 10/10 in 31s. All package-scanner endpoints import-checked.
+
 ## [3.17.184] - 2026-05-01
 
 ### Fixed

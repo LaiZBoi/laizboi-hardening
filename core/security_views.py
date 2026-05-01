@@ -40,15 +40,31 @@ def _staff_or_superuser_api(view_fn):
     return wrapped
 
 
+def _staff_or_superuser_view(view_fn):
+    """
+    Decorator for HTML pages: flash a denial message and redirect to
+    the dashboard when the user lacks staff/superuser rights. Mirrors
+    the inline `messages.error + redirect` block that used to appear at
+    the top of every package-scanner page view.
+    """
+    from functools import wraps
+
+    @wraps(view_fn)
+    def wrapped(request, *args, **kwargs):
+        if not _is_staff_or_superuser(request.user):
+            messages.error(request, "You don't have permission to access this feature.")
+            return redirect('core:dashboard')
+        return view_fn(request, *args, **kwargs)
+    return wrapped
+
+
 @login_required
+@_staff_or_superuser_view
 def package_scanner_dashboard(request):
     """
     Package scanner dashboard showing scan history and security status.
     Staff/superuser only.
     """
-    if not (request.user.is_superuser or request.user.is_staff):
-        messages.error(request, "You don't have permission to access this feature.")
-        return redirect('core:dashboard')
 
     # Get latest scan
     latest_scan = SystemPackageScan.objects.first()
@@ -221,12 +237,9 @@ def update_packages(request):
 
 
 @login_required
+@_staff_or_superuser_view
 def scan_detail(request, pk):
     """View details of a specific scan"""
-    if not (request.user.is_superuser or request.user.is_staff):
-        messages.error(request, "You don't have permission to access this feature.")
-        return redirect('core:dashboard')
-
     from django.shortcuts import get_object_or_404
     scan = get_object_or_404(SystemPackageScan, pk=pk)
 
@@ -236,14 +249,12 @@ def scan_detail(request, pk):
 
 
 @login_required
+@_staff_or_superuser_api
 def get_dashboard_widget_data(request):
     """
     API endpoint to get package scanner data for dashboard widget.
     Returns JSON with security status.
     """
-    if not (request.user.is_superuser or request.user.is_staff):
-        return JsonResponse({'error': 'Permission denied'}, status=403)
-
     latest_scan = SystemPackageScan.objects.first()
 
     if not latest_scan:
@@ -272,12 +283,9 @@ def get_dashboard_widget_data(request):
 # ---------------------------------------------------------------------------
 
 @login_required
+@_staff_or_superuser_view
 def python_scanner_dashboard(request):
     """Dashboard for Python dependency vulnerability scans (pip-audit)."""
-    if not (request.user.is_superuser or request.user.is_staff):
-        messages.error(request, "You don't have permission to access this feature.")
-        return redirect('core:dashboard')
-
     latest_scan = PythonPackageScan.objects.first()
     scan_history = PythonPackageScan.objects.all()[:30]
 
@@ -320,12 +328,10 @@ def python_scanner_dashboard(request):
 
 
 @login_required
+@_staff_or_superuser_api
 @require_http_methods(["POST"])
 def run_python_scan(request):
     """Run a pip-audit scan via the web interface."""
-    if not (request.user.is_superuser or request.user.is_staff):
-        return JsonResponse({'error': 'Permission denied'}, status=403)
-
     try:
         out = io.StringIO()
         call_command('scan_python_packages', '--save', '--json', stdout=out)
@@ -348,16 +354,16 @@ def run_python_scan(request):
             },
         })
     except Exception:
+        # Same fix as run_package_scan in v3.17.180 — log the real
+        # exception so ops can triage past the generic "Scan failed".
+        logger.exception('Manual Python package scan failed')
         return JsonResponse({'success': False, 'error': 'Scan failed'}, status=500)
 
 
 @login_required
+@_staff_or_superuser_view
 def python_scan_detail(request, pk):
     """View details of a specific Python scan."""
-    if not (request.user.is_superuser or request.user.is_staff):
-        messages.error(request, "You don't have permission to access this feature.")
-        return redirect('core:dashboard')
-
     from django.shortcuts import get_object_or_404
     scan = get_object_or_404(PythonPackageScan, pk=pk)
     vulnerable_pkgs = [p for p in scan.scan_data.get('packages', []) if p.get('vulns')]
@@ -368,11 +374,9 @@ def python_scan_detail(request, pk):
 
 
 @login_required
+@_staff_or_superuser_api
 def get_python_scanner_widget_data(request):
     """JSON widget feed for the Python scanner."""
-    if not (request.user.is_superuser or request.user.is_staff):
-        return JsonResponse({'error': 'Permission denied'}, status=403)
-
     latest_scan = PythonPackageScan.objects.first()
     if not latest_scan:
         return JsonResponse({
