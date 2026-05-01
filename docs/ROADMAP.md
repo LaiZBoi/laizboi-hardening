@@ -163,7 +163,7 @@ Planned capabilities:
 - Ticket categorization (rule-based) *(10.3 — shipped v3.17.188 via routing rule queue/priority overrides)*
 - Ticket tagging
 - Email security validation (SPF / DKIM / DMARC inspection) *(10.3 — shipped v3.17.188; opt-in via enforce_dmarc)*
-- Outbound threading + per-ticket conversation panel *(planned — Phase 10.4)*
+- Outbound threading + per-ticket conversation panel *(10.4 — shipped v3.17.189)*
 - Ticket summarization (**OPTIONAL AI**)
 - Intent detection (**OPTIONAL AI**)
 
@@ -190,9 +190,11 @@ Planned capabilities:
 - Quarantined inbound persists with `was_quarantined=True` + reason but NEVER creates a ticket; admins triage via Django admin.
 - 16 new tests across 6 classes covering all four gates plus routing rule end-to-end.
 
-### Sub-phase 10.4 — Outbound threading + conversation panel *(planned)*
+### Sub-phase 10.4 — Outbound threading + conversation panel *(shipped v3.17.189)*
 
-Threaded outbound replies (`In-Reply-To`/`References` set from `Ticket.last_inbound_message_id`), per-ticket "Email Conversation" panel showing rendered HTML & raw headers.
+- New `psa/email_outbound.py::send_threaded_reply()` helper — generates Message-ID, sets `In-Reply-To` + `References` from `Ticket.last_inbound_message_id`, sends via Django email backend with optional HTML alternative, persists `EmailMessage(direction='out')` row so future replies thread back via 10.1's `_thread_target` (closing the round-trip).
+- New per-ticket conversation view at `/psa/t/<ticket_number>/conversation/` — chronological inbound + outbound rows, HTML bodies rendered in `<iframe sandbox="">` (most-restrictive sandbox), quarantined-inbound shown with reason banner, raw headers/body collapse into `<details>`.
+- 9 new tests covering threading headers, round-trip closure, HTML alternative, missing recipients, conversation view ACL.
 
 **Goal:** Reduce dispatcher and technician overhead while improving ticket workflow accuracy.
 

@@ -36,6 +36,9 @@ urlpatterns = [
     path('t/<str:ticket_number>/share/', views.ticket_share, name='ticket_share'),
     path('partners/webhook/<int:share_pk>/', views.ticket_partner_webhook, name='ticket_partner_webhook'),
     path('t/<str:ticket_number>/', views.ticket_detail, name='ticket_detail'),
+    # Phase 10.4: per-ticket email conversation panel.
+    path('t/<str:ticket_number>/conversation/', views.ticket_conversation,
+         name='ticket_conversation'),
     # Projects (Workstream 3)
     path('projects/', views.project_list, name='project_list'),
     path('projects/new/', views.project_form, name='project_create'),

@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.189] - 2026-05-01
+
+### Added — Phase 10.4: Outbound threading + per-ticket conversation panel
+- **New `psa/email_outbound.py` helper.** Single entry point — `send_threaded_reply(ticket=, comment=, body_text=, body_html='', subject=None, to_emails=None, from_email=None)` — that:
+  - Generates an RFC 5322 Message-ID for the outbound (uses `email.utils.make_msgid` with `idstring=psa-<ticket_number>` so future replies are diagnosable from the header alone; domain controlled by new `PSA_OUTBOUND_MESSAGE_ID_DOMAIN` setting, defaults to `clientst0r.local`).
+  - Sets `In-Reply-To` and `References` from `Ticket.last_inbound_message_id` (the cache field added in Phase 10.1) so the customer's mail client threads our reply with the original conversation.
+  - Sends via Django's email backend with `EmailMultiAlternatives` (plain-text + optional HTML alternative).
+  - Persists an `EmailMessage(direction='out')` row so future inbound replies threading off our Message-ID resolve back to the same ticket — closing the round-trip via Phase 10.1's `_thread_target` lookup.
+  - Falls back subject to `Re: [<ticket_number>] <ticket.subject>` so legacy subject-regex correlation still works for clients that don't preserve headers.
+- **New per-ticket conversation view.** `GET /psa/t/<ticket_number>/conversation/` renders chronological inbound + outbound `EmailMessage` rows. HTML bodies render inside a `<iframe sandbox="">` (most-restrictive sandbox — no scripts, no forms, no top-level navigation, no remote resource loading). Quarantined inbound (Phase 10.3) shows with a yellow shield + reason banner. Raw headers + body collapse into `<details>` elements for review.
+- **Tenant isolation.** The conversation view uses the same `_scoped_ticket_qs` + cross-org defence-in-depth check as `ticket_detail`. Org users only see their own org's email; superusers + staff see anything.
+- **Tests:** 9 new across 2 classes — `OutboundThreadedReplyTests` (7 cases: threading headers, no-prior-inbound, subject fallback, explicit subject + recipients, HTML alternative, missing-recipients raises, **round-trip closure** — customer reply to our outbound resolves back to the same ticket via `_thread_target`); `TicketConversationViewTests` (2 cases: lists in/out messages, 404s on cross-org access). 9/9 in 6s.
+- **Full Phase 10 regression:** 53/53 across all sub-phases (10.1 + 10.2 + 10.3 + 10.4) in 9s.
+
 ## [3.17.188] - 2026-05-01
 
 ### Added — Phase 10.3: Routing rules + auto-responder + DMARC/spam gating

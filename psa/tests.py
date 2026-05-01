@@ -5260,3 +5260,206 @@ class RoutingRuleIntegrationTests(TestCase, _EmailPollerSetup):
 
         self.assertEqual(Ticket.objects.filter(organization=self.msp_org).count(), 1)
         self.assertEqual(Ticket.objects.filter(organization=self.client_org).count(), 0)
+
+
+# ---------------------------------------------------------------------------
+# Phase 10.4 — Outbound threading + conversation panel
+# ---------------------------------------------------------------------------
+
+class OutboundThreadedReplyTests(TestCase, _EmailPollerSetup):
+    """`send_threaded_reply` builds a properly-threaded outbound email,
+    persists an EmailMessage(direction='out') row, and uses the ticket's
+    last_inbound_message_id as In-Reply-To."""
+
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgoutbound')
+        self.ticket = self._make_ticket(self.org, requester_email='customer@example.com')
+        # Seed a prior inbound so outbound threading has something to chain against.
+        self.ticket.last_inbound_message_id = '<original-inbound@example.com>'
+        self.ticket.save(update_fields=['last_inbound_message_id'])
+
+    def test_send_sets_threading_headers_from_last_inbound(self):
+        from django.core import mail
+        from psa.email_outbound import send_threaded_reply
+        em = send_threaded_reply(
+            ticket=self.ticket, comment=None,
+            body_text='Thanks for the update.',
+        )
+        # Django captures sent mail in mail.outbox during tests.
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertEqual(sent.extra_headers.get('In-Reply-To'),
+                         '<original-inbound@example.com>')
+        self.assertEqual(sent.extra_headers.get('References'),
+                         '<original-inbound@example.com>')
+        self.assertIn('Message-ID', sent.extra_headers)
+        # The persisted EmailMessage row records the same threading.
+        self.assertEqual(em.direction, 'out')
+        self.assertEqual(em.in_reply_to, '<original-inbound@example.com>')
+        self.assertEqual(em.references, '<original-inbound@example.com>')
+        self.assertEqual(em.ticket_id, self.ticket.id)
+
+    def test_no_last_inbound_skips_in_reply_to(self):
+        from django.core import mail
+        from psa.email_outbound import send_threaded_reply
+        # Fresh ticket with no captured inbound.
+        ticket = self._make_ticket(
+            self.org, subject='Cold outbound', requester_email='cold@example.com',
+        )
+        send_threaded_reply(
+            ticket=ticket, comment=None,
+            body_text='Hi, reaching out.',
+        )
+        sent = mail.outbox[-1]
+        self.assertNotIn('In-Reply-To', sent.extra_headers)
+        self.assertNotIn('References', sent.extra_headers)
+
+    def test_subject_falls_back_to_re_ticket_pattern(self):
+        from django.core import mail
+        from psa.email_outbound import send_threaded_reply
+        send_threaded_reply(
+            ticket=self.ticket, comment=None,
+            body_text='reply',
+        )
+        sent = mail.outbox[-1]
+        # Default subject embeds the ticket number for legacy subject-regex
+        # threading on inbound replies.
+        self.assertIn(self.ticket.ticket_number, sent.subject)
+
+    def test_explicit_subject_and_recipients_honored(self):
+        from django.core import mail
+        from psa.email_outbound import send_threaded_reply
+        send_threaded_reply(
+            ticket=self.ticket, comment=None,
+            body_text='reply',
+            subject='Explicit subject',
+            to_emails=['someone-else@example.com'],
+        )
+        sent = mail.outbox[-1]
+        self.assertEqual(sent.subject, 'Explicit subject')
+        self.assertEqual(sent.to, ['someone-else@example.com'])
+
+    def test_html_alternative_attached(self):
+        from django.core import mail
+        from psa.email_outbound import send_threaded_reply
+        send_threaded_reply(
+            ticket=self.ticket, comment=None,
+            body_text='plain version',
+            body_html='<p>html version</p>',
+        )
+        sent = mail.outbox[-1]
+        self.assertEqual(sent.body, 'plain version')
+        self.assertEqual(len(sent.alternatives), 1)
+        html_body, mime_type = sent.alternatives[0]
+        self.assertEqual(mime_type, 'text/html')
+        self.assertIn('<p>html version</p>', html_body)
+
+    def test_missing_recipients_raises(self):
+        from psa.email_outbound import send_threaded_reply
+        ticket = self._make_ticket(
+            self.org, subject='No recipient', requester_email='',
+        )
+        with self.assertRaises(ValueError):
+            send_threaded_reply(
+                ticket=ticket, comment=None, body_text='hi',
+            )
+
+    def test_outbound_message_id_resolves_to_same_ticket_on_reply(self):
+        """The round-trip closes: customer's reply to our outbound
+        carries our generated Message-ID as In-Reply-To, and the existing
+        Phase 10.1 _thread_target lookup resolves it back to the same
+        ticket."""
+        from psa.email_outbound import send_threaded_reply
+        em = send_threaded_reply(
+            ticket=self.ticket, comment=None, body_text='our reply',
+        )
+        # Simulate inbound carrying our outbound's Message-ID as In-Reply-To.
+        import email
+        raw = _build_raw_email(
+            message_id='<customer-reply@example.com>',
+            from_addr='customer@example.com',
+            to_addr='help@orgoutbound.example.com',
+            subject='no token',
+            in_reply_to=em.message_id,
+            body='thanks!',
+        )
+        msg = email.message_from_bytes(raw)
+        from psa.management.commands.psa_poll_email import _thread_target
+        self.assertEqual(_thread_target(msg, self.org), self.ticket)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class TicketConversationViewTests(TestCase, _EmailPollerSetup):
+    def setUp(self):
+        self._seed_psa()
+        self.org, self.cfg = self._make_org_with_config('orgconv')
+        self.ticket = self._make_ticket(self.org)
+        from psa.models import EmailMessage
+        EmailMessage.objects.create(
+            organization=self.org, ticket=self.ticket, direction='in',
+            message_id='<inbound-1@example.com>', from_email='customer@example.com',
+            subject='Original', body_text='Hello, please help.',
+        )
+        EmailMessage.objects.create(
+            organization=self.org, ticket=self.ticket, direction='out',
+            message_id='<outbound-1@example.com>',
+            in_reply_to='<inbound-1@example.com>',
+            from_email='help@orgconv.example.com',
+            to_emails=['customer@example.com'],
+            subject='Re: Original', body_text='Sure, looking now.',
+        )
+
+        # Staff user with current org pinned in session.
+        from accounts.models import Membership, Role
+        self.user = User.objects.create_user(
+            'conv-user', email='c@x.com', password='pw', is_staff=True,
+        )
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+        s = self.client.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_view_lists_inbound_and_outbound_messages(self):
+        from core.models import SystemSetting
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        url = f'/psa/t/{self.ticket.ticket_number}/conversation/'
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('Inbound', body)
+        self.assertIn('Outbound', body)
+        self.assertIn('inbound-1@example.com', body)
+        self.assertIn('outbound-1@example.com', body)
+
+    def test_view_404_for_other_org_ticket(self):
+        from accounts.models import Membership, Role
+        from core.models import SystemSetting
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+
+        # Create a ticket in a DIFFERENT org and a regular (non-staff)
+        # client user from yet a third org. Cross-tenant access must 404.
+        other_org = Organization.objects.create(name='Other', slug='other-conv')
+        other_ticket = self._make_ticket(other_org, subject='other')
+
+        client_user = User.objects.create_user(
+            'client-user-conv', password='pw', email='cu@x.com',
+        )
+        third_org = Organization.objects.create(name='Third', slug='third-conv')
+        Membership.objects.create(
+            user=client_user, organization=third_org, role=Role.READONLY, is_active=True,
+        )
+
+        c = Client()
+        c.force_login(client_user)
+        s2 = c.session
+        s2['2fa_prompted'] = True
+        s2['current_organization_id'] = third_org.id
+        s2.save()
+        resp = c.get(f'/psa/t/{other_ticket.ticket_number}/conversation/')
+        self.assertEqual(resp.status_code, 404)

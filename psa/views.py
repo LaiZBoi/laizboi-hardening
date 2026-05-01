@@ -327,6 +327,41 @@ def ticket_detail(request, ticket_number):
 
 
 @login_required
+@require_psa_enabled
+def ticket_conversation(request, ticket_number):
+    """
+    Phase 10.4: per-ticket email conversation panel.
+
+    Lists every captured ``EmailMessage`` row for the ticket — inbound
+    polled mail (10.1), outbound threaded replies sent via
+    ``email_outbound.send_threaded_reply`` (10.4), in chronological order.
+    HTML body renders inside a sandboxed iframe so any residual markup
+    after sanitization can't escape.
+
+    Same tenant-isolation rules as ``ticket_detail``: org users only see
+    their own org's tickets; superusers / staff see anything.
+    """
+    from .models import EmailMessage
+
+    org = get_request_organization(request)
+    qs = _scoped_ticket_qs(request)
+    ticket = get_object_or_404(qs, ticket_number=ticket_number)
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        if ticket.organization_id != getattr(org, 'id', None):
+            raise Http404('Ticket not found')
+
+    messages_qs = (
+        EmailMessage.objects
+        .filter(ticket=ticket)
+        .order_by('received_at')
+    )
+    return render(request, 'psa/ticket_conversation.html', {
+        'ticket': ticket,
+        'email_messages': messages_qs,
+    })
+
+
+@login_required
 @require_write
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
