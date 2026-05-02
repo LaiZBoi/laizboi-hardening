@@ -398,6 +398,13 @@ class TicketComment(models.Model):
     body = models.TextField()
     is_internal = models.BooleanField(default=False, help_text='Internal-only — never shown to the client')
     is_system = models.BooleanField(default=False, help_text='Auto-generated event (status change, etc.)')
+    # Phase 12 v7 (v3.17.237): threaded conversations. Replying to a
+    # specific comment sets parent_comment so the portal can render an
+    # indented thread.
+    parent_comment = models.ForeignKey(
+        'self', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='replies',
+    )
 
     # Used when the comment came from an external source (email, portal,
     # anonymous form) and there's no User to attribute. Free-text by design.

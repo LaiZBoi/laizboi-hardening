@@ -71,8 +71,8 @@
 
 <h4 class="mb-3">Conversation</h4>
 
-{% for c in comments %}
-<div class="card mb-2">
+{% for c in threads %}
+<div class="card mb-2" id="comment-{{ c.id }}">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-1">
             <strong>
@@ -83,22 +83,75 @@
             <small class="text-muted"><span data-utc="{{ c.created_at|date:'c' }}">{{ c.created_at|date:'Y-m-d H:i' }}</span></small>
         </div>
         <div>{{ c.body|linebreaksbr }}</div>
+        {% if not ticket.status.is_terminal %}
+        <button type="button" class="btn btn-link btn-sm p-0 mt-1 js-reply-btn" data-parent-id="{{ c.id }}">
+            <i class="fas fa-reply"></i> Reply
+        </button>
+        {% endif %}
     </div>
+    {% if c.replies_in_thread %}
+    <div class="ms-4 ps-3 border-start">
+        {% for r in c.replies_in_thread %}
+        <div class="card mb-2 mt-2" id="comment-{{ r.id }}">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong class="small">
+                        <i class="fas fa-reply text-muted me-1"></i>
+                        {% if r.author %}{{ r.author.get_full_name|default:r.author.username }}
+                        {% elif r.author_name %}{{ r.author_name }}
+                        {% else %}Support{% endif %}
+                    </strong>
+                    <small class="text-muted"><span data-utc="{{ r.created_at|date:'c' }}">{{ r.created_at|date:'Y-m-d H:i' }}</span></small>
+                </div>
+                <div class="small">{{ r.body|linebreaksbr }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 </div>
 {% empty %}
 <p class="text-muted">No replies yet.</p>
 {% endfor %}
 
 {% if not ticket.status.is_terminal %}
-<form method="post" action="{% url 'portal:post_reply' ticket.ticket_number %}" class="card mt-3">
+<form method="post" action="{% url 'portal:post_reply' ticket.ticket_number %}" class="card mt-3" id="reply-form">
     {% csrf_token %}
+    <input type="hidden" name="parent_id" id="reply-parent-id" value="">
     <div class="card-body">
-        <h6>Add a reply</h6>
-        <textarea name="body" rows="4" class="form-control" maxlength="50000" required placeholder="Your reply..."></textarea>
+        <h6 id="reply-heading">Add a reply</h6>
+        <div id="reply-context" class="text-muted small mb-2" style="display: none;">
+            Replying to comment <span id="reply-parent-label"></span>.
+            <button type="button" class="btn btn-link btn-sm p-0" id="reply-clear-parent">Clear</button>
+        </div>
+        <textarea name="body" rows="4" class="form-control" maxlength="50000" required placeholder="Your reply..." id="reply-body"></textarea>
     </div>
     <div class="card-footer">
         <button type="submit" class="btn btn-primary">Send reply</button>
     </div>
 </form>
+<script>
+(function() {
+    var parentInput = document.getElementById('reply-parent-id');
+    var ctx = document.getElementById('reply-context');
+    var label = document.getElementById('reply-parent-label');
+    var clear = document.getElementById('reply-clear-parent');
+    var body = document.getElementById('reply-body');
+    document.querySelectorAll('.js-reply-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = btn.dataset.parentId;
+            if (parentInput) parentInput.value = id;
+            if (label) label.textContent = '#' + id;
+            if (ctx) ctx.style.display = '';
+            if (body) body.focus();
+            window.location.hash = 'reply-form';
+        });
+    });
+    if (clear) clear.addEventListener('click', function() {
+        if (parentInput) parentInput.value = '';
+        if (ctx) ctx.style.display = 'none';
+    });
+})();
+</script>
 {% endif %}
 {% endblock %}

@@ -277,7 +277,7 @@ Planned capabilities:
 - Branded client portals *(extends Phase v3.17.112 per-org branding)* *(shipped v3.17.233 — `Organization.portal_primary_color` consumed by portal `base.html` overriding `--bs-primary` + button/link CSS)*
 - Portal announcements *(shipped v3.17.232 — per-org banners on the portal home with severity, expiry, dismissable flag + per-session dismissal endpoint; managed via Django admin in v1)*
 - Customer approval workflows
-- Threaded customer communication
+- Threaded customer communication *(shipped v3.17.237 — `TicketComment.parent_comment` self-FK + portal "Reply to this comment" button + indented thread render)*
 - SMS ticket communication (using existing SMS provider plumbing)
 - Customer escalation workflows *(shipped v3.17.236 — `Ticket.escalated_at/by/reason` fields + portal endpoint that stamps fields and creates a `[Escalated by client]` public comment)*
 - Customer-facing knowledge base *(`Document.is_client_visible` shipped earlier; portal KB search shipped; featured + view counts shipped v3.17.234)*

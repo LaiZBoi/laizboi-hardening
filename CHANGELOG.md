@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.237] - 2026-05-02
+
+### Added — Phase 12 Threaded customer communication
+Portal users can now reply to a *specific* comment, not just to the ticket as a whole. Thread tree renders with replies indented under their parent.
+
+- **New `TicketComment.parent_comment` self-FK** (migration `psa.0033`). Existing comments stay top-level (NULL parent).
+- **Portal `post_reply` view accepts an optional `parent_id`** form field. Validates that the parent comment belongs to the same ticket and isn't internal; missing/invalid IDs silently fall back to a top-level reply.
+- **Portal ticket detail builds a 2-level thread tree** server-side (top-level comments + their `replies_in_thread` collection) rather than recursing arbitrarily — keeps rendering bounded and matches what users actually do.
+- **Reply button** on each comment that wires the form's hidden `parent_id` field via small vanilla JS. "Replying to comment #N" hint appears with a Clear button to cancel back to top-level.
+
+### Tests
+- 4 new tests in `PortalThreadedRepliesTests`: parent_id sets parent FK, missing parent_id creates top-level, invalid parent_id falls back, ticket detail builds the tree (`threads[0].replies_in_thread`).
+- All 26 portal tests pass.
+
+### Roadmap
+- Phase 12 sub-bullet "Threaded customer communication" annotated `*(shipped v3.17.237)*`.
+
 ## [3.17.236] - 2026-05-02
 
 ### Added — Phase 12 Customer escalation workflow

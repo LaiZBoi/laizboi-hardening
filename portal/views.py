@@ -133,14 +133,28 @@ def ticket_detail(request, ticket_number):
         Ticket.objects.filter(organization=m.organization, client_can_view=True),
         ticket_number=ticket_number,
     )
-    comments = ticket.comments.filter(is_internal=False).order_by('created_at')
+    raw_comments = list(
+        ticket.comments.filter(is_internal=False)
+            .select_related('parent_comment').order_by('created_at')
+    )
+    # v3.17.237: build a top-level + replies tree so the template can
+    # render indented threads. Replies whose parent is internal/missing
+    # collapse to top-level.
+    by_id = {c.id: c for c in raw_comments}
+    threads = []
+    for c in raw_comments:
+        c.replies_in_thread = []
+    for c in raw_comments:
+        if c.parent_comment_id and c.parent_comment_id in by_id:
+            by_id[c.parent_comment_id].replies_in_thread.append(c)
+        else:
+            threads.append(c)
     attachments = ticket.attachments.filter(is_internal=False)
-    # v3.17.235: vote count + whether the requester has already voted.
     vote_count = TicketVote.objects.filter(ticket=ticket).count()
     user_voted = TicketVote.objects.filter(ticket=ticket, user=request.user).exists()
     return render(request, 'portal/ticket_detail.html', {
         'ticket': ticket,
-        'comments': comments,
+        'threads': threads,
         'attachments': attachments,
         'organization': m.organization,
         'vote_count': vote_count,
@@ -224,11 +238,24 @@ def post_reply(request, ticket_number):
     if len(body) > 50000:
         body = body[:50000]
 
+    # v3.17.237: threaded reply support. parent_id must reference a
+    # comment on the same ticket; missing/invalid → fall back to a
+    # top-level reply.
+    parent = None
+    parent_id = request.POST.get('parent_id')
+    if parent_id:
+        try:
+            parent = TicketComment.objects.get(pk=int(parent_id), ticket=ticket,
+                                                is_internal=False)
+        except (TicketComment.DoesNotExist, ValueError, TypeError):
+            parent = None
+
     TicketComment.objects.create(
         ticket=ticket, author=request.user, body=body,
         is_internal=False, source='portal',
         author_name=request.user.get_full_name() or request.user.username,
         author_email=request.user.email or '',
+        parent_comment=parent,
     )
     ticket.last_client_response_at = timezone.now()
     ticket.save(update_fields=['last_client_response_at'])

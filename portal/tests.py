@@ -148,6 +148,102 @@ class PortalAnnouncementTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PortalThreadedRepliesTests(TestCase):
+    """v3.17.237: threaded customer comments via parent_comment FK."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from psa.models import (
+            ClientPSASettings, Queue, Ticket, TicketComment,
+            TicketPriority, TicketStatus, TicketType,
+        )
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='ThreadCo', slug='thread-co')
+        ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
+        cls.user = User.objects.create_user('thread-user', 't@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        cls.ticket = Ticket.objects.create(
+            organization=cls.org, subject='Thread test',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            client_can_view=True,
+        )
+        cls.parent_comment = TicketComment.objects.create(
+            ticket=cls.ticket, body='Top-level question',
+            is_internal=False, source='portal', author=cls.user,
+        )
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def test_post_reply_with_parent_id_sets_parent(self):
+        from psa.models import TicketComment
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/reply/', data={
+            'body': 'A reply to the question',
+            'parent_id': str(self.parent_comment.id),
+        })
+        self.assertEqual(r.status_code, 302)
+        reply = TicketComment.objects.filter(
+            ticket=self.ticket, body='A reply to the question',
+        ).first()
+        self.assertIsNotNone(reply)
+        self.assertEqual(reply.parent_comment_id, self.parent_comment.id)
+
+    def test_post_reply_without_parent_id_creates_top_level(self):
+        from psa.models import TicketComment
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/reply/', data={
+            'body': 'Just a top-level reply',
+        })
+        self.assertEqual(r.status_code, 302)
+        reply = TicketComment.objects.filter(body='Just a top-level reply').first()
+        self.assertIsNone(reply.parent_comment_id)
+
+    def test_invalid_parent_id_falls_back_to_top_level(self):
+        from psa.models import TicketComment
+        c = Client()
+        self._login(c)
+        c.post(f'/portal/t/{self.ticket.ticket_number}/reply/', data={
+            'body': 'Bad parent test',
+            'parent_id': '999999',
+        })
+        reply = TicketComment.objects.filter(body='Bad parent test').first()
+        self.assertIsNone(reply.parent_comment_id)
+
+    def test_ticket_detail_renders_thread_tree(self):
+        from psa.models import TicketComment
+        TicketComment.objects.create(
+            ticket=self.ticket, body='nested reply',
+            is_internal=False, source='portal', author=self.user,
+            parent_comment=self.parent_comment,
+        )
+        c = Client()
+        self._login(c)
+        r = c.get(f'/portal/t/{self.ticket.ticket_number}/')
+        self.assertEqual(r.status_code, 200)
+        threads = r.context['threads']
+        self.assertEqual(len(threads), 1)
+        self.assertEqual(threads[0].id, self.parent_comment.id)
+        self.assertEqual(len(threads[0].replies_in_thread), 1)
+        self.assertEqual(threads[0].replies_in_thread[0].body, 'nested reply')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class PortalTicketEscalateTests(TestCase):
     """v3.17.236: portal-side escalation."""
 
