@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.201] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `scheduling/` app** (Phase 7 polish Wave 2 — 11th of 16 originally-untested apps). Cron-driven scheduled tasks with sign-off support. Bug = silent task-execution failure (recurrence that never spawns the next occurrence; sign-off that doesn't complete the task; etc.). **20 tests across 5 classes:**
+  - `ScheduledTaskOverdueTests` (4) — `is_overdue` true past-due-and-pending; false when completed even past-due; false when cancelled; false with no due date.
+  - `ScheduledTaskRecurrenceTests` (10) — `get_next_due_date` math for every cadence: `none → None`, `daily → +1d`, `weekly → +7d`, `biweekly → +14d`, `monthly → +30d` (calendar-approximation, not month-aware), `quarterly → +91d`, `custom` honors `recurrence_interval_days`, `custom` with no interval returns None, no due date returns None.
+  - `ScheduledTaskCompletionTests` (4) — `check_completion` semantics: any-of when `require_all_signoffs=False`, all-of when True, partial sign-off doesn't complete in all-of mode, **no-op when there are zero assignments** (regression guard against `all([]) == True` accidentally completing unsigned tasks).
+  - `ScheduledTaskRecurrenceSpawnTests` (2) — completing a recurring task spawns the next occurrence with cloned assignments + tags + recurrence config; one-time task does NOT spawn.
+  - `TaskAssignmentConstraintTests` (1) — `(task, user)` unique-together rejects duplicate-assignee.
+- 20/20 in 6 s. **No production bugs surfaced.** The model's `monthly → +30d` approximation is now explicitly pinned by test — if anyone changes it to true calendar-month logic in the future, that test should update.
+
 ## [3.17.200] - 2026-05-02
 
 ### Tests
