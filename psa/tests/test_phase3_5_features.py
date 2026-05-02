@@ -896,3 +896,136 @@ class InvoiceApprovalGateTests(TestCase):
         inv.refresh_from_db()
         self.assertTrue(inv.requires_approval)
         self.assertIn('Customer dispute', inv.approval_reason)
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 v1 — CSAT Surveys (v3.17.231)
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class CSATSurveyTests(TestCase):
+    """Phase 12 v1: post-close CSAT survey emailer + token response."""
+
+    def setUp(self):
+        from django.core import mail
+        mail.outbox = []
+        _setup_seed()
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.psa_csat_enabled = True
+        s.save()
+        self.org = Organization.objects.create(name='CSATCo', slug='csat-co')
+        self.user = User.objects.create_user('csat-tech', password='pw', email='ct@x.com')
+        Membership.objects.update_or_create(
+            user=self.user, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status_new = TicketStatus.objects.filter(slug='new').first()
+        self.status_terminal = TicketStatus.objects.filter(is_terminal=True).first()
+
+    def _make_ticket(self, **overrides):
+        from psa.models import Ticket
+        defaults = dict(
+            organization=self.org, subject='CSAT pilot',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_new,
+            requester_email='customer@example.com',
+            requester_name='Casey Customer',
+        )
+        defaults.update(overrides)
+        return Ticket.objects.create(**defaults)
+
+    def test_survey_created_when_ticket_moves_to_terminal(self):
+        from django.core import mail
+        from psa.models import TicketCSATSurvey
+        ticket = self._make_ticket()
+        self.assertEqual(TicketCSATSurvey.objects.count(), 0)
+        ticket.status = self.status_terminal
+        ticket.save()
+        self.assertEqual(TicketCSATSurvey.objects.count(), 1)
+        survey = TicketCSATSurvey.objects.get(ticket=ticket)
+        self.assertEqual(survey.recipient_email, 'customer@example.com')
+        self.assertIsNotNone(survey.token)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(ticket.ticket_number, mail.outbox[0].subject)
+
+    def test_survey_not_created_when_csat_disabled(self):
+        from psa.models import TicketCSATSurvey
+        s = SystemSetting.get_settings()
+        s.psa_csat_enabled = False
+        s.save()
+        ticket = self._make_ticket()
+        ticket.status = self.status_terminal
+        ticket.save()
+        self.assertEqual(TicketCSATSurvey.objects.count(), 0)
+
+    def test_survey_idempotent_on_second_terminal_save(self):
+        from psa.models import TicketCSATSurvey
+        from django.core import mail
+        ticket = self._make_ticket()
+        ticket.status = self.status_terminal
+        ticket.save()
+        # Second save while still terminal — no transition, no new survey.
+        ticket.save()
+        # Re-open and re-close — still only one survey (OneToOne on ticket).
+        ticket.status = self.status_new
+        ticket.save()
+        ticket.status = self.status_terminal
+        ticket.save()
+        self.assertEqual(TicketCSATSurvey.objects.count(), 1)
+        # Only the first close sent an email; subsequent transitions
+        # find the existing survey and short-circuit.
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_survey_skipped_when_no_recipient(self):
+        from psa.models import TicketCSATSurvey
+        from django.core import mail
+        ticket = self._make_ticket(requester_email='')
+        ticket.status = self.status_terminal
+        ticket.save()
+        self.assertEqual(TicketCSATSurvey.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_csat_respond_view_records_rating(self):
+        from psa.models import TicketCSATSurvey
+        from django.test import Client
+        ticket = self._make_ticket()
+        ticket.status = self.status_terminal
+        ticket.save()
+        survey = TicketCSATSurvey.objects.get(ticket=ticket)
+        c = Client()
+        r = c.post(f'/psa/csat/{survey.token}/', data={
+            'rating': '5',
+            'comment': 'Great work!',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Thanks for your feedback')
+        survey.refresh_from_db()
+        self.assertEqual(survey.rating, 5)
+        self.assertEqual(survey.comment, 'Great work!')
+        self.assertIsNotNone(survey.responded_at)
+
+    def test_csat_respond_view_rejects_invalid_rating(self):
+        from psa.models import TicketCSATSurvey
+        from django.test import Client
+        ticket = self._make_ticket()
+        ticket.status = self.status_terminal
+        ticket.save()
+        survey = TicketCSATSurvey.objects.get(ticket=ticket)
+        c = Client()
+        r = c.post(f'/psa/csat/{survey.token}/', data={'rating': '99'})
+        self.assertEqual(r.status_code, 200)
+        # Stays on the form, rating not persisted.
+        survey.refresh_from_db()
+        self.assertIsNone(survey.rating)
+
+    def test_csat_respond_view_404_for_unknown_token(self):
+        from django.test import Client
+        c = Client()
+        r = c.get('/psa/csat/this-token-does-not-exist/')
+        self.assertEqual(r.status_code, 404)

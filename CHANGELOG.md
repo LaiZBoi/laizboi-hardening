@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.231] - 2026-05-02
+
+### Added — Phase 12 v1 CSAT surveys post-ticket-close
+First slice of Phase 12 (Customer Communication Workflows). When a PSA ticket transitions into a terminal status (resolved / closed / cancelled), the requester gets a one-click 1-5 star rating link delivered to their email. They submit without an account; the response is stored against the ticket for downstream profitability + tech-coaching reporting.
+
+- **New `psa.TicketCSATSurvey` model.** OneToOne with Ticket; carries token, recipient_email, sent_at, rating, comment, responded_at, responded_ip. Migration `psa.0030`.
+- **New SystemSetting flag `psa_csat_enabled`** (default `False`). Off by default so existing installs don't suddenly start emailing customers — admins flip it on after vetting the email content. Migration `core.0051`.
+- **Signal hook in `psa.signals._fire_ticket_workflow`** — when status changes AND new status is `is_terminal=True`, calls `psa.csat.maybe_send_csat(ticket)`. Catches all exceptions internally so a CSAT failure can't break the ticket save flow.
+- **Idempotent survey creation.** TicketCSATSurvey is OneToOne with Ticket. Re-saving a closed ticket, or re-opening + re-closing, returns the existing survey row without sending a second email.
+- **Skips silently when no recipient.** Tickets without `requester_email` (manual staff-created tickets, etc.) don't generate a survey.
+- **Public response form at `GET /psa/csat/<token>/`.** Token is the sole auth — no account needed. 5 clickable stars (vanilla JS, no React), optional comment textarea, friendly meaning labels ("Very dissatisfied" → "Very satisfied"). POST records rating + comment + responded_at + responded_ip; renders a thank-you page.
+- **Token-based auth model.** Token is `secrets.token_urlsafe(32)` generated on first save; stored in plaintext (it's the URL, not a credential). Survey response can be re-submitted (latest wins) — useful when a customer wants to revise their rating after thinking about it more.
+
+### Tests
+- 7 tests in `CSATSurveyTests`:
+  - Survey created + email sent on first terminal transition.
+  - Survey NOT created when `psa_csat_enabled=False`.
+  - Idempotent on repeated saves + re-open/re-close cycles (only one survey, one email).
+  - Skipped when `requester_email` empty.
+  - Public POST records rating + comment + responded_at, redirects to thank-you.
+  - Public POST with rating outside 1-5 stays on the form, doesn't persist.
+  - Unknown token → 404.
+
+### Roadmap
+- Phase 12 sub-bullet "Customer satisfaction (CSAT) surveys post-ticket-close" annotated `*(shipped v3.17.231)*`. Phase 12 marked `[in progress]`.
+
 ## [3.17.230] - 2026-05-02
 
 ### Added — Editable Dashboard Quick Actions

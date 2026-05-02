@@ -106,6 +106,8 @@ urlpatterns = [
     path('clients/<int:org_id>/charge/invoice/', views.charge_invoice, name='charge_invoice'),
     path('clients/<int:org_id>/invite-portal/', views.portal_invite, name='portal_invite'),
     path('aging/', views.aging_report, name='aging_report'),
+    # Phase 12 v1 — public CSAT response (token-authenticated, no login).
+    path('csat/<str:token>/', views.csat_respond, name='csat_respond'),
 
     # Procurement (Phase 4.1) — Purchase Requisitions
     path('requisitions/', views.requisition_list, name='requisition_list'),

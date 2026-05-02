@@ -7022,3 +7022,38 @@ def ticket_partner_webhook(request, share_pk):
         return JsonResponse({'ok': True, 'share_status': share.status})
 
     return JsonResponse({'ok': False, 'error': 'unknown event'}, status=400)
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 v1 (v3.17.231) — Public CSAT response endpoint
+# ---------------------------------------------------------------------------
+
+@require_http_methods(['GET', 'POST'])
+def csat_respond(request, token):
+    """
+    Public, token-authenticated CSAT response form. The token is the
+    sole auth — recipient doesn't need an account. Single-use:
+    re-submitting overwrites the existing rating (treats the latest
+    response as authoritative).
+    """
+    from .models import TicketCSATSurvey
+    survey = get_object_or_404(TicketCSATSurvey, token=token)
+
+    if request.method == 'POST':
+        try:
+            rating = int(request.POST.get('rating') or 0)
+        except (TypeError, ValueError):
+            rating = 0
+        if rating < 1 or rating > 5:
+            messages.error(request, 'Pick a rating from 1 to 5.')
+            return render(request, 'psa/csat_respond.html', {'survey': survey})
+        comment = (request.POST.get('comment') or '').strip()[:2000]
+        survey.rating = rating
+        survey.comment = comment
+        survey.responded_at = timezone.now()
+        survey.responded_ip = _client_ip(request)
+        survey.save(update_fields=['rating', 'comment', 'responded_at',
+                                    'responded_ip'])
+        return render(request, 'psa/csat_thanks.html', {'survey': survey})
+
+    return render(request, 'psa/csat_respond.html', {'survey': survey})

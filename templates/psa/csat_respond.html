@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>How did we do? — {{ survey.ticket.ticket_number }}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+<style>
+body { background: #f7f8fa; }
+.csat-card { max-width: 560px; margin: 60px auto; }
+.csat-stars { font-size: 2.5rem; }
+.csat-star {
+    cursor: pointer;
+    color: #d8dbe0;
+    background: none;
+    border: none;
+    padding: 0 6px;
+    transition: transform 0.1s, color 0.1s;
+}
+.csat-star:hover, .csat-star.active { color: #f5a623; transform: scale(1.1); }
+.csat-meaning { font-size: 0.9rem; color: #6c757d; min-height: 1.4rem; }
+</style>
+</head>
+<body>
+<div class="csat-card">
+    <div class="card shadow-sm">
+        <div class="card-body p-4 text-center">
+            <h1 class="h3 mb-1">How did we do?</h1>
+            <p class="text-muted mb-1">
+                {{ survey.ticket.organization.name }} —
+                {{ survey.ticket.ticket_number }}
+            </p>
+            <p class="text-muted small">{{ survey.ticket.subject }}</p>
+
+            {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-warning small mb-3">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+
+            <form method="post" id="csat-form" class="mt-4">
+                {% csrf_token %}
+                <div class="csat-stars mb-2" id="csat-stars">
+                    {% for i in "12345" %}
+                    <button type="button" class="csat-star"
+                            data-rating="{{ forloop.counter }}"
+                            aria-label="{{ forloop.counter }} stars">
+                        <i class="fas fa-star"></i>
+                    </button>
+                    {% endfor %}
+                </div>
+                <div class="csat-meaning mb-3" id="csat-meaning">&nbsp;</div>
+                <input type="hidden" name="rating" id="csat-rating" value="{{ survey.rating|default:'' }}">
+                <div class="mb-3 text-start">
+                    <label for="csat-comment" class="form-label small">
+                        Anything you'd like the team to know? <span class="text-muted">(optional)</span>
+                    </label>
+                    <textarea name="comment" id="csat-comment" rows="3" class="form-control"
+                              maxlength="2000" placeholder="What worked, what could've been better…">{{ survey.comment|default:'' }}</textarea>
+                </div>
+                <button type="submit" class="btn btn-primary px-4" id="csat-submit" disabled>
+                    Submit feedback
+                </button>
+            </form>
+        </div>
+    </div>
+    <p class="text-center text-muted small mt-3">
+        This link is unique to your support ticket. It does not require a password.
+    </p>
+</div>
+
+<script>
+(function() {
+    var meanings = {
+        1: 'Very dissatisfied',
+        2: 'Dissatisfied',
+        3: 'Neutral',
+        4: 'Satisfied',
+        5: 'Very satisfied',
+    };
+    var stars = Array.from(document.querySelectorAll('.csat-star'));
+    var input = document.getElementById('csat-rating');
+    var meaning = document.getElementById('csat-meaning');
+    var submit = document.getElementById('csat-submit');
+
+    function setRating(n) {
+        input.value = n;
+        stars.forEach(function(s) {
+            s.classList.toggle('active', parseInt(s.dataset.rating, 10) <= n);
+        });
+        meaning.textContent = meanings[n] || '';
+        submit.disabled = !n;
+    }
+
+    stars.forEach(function(s) {
+        s.addEventListener('click', function() { setRating(parseInt(s.dataset.rating, 10)); });
+        s.addEventListener('mouseenter', function() {
+            var n = parseInt(s.dataset.rating, 10);
+            stars.forEach(function(x) {
+                x.classList.toggle('active', parseInt(x.dataset.rating, 10) <= n);
+            });
+            meaning.textContent = meanings[n] || '';
+        });
+    });
+    document.getElementById('csat-stars').addEventListener('mouseleave', function() {
+        var n = parseInt(input.value || '0', 10);
+        setRating(n);
+    });
+    if (input.value) setRating(parseInt(input.value, 10));
+})();
+</script>
+</body>
+</html>

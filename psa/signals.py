@@ -90,6 +90,21 @@ def _fire_ticket_workflow(sender, instance, created, **kwargs):
     except Exception:
         logger.exception('PSA tech notification signal failed')
 
+    # Phase 12 v1 (v3.17.231): CSAT email when ticket transitions to a
+    # terminal status. Idempotent — TicketCSATSurvey is OneToOne, so a
+    # survey only ever gets created (and emailed) on the first transition.
+    try:
+        prior_status_id = prior.get('status_id')
+        moved_status = (prior_status_id is not None
+                        and prior_status_id != instance.status_id)
+        if (moved_status
+                and instance.status_id
+                and getattr(instance.status, 'is_terminal', False)):
+            from .csat import maybe_send_csat
+            maybe_send_csat(instance)
+    except Exception:
+        logger.exception('PSA CSAT survey hook failed')
+
 
 @receiver(post_save, sender=TicketComment)
 def _fire_comment_workflow(sender, instance, created, **kwargs):

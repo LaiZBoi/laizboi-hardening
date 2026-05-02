@@ -268,12 +268,12 @@ Planned capabilities:
 
 **Goal:** Improve technician coordination and service workflow efficiency.
 
-## Phase 12 — Customer Communication Workflows **(M)**
+## Phase 12 — Customer Communication Workflows **(M)** [in progress]
 
 **Roadmap item:** Enhanced Client Communication & Portal Workflows. Extends the existing customer portal.
 
 Planned capabilities:
-- Customer satisfaction (CSAT) surveys post-ticket-close
+- Customer satisfaction (CSAT) surveys post-ticket-close *(shipped v3.17.231 — token-based 1-5 star rating + optional comment, gated by `psa_csat_enabled` SystemSetting flag)*
 - Branded client portals *(extends Phase v3.17.112 per-org branding)*
 - Portal announcements
 - Customer approval workflows

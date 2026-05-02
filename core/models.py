@@ -628,6 +628,12 @@ class SystemSetting(models.Model):
     psa_sms_notifications_enabled = models.BooleanField(default=False, help_text='Send SMS to staff (no secrets in body)')
     psa_desktop_alerts_enabled = models.BooleanField(default=False, help_text='Send desktop / browser alerts to staff')
     psa_external_alert_ingest_enabled = models.BooleanField(default=False, help_text='Accept alerts from external monitoring/RMM webhooks')
+    psa_csat_enabled = models.BooleanField(
+        default=False,
+        help_text='Email a 1-5 star CSAT survey link to the requester when '
+                  'a ticket is resolved/closed. Off by default — enable '
+                  'after vetting your post-close email content.',
+    )
 
     # Billing defaults — used by the quote and invoice forms when the
     # specific row doesn't override.

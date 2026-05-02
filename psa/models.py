@@ -1523,6 +1523,56 @@ class QuoteLineItem(models.Model):
 # ---------------------------------------------------------------------------
 # Expenses (Workstream 2 expansion)
 # ---------------------------------------------------------------------------
+# Phase 12 v1 (v3.17.231) — CSAT survey
+# ---------------------------------------------------------------------------
+
+class TicketCSATSurvey(models.Model):
+    """
+    Customer-satisfaction survey emailed to the ticket requester after a
+    ticket transitions to a terminal status. One survey per ticket
+    (OneToOne). Token-based public URL — recipient doesn't need an
+    account to respond.
+    """
+    ticket = models.OneToOneField(
+        'psa.Ticket', on_delete=models.CASCADE, related_name='csat_survey',
+    )
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_csat_surveys',
+    )
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    recipient_email = models.EmailField()
+    sent_at = models.DateTimeField(auto_now_add=True)
+    rating = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='1 = very dissatisfied, 5 = very satisfied. Null until response.',
+    )
+    comment = models.TextField(blank=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    responded_ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'psa_ticket_csat_surveys'
+        ordering = ['-sent_at']
+        indexes = [
+            models.Index(fields=['organization', '-sent_at']),
+            models.Index(fields=['rating']),
+        ]
+
+    def __str__(self):
+        return (f'CSAT for {self.ticket.ticket_number}: '
+                f'{self.rating or "pending"}')
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            import secrets as _secrets
+            self.token = _secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
+
+    @property
+    def is_responded(self) -> bool:
+        return self.responded_at is not None
+
 
 def expense_receipt_upload_to(instance, filename):
     return f'psa/expenses/{instance.ticket.organization_id}/{instance.ticket_id}/{filename}'
