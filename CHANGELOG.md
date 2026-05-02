@@ -5,6 +5,34 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.224] - 2026-05-02
+
+### Fixed — Navbar layout (better fix for the v3.17.221 regression)
+v3.17.221 switched `.navbar-nav` from `flex-wrap: nowrap` to `wrap` to stop horizontal overflow on narrow viewports — but that made things *worse* on resize / DevTools-open because items started wrapping awkwardly to a second line at unpredictable breakpoints. Reverted to `nowrap` and instead changed the navbar's responsive breakpoint from `navbar-expand-lg` (collapse below 992px) to `navbar-expand-xxl` (collapse below 1400px). Below 1400px the navbar now collapses to a single hamburger button — clean, no overflow, no awkward wrapping. Above 1400px the navbar renders fully expanded as before.
+
+### Added — Nine new wallboard widget sources (alerts / warnings / techs)
+User asked for "any type of alerts/warnings, techs logged in, etc." — added nine sources covering operations, monitoring, and security visibility:
+
+- **`techs_logged_in`** (metric, hours-configurable) — distinct active `User` count with `last_login >= now - N hours`.
+- **`monitors_down`** (metric) — `WebsiteMonitor` rows currently in `down`/`error` state. Shows green when 0, red otherwise.
+- **`ssl_expiring_soon`** (metric, days-configurable) — SSL certificates expiring within N days (default 30).
+- **`domain_expiring_soon`** (metric, days-configurable) — domain registrations expiring within N days (default 60).
+- **`warranties_expiring_soon`** (metric, days-configurable) — `Asset.warranty_expiry` falling within N days (default 90).
+- **`recent_failed_logins`** (metric, hours-configurable) — `axes.AccessAttempt` rows in the last N hours (default 24).
+- **`vault_activity_24h`** (metric) — vault `AuditLog` events (`object_type='password'`) in the last 24 hours.
+- **`alerts_by_severity`** (table) — open `SecurityAlert` count per severity (critical / high / medium / low / info — every level always rendered, even at 0).
+- **`monitors_status_breakdown`** (chart_pie) — Active / Warning / Down / Unknown monitor counts.
+
+Each source defends against a missing app (e.g. `axes`, `security_alerts`) with a try/except → `secondary` color fallback so a wallboard never explodes if an optional integration is uninstalled.
+
+### Added — Two new wallboard starter templates
+- **Security & Alerts** template extended from 2 widgets to 5 — adds Failed logins (24h) metric, the new All-open-alerts-by-severity table, and Vault events (24h) metric.
+- **Monitoring & Infrastructure** (NEW template) — 5 widgets covering monitor health, SSL/domain/warranty cliffs, and a status-breakdown pie chart. Pick this on Create for an infrastructure-focused NOC TV.
+
+### Tests
+- 1 new smoke test in `WallboardWidgetCategoryTests.test_v224_widget_sources_smoke` — every new source returns a well-formed payload (correct keys per widget type) even when the underlying tables are empty.
+- All 41 + 1 wallboard tests pass.
+
 ## [3.17.223] - 2026-05-02
 
 ### Added — Phase 38 Client Onboarding/Offboarding Runbooks (v1)

@@ -419,6 +419,176 @@ def security_alerts_open_critical(params):
         return {'value': '0', 'subtitle': 'Security', 'icon': 'fa-shield-halved', 'color': 'secondary'}
 
 
+# ---- v3.17.224 — operations / monitoring widgets ---------------------------
+
+def techs_logged_in(params):
+    """Distinct users with last_login within the last N hours (default 8)."""
+    from django.contrib.auth.models import User
+    from datetime import timedelta as _td
+    from django.utils import timezone as _tz
+    hours = int((params or {}).get('hours', 8))
+    cutoff = _tz.now() - _td(hours=hours)
+    n = User.objects.filter(last_login__gte=cutoff, is_active=True).count()
+    return {
+        'value': str(n),
+        'subtitle': f'Users logged in (last {hours}h)',
+        'icon': 'fa-user-clock',
+        'color': 'primary',
+    }
+
+
+def monitors_down(params):
+    """Count of WebsiteMonitors currently in `down` or `error` state."""
+    try:
+        from monitoring.models import WebsiteMonitor
+        n = WebsiteMonitor.objects.filter(
+            is_enabled=True, status__in=['down', 'error'],
+        ).count()
+        return {
+            'value': str(n),
+            'subtitle': 'Monitors currently down',
+            'icon': 'fa-link-slash',
+            'color': 'success' if n == 0 else 'danger',
+        }
+    except Exception:
+        return {'value': '0', 'subtitle': 'Monitors', 'icon': 'fa-link-slash', 'color': 'secondary'}
+
+
+def ssl_expiring_soon(params):
+    """SSL certificates expiring within N days (default 30)."""
+    from datetime import timedelta as _td
+    from django.utils import timezone as _tz
+    days = int((params or {}).get('days', 30))
+    try:
+        from monitoring.models import WebsiteMonitor
+        cutoff = _tz.now() + _td(days=days)
+        n = WebsiteMonitor.objects.filter(
+            is_enabled=True, ssl_enabled=True,
+            ssl_expires_at__isnull=False,
+            ssl_expires_at__lte=cutoff,
+        ).count()
+        return {
+            'value': str(n),
+            'subtitle': f'SSL certs expiring in {days}d',
+            'icon': 'fa-shield-alt',
+            'color': 'success' if n == 0 else 'warning' if n < 5 else 'danger',
+        }
+    except Exception:
+        return {'value': '0', 'subtitle': 'SSL', 'icon': 'fa-shield-alt', 'color': 'secondary'}
+
+
+def domain_expiring_soon(params):
+    """Domain registrations expiring within N days (default 60)."""
+    from datetime import timedelta as _td
+    from django.utils import timezone as _tz
+    days = int((params or {}).get('days', 60))
+    try:
+        from monitoring.models import WebsiteMonitor
+        cutoff = _tz.now() + _td(days=days)
+        n = WebsiteMonitor.objects.filter(
+            is_enabled=True,
+            domain_expires_at__isnull=False,
+            domain_expires_at__lte=cutoff,
+        ).count()
+        return {
+            'value': str(n),
+            'subtitle': f'Domains expiring in {days}d',
+            'icon': 'fa-globe',
+            'color': 'success' if n == 0 else 'warning' if n < 5 else 'danger',
+        }
+    except Exception:
+        return {'value': '0', 'subtitle': 'Domains', 'icon': 'fa-globe', 'color': 'secondary'}
+
+
+def warranties_expiring_soon(params):
+    """Assets with warranty_expiry within N days (default 90)."""
+    from datetime import date as _date, timedelta as _td
+    days = int((params or {}).get('days', 90))
+    try:
+        from assets.models import Asset
+        cutoff = _date.today() + _td(days=days)
+        n = Asset.objects.filter(
+            warranty_expiry__isnull=False,
+            warranty_expiry__lte=cutoff,
+            warranty_expiry__gte=_date.today(),
+        ).count()
+        return {
+            'value': str(n),
+            'subtitle': f'Assets warranty expiring in {days}d',
+            'icon': 'fa-clock-rotate-left',
+            'color': 'success' if n == 0 else 'warning' if n < 5 else 'danger',
+        }
+    except Exception:
+        return {'value': '0', 'subtitle': 'Warranties', 'icon': 'fa-clock-rotate-left', 'color': 'secondary'}
+
+
+def recent_failed_logins(params):
+    """Failed login attempts in the last N hours (default 24, via django-axes)."""
+    from datetime import timedelta as _td
+    from django.utils import timezone as _tz
+    hours = int((params or {}).get('hours', 24))
+    try:
+        from axes.models import AccessAttempt
+        cutoff = _tz.now() - _td(hours=hours)
+        n = AccessAttempt.objects.filter(attempt_time__gte=cutoff).count()
+        return {
+            'value': str(n),
+            'subtitle': f'Failed logins (last {hours}h)',
+            'icon': 'fa-user-slash',
+            'color': 'success' if n < 5 else 'warning' if n < 25 else 'danger',
+        }
+    except Exception:
+        return {'value': '0', 'subtitle': 'Failed logins', 'icon': 'fa-user-slash', 'color': 'secondary'}
+
+
+def vault_activity_24h(params):
+    """Vault password access events (read/update/create/delete) in the last 24h."""
+    from datetime import timedelta as _td
+    from django.utils import timezone as _tz
+    try:
+        from audit.models import AuditLog
+        cutoff = _tz.now() - _td(hours=24)
+        n = AuditLog.objects.filter(
+            object_type__iexact='password',
+            timestamp__gte=cutoff,
+        ).count()
+        return {
+            'value': str(n),
+            'subtitle': 'Vault events (24h)',
+            'icon': 'fa-key',
+            'color': 'info',
+        }
+    except Exception:
+        return {'value': '0', 'subtitle': 'Vault', 'icon': 'fa-key', 'color': 'secondary'}
+
+
+def alerts_by_severity(params):
+    """Open security alerts grouped by severity (table, all severities listed)."""
+    try:
+        from security_alerts.models import SecurityAlert
+        rows = []
+        for sev in ['critical', 'high', 'medium', 'low', 'info']:
+            n = SecurityAlert.objects.filter(severity=sev, status='new').count()
+            rows.append([sev.upper(), str(n)])
+        return {'columns': ['Severity', 'Open'], 'rows': rows}
+    except Exception:
+        return {'columns': [], 'rows': []}
+
+
+def monitors_status_breakdown(params):
+    """Pie: monitor status counts (active vs warning vs down vs unknown)."""
+    try:
+        from monitoring.models import WebsiteMonitor
+        labels = ['Active', 'Warning', 'Down', 'Unknown']
+        keys = ['active', 'warning', 'down', 'unknown']
+        data = []
+        for k in keys:
+            data.append(WebsiteMonitor.objects.filter(is_enabled=True, status=k).count())
+        return {'labels': labels, 'data': data}
+    except Exception:
+        return {'labels': [], 'data': []}
+
+
 # ---- Registry --------------------------------------------------------------
 
 REGISTRY = {
@@ -447,6 +617,16 @@ REGISTRY = {
     # phase 9
     'security_alerts_24h': security_alerts_24h,
     'security_alerts_open_critical': security_alerts_open_critical,
+    # v3.17.224 — operations / monitoring
+    'techs_logged_in': techs_logged_in,
+    'monitors_down': monitors_down,
+    'ssl_expiring_soon': ssl_expiring_soon,
+    'domain_expiring_soon': domain_expiring_soon,
+    'warranties_expiring_soon': warranties_expiring_soon,
+    'recent_failed_logins': recent_failed_logins,
+    'vault_activity_24h': vault_activity_24h,
+    'alerts_by_severity': alerts_by_severity,
+    'monitors_status_breakdown': monitors_status_breakdown,
 }
 
 DATA_SOURCE_CHOICES = [
@@ -470,6 +650,16 @@ DATA_SOURCE_CHOICES = [
     ('recent_sales_activity', 'Recent sales activity (table)', 'table'),
     ('security_alerts_24h', 'Security alerts last 24h by severity (table)', 'table'),
     ('security_alerts_open_critical', 'Open critical/high alerts (metric)', 'metric'),
+    # v3.17.224 — operations / monitoring widgets
+    ('techs_logged_in', 'Techs logged in (last 8h) (metric)', 'metric'),
+    ('monitors_down', 'Monitors currently down (metric)', 'metric'),
+    ('ssl_expiring_soon', 'SSL certs expiring soon (metric)', 'metric'),
+    ('domain_expiring_soon', 'Domains expiring soon (metric)', 'metric'),
+    ('warranties_expiring_soon', 'Warranties expiring soon (metric)', 'metric'),
+    ('recent_failed_logins', 'Failed logins last 24h (metric)', 'metric'),
+    ('vault_activity_24h', 'Vault events last 24h (metric)', 'metric'),
+    ('alerts_by_severity', 'Open alerts by severity (table)', 'table'),
+    ('monitors_status_breakdown', 'Monitor status breakdown (pie)', 'chart_pie'),
 ]
 
 
@@ -579,6 +769,21 @@ WALLBOARD_TEMPLATES = [
         'widgets': [
             {'data_source': 'security_alerts_open_critical', 'title': 'Open critical alerts', 'widget_type': 'metric'},
             {'data_source': 'security_alerts_24h', 'title': 'New alerts (24h) by severity', 'widget_type': 'table'},
+            {'data_source': 'recent_failed_logins', 'title': 'Failed logins (24h)', 'widget_type': 'metric'},
+            {'data_source': 'alerts_by_severity', 'title': 'All open alerts by severity', 'widget_type': 'table'},
+            {'data_source': 'vault_activity_24h', 'title': 'Vault events (24h)', 'widget_type': 'metric'},
+        ],
+    },
+    {
+        'key': 'monitoring',
+        'label': 'Monitoring & Infrastructure',
+        'description': 'Sites up, SSL/domain expirations, warranty cliffs.',
+        'widgets': [
+            {'data_source': 'monitors_down', 'title': 'Monitors down', 'widget_type': 'metric'},
+            {'data_source': 'ssl_expiring_soon', 'title': 'SSL expiring (30d)', 'widget_type': 'metric'},
+            {'data_source': 'domain_expiring_soon', 'title': 'Domains expiring (60d)', 'widget_type': 'metric'},
+            {'data_source': 'warranties_expiring_soon', 'title': 'Warranties expiring (90d)', 'widget_type': 'metric'},
+            {'data_source': 'monitors_status_breakdown', 'title': 'Monitor status', 'widget_type': 'chart_pie'},
         ],
     },
     {

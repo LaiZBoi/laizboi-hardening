@@ -252,9 +252,8 @@ h6 { font-size: 1rem; }
 }
 
 .navbar-nav {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
-    row-gap: 0.25rem;
 }
 
 .nav-link {

@@ -1705,6 +1705,29 @@ class WallboardWidgetCategoryTests(TestCase):
         cum = cumulative['series'][0]['data']
         self.assertEqual(cum, sorted(cum))
 
+    def test_v224_widget_sources_smoke(self):
+        # v3.17.224: each new operations/monitoring source should return a
+        # well-formed dict (no exception) even when the underlying tables
+        # are empty.
+        from reports.widget_sources import (
+            techs_logged_in, monitors_down, ssl_expiring_soon,
+            domain_expiring_soon, warranties_expiring_soon,
+            recent_failed_logins, vault_activity_24h,
+            alerts_by_severity, monitors_status_breakdown,
+        )
+        for fn in (techs_logged_in, monitors_down, ssl_expiring_soon,
+                   domain_expiring_soon, warranties_expiring_soon,
+                   recent_failed_logins, vault_activity_24h):
+            res = fn({})
+            self.assertIn('value', res)
+            self.assertIn('subtitle', res)
+        rows = alerts_by_severity({})
+        self.assertIn('rows', rows)
+        self.assertIn('columns', rows)
+        pie = monitors_status_breakdown({})
+        self.assertIn('labels', pie)
+        self.assertIn('data', pie)
+
     def test_at_risk_clients_categories_return_table(self):
         from reports.widget_sources import at_risk_clients
         for cat in ('worst', 'trouble_only', 'at_risk_only'):
