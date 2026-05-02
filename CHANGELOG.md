@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.197] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `monitoring/` app** (audit punch-list / Phase 7 polish — 8th of 16 originally-untested apps). Cron-driven (uptime checks fire on schedule) and externally-facing (`WebsiteMonitor.check_status` makes outbound HTTP requests). Silent failures here = invisible monitoring loss. **22 tests across 5 classes:**
+  - `WebsiteMonitorModelTests` (7) — minimal create defaults (`status='unknown'`, `is_enabled=True`, 60-min check interval); `__str__` includes name + URL; `is_ssl_expiring_soon` true within warning window; false outside it; **false when `ssl_expires_at` is None** (regression guard for `None <= ...` comparison crash); `is_domain_expiring_soon` uses domain-specific warning window; `for_organization()` filtering.
+  - `ExpirationModelTests` (5) — `__str__` includes name + date; `is_expired` true/false on past/future dates; `days_until_expiration` negative when expired; `is_expiring_soon` only fires inside `[0, warning_days]` (not for already-expired or far-future).
+  - `IPAMConstraintTests` (5) — IPAM dedupe contract: `(subnet, ip_address)` unique-together rejects duplicate-in-same-subnet but allows same-IP-in-different-subnet; default status `available`; `__str__` includes hostname when set, falls back to IP only otherwise.
+  - `SubnetModelTests` (3) — `__str__`, default `dns_servers=[]`, `for_organization()`.
+  - `VLANModelTests` (2) — basic create + `__str__`.
+- 22/22 in 0.09 s. **No production bugs surfaced** — monitoring/ models are clean (the `None`-guard test was a regression guard, not a bug catch). The view-layer + cron-side hasn't been smoke-tested yet; that's a follow-up.
+
 ## [3.17.196] - 2026-05-02
 
 ### Tests
