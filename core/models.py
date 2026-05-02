@@ -102,6 +102,18 @@ class Organization(models.Model):
                   'client. 0 = no markup.',
     )
 
+    # Phase 18 (v3.17.240): multi-location client hierarchy. A parent
+    # organization (e.g. a holding company) sees its descendants' rows
+    # via OrganizationManager.for_organization(); descendants stay
+    # scoped to themselves. Set blank for top-level organizations.
+    parent = models.ForeignKey(
+        'self', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='children',
+        help_text='Parent organization. Use for branch / division / '
+                  'subsidiary structures. The parent\'s queries see '
+                  'descendants\' rows; descendants stay scoped to themselves.',
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -110,6 +122,25 @@ class Organization(models.Model):
     class Meta:
         db_table = 'organizations'
         ordering = ['name']
+
+    @property
+    def ancestors(self):
+        """v3.17.240: walk up the parent chain (closest first)."""
+        out = []
+        node = self.parent
+        seen = {self.pk}
+        while node and node.pk not in seen:
+            out.append(node)
+            seen.add(node.pk)
+            node = node.parent
+        return out
+
+    @property
+    def breadcrumb_label(self):
+        """`Parent → Child` for templates."""
+        chain = list(reversed(self.ancestors))
+        chain.append(self)
+        return ' → '.join(o.name for o in chain)
 
     def __str__(self):
         return self.name

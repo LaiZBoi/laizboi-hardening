@@ -386,18 +386,18 @@ Planned capabilities:
 
 **Goal:** Improve infrastructure awareness and proactive operational management.
 
-## Phase 18 — Multi-Location Client Hierarchy **(M)**
+## Phase 18 — Multi-Location Client Hierarchy **(M)** [in progress]
 
 **Roadmap item:** Advanced Multi-Location Organization Management.
 
 Planned capabilities:
-- Parent / child organizations (`Organization.parent` self-FK)
-- Multi-site hierarchy
+- Parent / child organizations (`Organization.parent` self-FK) *(shipped v3.17.240)*
+- Multi-site hierarchy *(shipped v3.17.240 — `Organization.ancestors` property + breadcrumb labels)*
 - Shared infrastructure inheritance
 - Location-specific documentation
 - Location-level contacts
 - Site-level SLA assignment (override parent SLA)
-- Site filtering on every list page
+- Site filtering on every list page *(shipped v3.17.240 — `OrganizationManager.for_organization` walks parent chain via `core.utils.descendant_org_ids` helper, parent queries see all descendants automatically)*
 - Shared services mapping
 - Regional operational views (group sites by region)
 - Multi-location reporting

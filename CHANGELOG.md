@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.240] - 2026-05-02
+
+### Added — Phase 18 Multi-Location Client Hierarchy
+Organizations can now be modeled as parent/child trees — a holding company with regional branches, an MSP customer with multiple sites, etc. Parent queries see descendants' rows automatically; descendants stay scoped to themselves.
+
+- **New `Organization.parent` self-FK** (migration `core.0053`). Nullable; default null = top-level org. `related_name='children'` so `parent.children.all()` works.
+- **`OrganizationManager.for_organization(org)`** now defaults to `include_descendants=True` and walks the parent chain via the new `core.utils.descendant_org_ids()` helper. Pass `include_descendants=False` for legacy strict scoping when needed. Walks up to 5 levels deep with a seen-set guarding against accidental cycles.
+- **Backward compatible** — every existing call to `for_organization()` keeps working, just gets descendant inheritance for free. 70 existing core/docs/assets/vault/accounts tests pass unchanged.
+- **`Organization.ancestors` property + `breadcrumb_label`** — render `Parent → Child → Grandchild` chains in templates.
+- **Org form `parent` field** with cycle protection: when editing org X, the parent choices exclude X and all descendants (`descendant_org_ids(self.instance)`) so a user can't accidentally pick a child as parent.
+- **Org detail breadcrumb** at the top of the page when the org has ancestors or children. Page header gets a "— branch of {parent}" subtitle when parent is set.
+
+### Tests
+- 9 new tests in `core.tests.test_org_hierarchy`:
+  - `descendant_org_ids` returns self+children for top-level, only-self for leaf, empty set for None.
+  - `ancestors` walks up.
+  - `breadcrumb_label` renders the chain.
+  - `for_organization(parent)` returns parent's + children's rows on a real model (Asset).
+  - `for_organization(parent, include_descendants=False)` skips descendants.
+  - `for_organization(child)` does NOT see parent's rows (one-way inheritance).
+  - Form's parent queryset excludes self + descendants to block cycle creation.
+
+### Roadmap
+- Phase 18 sub-bullets "Parent / child organizations", "Multi-site hierarchy", "Site filtering on every list page" annotated `*(shipped v3.17.240)*`. Phase 18 marked `[in progress]` (shared infrastructure inheritance, regional views, multi-location reporting still planned for v2).
+
 ## [3.17.239] - 2026-05-02
 
 ### Added — Phase 12 Customer approval workflows + closeout

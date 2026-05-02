@@ -32,7 +32,7 @@ class OrganizationForm(forms.ModelForm):
     class Meta:
         model = Organization
         fields = [
-            'name', 'organization_type', 'legal_name', 'tax_id', 'description',
+            'name', 'organization_type', 'parent', 'legal_name', 'tax_id', 'description',
             'street_address', 'street_address_2', 'city', 'state', 'postal_code', 'country',
             'phone', 'email', 'website',
             'primary_contact_name', 'primary_contact_title', 'primary_contact_email', 'primary_contact_phone',
@@ -57,11 +57,24 @@ class OrganizationForm(forms.ModelForm):
             'primary_contact_title': forms.TextInput(attrs={'class': 'form-control'}),
             'primary_contact_email': forms.EmailInput(attrs={'class': 'form-control'}),
             'primary_contact_phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'parent': forms.Select(attrs={'class': 'form-select'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
         help_texts = {
             'is_active': 'Inactive organizations are hidden from users',
+            'parent': 'Optional. Set when this org is a branch/subsidiary of another. The parent will see this org\'s tickets, assets, etc. via inherited filtering.',
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # v3.17.240: prevent picking yourself or a descendant as parent
+        # (would create a cycle).
+        if self.instance and self.instance.pk:
+            from core.utils import descendant_org_ids
+            forbidden = descendant_org_ids(self.instance)
+            self.fields['parent'].queryset = (
+                self.fields['parent'].queryset.exclude(pk__in=forbidden)
+            )
 
 
 class MembershipForm(forms.ModelForm):
