@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.192] - 2026-05-02
+
+### Tests
+- **`psa/tests.py` split into 5 topical shards** (audit punch-list item #3). The legacy 5,465-line single file was hitting the 540 s CI ceiling at ~106/220 cases per the v3.17.187 test-rot audit. Each shard now runs independently well under the ceiling.
+  - **`psa/tests/_base.py`** — shared helpers (`TEST_MIDDLEWARE`, `_setup_seed`, `_enable_psa_global`, `_enable_psa_for`).
+  - **`test_phase1_2_core.py`** — 13 classes / 75 tests / 141 s. Feature flags, route gating, ticket lifecycle, seed defaults, vault context, Phase 2a/2b/2c, SLA, time tracking, service catalog.
+  - **`test_phase3_5_features.py`** — 7 classes / 34 tests / 57 s. Phase 3 financial reporting, Phase 4 email config, customer portal, Phase 5 quotes/expenses, Phase 6 polish, Phase 7 workflow, Phase 8 billing.
+  - **`test_workflow_kb_contracts.py`** — 13 classes / 56 tests / 147 s. Accounting connections, workflow rules + ticket-level workflow, portal user invites + vault RBAC, Phase 1 contract engine, contract auto-renewal, KB browse/permissions/move, admin assignment, service-catalog view modes.
+  - **`test_procurement_itil.py`** — 18 classes / 53 tests / 107 s. Procurement (vendor metadata, auto-replenish, quote-to-PO, gates, receiving), ITIL (change request signals + permissions, problem records, release windows, catalog change governance), Phase 7 outsourcing (TicketShare), integration SDK.
+  - **`test_phase10_email.py`** — 20 classes / 53 tests / 9 s. All email pipeline (10.1 threading, 10.2 body cleanup + attachments, 10.3 routing + auto-responder + DMARC/spam, 10.4 outbound + conversation panel) plus pure-function helpers (signature/quote strip, HTML sanitize).
+- Total: **271 tests across 5 shards**, all green. Run `manage.py test psa` to discover all of them; `manage.py test psa.tests.test_<shard>` to run one.
+- Topical organization makes new tests easier to place — the question "where does this go?" usually has an obvious answer based on which sub-phase the new code belongs to.
+
 ## [3.17.191] - 2026-05-02
 
 ### Documentation
