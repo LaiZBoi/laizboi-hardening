@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.203] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `docs/` app** (Phase 7 polish Wave 2 — 13th of 16). Knowledge base + Diagrams. KB articles surface to clients via the portal; bug here can leak internal docs externally OR break slug-based routing on customer-visible URLs. Every other app links here (PSA→KB-link, processes→linked_document, vault→linked_document). **13 tests across 5 classes:**
+  - `DocumentCategoryTests` (3) — slug auto-gen from name; explicit slug preserved; `__str__`.
+  - `DocumentSlugTests` (3) — slug auto-gen from title; explicit slug preserved; `__str__`.
+  - `DocumentVersionSnapshotTests` (3) — **no version row written on initial create** (regression guard against runaway version-number-1 row on every doc); v1 snapshot recorded on first edit (preserves pre-edit state); version numbers increment 1, 2, 3, … across multiple edits.
+  - `DiagramSlugTests` (2) — slug auto-gen + `__str__`.
+  - `GlobalKBVisibilityTests` (2) — `is_global=True` docs can have `organization=None` (fully global) or `organization=<MSP>` (MSP-internal cross-tenant). Both cases round-trip correctly.
+- 13/13 in 6 s. **No production bugs surfaced.**
+
 ## [3.17.202] - 2026-05-02
 
 ### Tests
