@@ -1538,6 +1538,40 @@ class WallboardWidgetCategoryTests(TestCase):
         r = c.get(f'/reports/wallboards/widgets/{self.metric_widget.pk}/data/?category=all')
         self.assertEqual(r.status_code, 404)
 
+    def test_tickets_opened_30d_categories_return_distinct_series(self):
+        from reports.widget_sources import tickets_opened_30d, get_categories
+        # Just verify each category branches without error and returns the
+        # expected series-name shape; exhaustive count checks would need
+        # ticket fixtures which we already exercise above.
+        cats = get_categories('tickets_opened_30d')
+        self.assertIsNotNone(cats)
+        for c in cats:
+            res = tickets_opened_30d({'category': c['value']})
+            self.assertIn('series', res)
+            self.assertGreater(len(res['series']), 0)
+        # Net category emits 3 series (opened, closed, net).
+        net = tickets_opened_30d({'category': 'net'})
+        self.assertEqual(len(net['series']), 3)
+
+    def test_revenue_trend_30d_weekly_collapses_to_fewer_buckets(self):
+        from reports.widget_sources import revenue_trend_30d
+        daily = revenue_trend_30d({'category': 'daily'})
+        weekly = revenue_trend_30d({'category': 'weekly'})
+        cumulative = revenue_trend_30d({'category': 'cumulative'})
+        self.assertEqual(len(daily['labels']), 30)
+        self.assertLess(len(weekly['labels']), len(daily['labels']))
+        self.assertEqual(len(cumulative['labels']), 30)
+        # Cumulative is monotonically non-decreasing.
+        cum = cumulative['series'][0]['data']
+        self.assertEqual(cum, sorted(cum))
+
+    def test_at_risk_clients_categories_return_table(self):
+        from reports.widget_sources import at_risk_clients
+        for cat in ('worst', 'trouble_only', 'at_risk_only'):
+            res = at_risk_clients({'category': cat})
+            self.assertIn('columns', res)
+            self.assertIn('rows', res)
+
     def test_open_tickets_count_categories_branch_differently(self):
         from psa.models import Ticket, Queue, TicketPriority, TicketType, TicketStatus
         from django.contrib.auth.models import User

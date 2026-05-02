@@ -188,13 +188,10 @@ def my_assigned_tickets(params):
 # ---- CHART widgets ---------------------------------------------------------
 
 def revenue_trend_30d(params):
-    """30-day revenue trend (1 bar per day)."""
+    """30-day revenue trend. Category-aware (daily / weekly / cumulative)."""
     from psa.models import Invoice
     today = date.today()
-    days = []
-    for i in range(29, -1, -1):
-        days.append(today - timedelta(days=i))
-    labels = [d.strftime('%m/%d') for d in days]
+    days = [today - timedelta(days=i) for i in range(29, -1, -1)]
     by_day = {d: 0.0 for d in days}
     invs = Invoice.objects.filter(
         invoice_date__gte=days[0], invoice_date__lte=today,
@@ -203,19 +200,63 @@ def revenue_trend_30d(params):
     for inv in invs:
         if inv.invoice_date in by_day:
             by_day[inv.invoice_date] += float(inv.total or 0)
+
+    cat = (params or {}).get('category') or 'daily'
+    if cat == 'weekly':
+        # Group into 5 buckets of ~6 days. Labels = end date of bucket.
+        buckets = []
+        labels = []
+        chunk = 6
+        for i in range(0, len(days), chunk):
+            window = days[i:i + chunk]
+            if not window:
+                continue
+            buckets.append(round(sum(by_day[d] for d in window), 2))
+            labels.append(window[-1].strftime('%m/%d'))
+        return {'labels': labels, 'series': [{'name': 'Invoiced (weekly)', 'data': buckets}]}
+    if cat == 'cumulative':
+        running = 0.0
+        cum = []
+        for d in days:
+            running += by_day[d]
+            cum.append(round(running, 2))
+        return {
+            'labels': [d.strftime('%m/%d') for d in days],
+            'series': [{'name': 'Invoiced (running total)', 'data': cum}],
+        }
+    # daily — original behavior
+    labels = [d.strftime('%m/%d') for d in days]
     series = [{'name': 'Invoiced', 'data': [round(by_day[d], 2) for d in days]}]
     return {'labels': labels, 'series': series}
 
 
 def tickets_opened_30d(params):
+    """30-day ticket trend. Category-aware (opened / closed / net)."""
     from psa.models import Ticket
     today = date.today()
     days = [today - timedelta(days=i) for i in range(29, -1, -1)]
     labels = [d.strftime('%m/%d') for d in days]
-    counts = []
-    for d in days:
-        counts.append(Ticket.objects.filter(created_at__date=d).count())
-    return {'labels': labels, 'series': [{'name': 'Tickets', 'data': counts}]}
+    cat = (params or {}).get('category') or 'opened'
+    if cat == 'closed':
+        counts = [
+            Ticket.objects.filter(closed_at__date=d).count()
+            for d in days
+        ]
+        return {'labels': labels, 'series': [{'name': 'Closed', 'data': counts}]}
+    if cat == 'net':
+        opened = [Ticket.objects.filter(created_at__date=d).count() for d in days]
+        closed = [Ticket.objects.filter(closed_at__date=d).count() for d in days]
+        net = [o - c for o, c in zip(opened, closed)]
+        return {
+            'labels': labels,
+            'series': [
+                {'name': 'Opened', 'data': opened},
+                {'name': 'Closed', 'data': closed},
+                {'name': 'Net (backlog Δ)', 'data': net},
+            ],
+        }
+    counts = [Ticket.objects.filter(created_at__date=d).count() for d in days]
+    return {'labels': labels, 'series': [{'name': 'Opened', 'data': counts}]}
 
 
 def hours_split_pie(params):
@@ -245,14 +286,26 @@ def sla_breach_trend(params):
 # ---- v3.17.147 — Client-health widgets -------------------------------------
 
 def at_risk_clients(params):
-    """Top 5 at-risk clients by health score (worst first)."""
+    """Client health table — category filters which slice to show.
+
+    `worst` (default): top 5 by lowest score regardless of category.
+    `trouble_only`: only clients in the Trouble bucket.
+    `at_risk_only`: only clients in the At-Risk bucket.
+    """
     from reports.queries import client_health_scores_all
-    rows = client_health_scores_all()[:5]
+    cat = (params or {}).get('category') or 'worst'
+    rows = client_health_scores_all()
+    if cat == 'trouble_only':
+        rows = [r for r in rows if r['category'] == 'trouble'][:8]
+    elif cat == 'at_risk_only':
+        rows = [r for r in rows if r['category'] == 'at_risk'][:8]
+    else:
+        rows = rows[:5]
     table_rows = [
         [r['client_name'], r['score'], r['category'].replace('_', ' ').title()]
         for r in rows
     ]
-    return {'columns': ['Client', 'Health', 'Status'], 'rows': table_rows}
+    return {'columns': ['Client', 'Health', 'Status'], 'rows': table_rows or [['—', '', '']]}
 
 
 def client_health_breakdown(params):
@@ -441,6 +494,21 @@ CATEGORIES = {
         {'value': 'priority', 'label': 'By priority', 'default': True},
         {'value': 'queue', 'label': 'By queue'},
         {'value': 'assigned_tech', 'label': 'By tech'},
+    ],
+    'tickets_opened_30d': [
+        {'value': 'opened', 'label': 'Opened', 'default': True},
+        {'value': 'closed', 'label': 'Closed'},
+        {'value': 'net', 'label': 'Opened vs closed (net Δ)'},
+    ],
+    'revenue_trend_30d': [
+        {'value': 'daily', 'label': 'Daily', 'default': True},
+        {'value': 'weekly', 'label': 'Weekly buckets'},
+        {'value': 'cumulative', 'label': 'Cumulative (running total)'},
+    ],
+    'at_risk_clients': [
+        {'value': 'worst', 'label': 'Top 5 worst', 'default': True},
+        {'value': 'trouble_only', 'label': 'Trouble only'},
+        {'value': 'at_risk_only', 'label': 'At-Risk only'},
     ],
 }
 

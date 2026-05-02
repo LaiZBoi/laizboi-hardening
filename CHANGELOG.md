@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.218] - 2026-05-02
+
+### Added — Categories on three more widget sources
+Extends v3.17.217's per-widget category dropdown to the chart and table sources used most often on overview wallboards. No infrastructure work — each source got an entry in `CATEGORIES` and a branch in its callable.
+
+- **`tickets_opened_30d`** (line chart) — `Opened` (default, original behavior) / `Closed` (count of tickets resolved per day) / `Opened vs closed (net Δ)` (3 series — opened, closed, net — so a backlog growing or shrinking is immediately visible). The `net` category is the killer one: a flat-or-rising "Net" line means the team isn't keeping up.
+- **`revenue_trend_30d`** (bar chart) — `Daily` (default) / `Weekly buckets` (5 buckets of ~6 days each — easier to read on a 1080p TV at the back of the office than 30 thin daily bars) / `Cumulative (running total)` (running sum — shows month-to-date trajectory at a glance).
+- **`at_risk_clients`** (table) — `Top 5 worst` (default, original) / `Trouble only` (only clients in the Trouble bucket; up to 8 rows) / `At-Risk only` (only clients in At-Risk; up to 8 rows). Lets a CSM open one widget and toggle between "who's actively on fire" and "who's drifting downward" without editing the widget.
+
+### Tests
+- 3 new tests in `WallboardWidgetCategoryTests`:
+  - `test_tickets_opened_30d_categories_return_distinct_series` — every registered category produces a non-empty `series` array; the `net` category specifically produces 3 series (opened, closed, net).
+  - `test_revenue_trend_30d_weekly_collapses_to_fewer_buckets` — `daily` returns 30 labels; `weekly` returns fewer; `cumulative` is monotonically non-decreasing.
+  - `test_at_risk_clients_categories_return_table` — every registered category returns a `columns`/`rows` payload.
+- All 7 `WallboardWidgetCategoryTests` (4 v3.17.217 + 3 v3.17.218) and the wider 33 wallboard tests pass.
+
 ## [3.17.217] - 2026-05-02
 
 ### Added — Selectable categories on wallboard widgets
