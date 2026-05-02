@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.214] - 2026-05-02
+
+### Added — Welcome email when an internal user is added to an org
+- **Membership creation now notifies the new member.** The portal-side `psa.views.portal_invite` flow has always emailed a tokenized set-password link for client-portal users, but the internal staff invite paths (`accounts.views.member_add`, `accounts.views.user_add_membership`) silently created memberships with no notification at all — meaning a user could be granted access to a new tenant and never know.
+- New `accounts.views.send_member_welcome_email(membership, request, *, invited_by=None)` helper that sends a short text email: "You now have access to {Org} as {Role}. You were added by {inviter}. Sign in here: {url}". Best-effort — failures are logged via `logger.warning` and the function returns `False` rather than raising, so a transient SMTP outage can't roll back the membership creation.
+- Skips silently when the target user has no email on file (returns `False`). Returns `False` and logs on send failure.
+- **Wired into both staff-side flows:**
+  - `member_add` (org owner adds an existing user via the org Members page) — sets `invited_by=request.user` and sends the welcome email after the membership saves.
+  - `user_add_membership` (superuser-only flow on the User Edit page) — sends on both new-membership creation and reactivation of a previously-suspended membership.
+- The existing per-user "Added X to Org as Role" success message gets " Welcome email sent." appended when the email actually went out, so the inviter has confirmation.
+
+### Tests
+- 3 new tests in `accounts.tests.MemberWelcomeEmailTests` (uses `EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'`):
+  - `test_send_member_welcome_email_helper` — direct helper invocation puts a message in `mail.outbox`, subject contains the org name, recipient = user's email, body mentions the org.
+  - `test_helper_skips_when_user_has_no_email` — empty email → `sent=False`, `mail.outbox` stays empty.
+  - `test_member_add_view_sends_welcome` — owner POSTs to `/accounts/organizations/<id>/members/add/` and the view sends exactly one email.
+
 ## [3.17.213] - 2026-05-02
 
 ### Added — Quote → Project automation

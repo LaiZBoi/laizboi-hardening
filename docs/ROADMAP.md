@@ -105,7 +105,7 @@ Not a single phase — runs alongside 1-6.
   - Documentation refresh: 8 new screenshots for Phase 9 + integration forms + the roadmap page; README updated with annotated captions; screenshot script extended with the new pages *(shipped v3.17.186)*
   - Baseline test coverage for `imports/` app — 34 tests across org-matcher fuzzy logic, ImportJob lifecycle, rollback flow (matched orgs preserved, created orgs deleted), unique-together constraints on mapping models, CSV preview helper *(shipped v3.17.187)*
 
-  ➡ **Wave 1 closed (v3.17.171 → v3.17.187)** — every item from the original Phase 7 polish survey has been delivered or explicitly deferred (reCAPTCHA needs Google credentials; scheduler email-send + welcome-email are feature gaps not polish). Phase 7 stays `[in progress]` by design (continuous track) — the next wave will be triggered by user-reported issues + the next bug-bash audit.
+  ➡ **Wave 1 closed (v3.17.171 → v3.17.187)** — every item from the original Phase 7 polish survey has been delivered or explicitly deferred (reCAPTCHA needs Google credentials; scheduler email-send is a feature gap not polish; welcome-email on member-add *was* a feature gap, **shipped v3.17.214**). Phase 7 stays `[in progress]` by design (continuous track) — the next wave will be triggered by user-reported issues + the next bug-bash audit.
 
   ### Wave 2 — going-from-zero baselines (v3.17.192 → ongoing)
 

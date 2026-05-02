@@ -133,3 +133,65 @@ class ReportsPermissionTests(TestCase):
         self.client.force_login(self.tech)
         r = self.client.get('/reports/psa/profitability-by-client/')
         self.assertEqual(r.status_code, 200)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class MemberWelcomeEmailTests(TestCase):
+    """v3.17.214: send a welcome email when a user is added to an org."""
+
+    def setUp(self):
+        from django.core import mail
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        mail.outbox = []
+        self.org = Organization.objects.create(name='WelcomeOrg', slug='welcome-org')
+        self.owner = User.objects.create_user('owner', 'owner@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        Membership.objects.create(
+            user=self.owner, organization=self.org,
+            role=Role.OWNER, is_active=True,
+        )
+        self.invitee = User.objects.create_user('newbie', 'newbie@x.com', 'pw',
+                                                 first_name='New')
+
+    def test_send_member_welcome_email_helper(self):
+        from django.core import mail
+        from accounts.models import Membership, Role
+        from accounts.views import send_member_welcome_email
+        m = Membership.objects.create(
+            user=self.invitee, organization=self.org,
+            role=Role.EDITOR, is_active=True,
+            invited_by=self.owner,
+        )
+        sent = send_member_welcome_email(m, request=None)
+        self.assertTrue(sent)
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertIn('WelcomeOrg', msg.subject)
+        self.assertEqual(msg.to, ['newbie@x.com'])
+        self.assertIn('WelcomeOrg', msg.body)
+
+    def test_helper_skips_when_user_has_no_email(self):
+        from django.core import mail
+        from accounts.models import Membership, Role
+        from accounts.views import send_member_welcome_email
+        u = User.objects.create_user('noemail', '', 'pw')
+        m = Membership.objects.create(
+            user=u, organization=self.org,
+            role=Role.READONLY, is_active=True,
+        )
+        sent = send_member_welcome_email(m, request=None)
+        self.assertFalse(sent)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_member_add_view_sends_welcome(self):
+        from django.core import mail
+        self.client.force_login(self.owner)
+        r = self.client.post(
+            f'/accounts/organizations/{self.org.id}/members/add/',
+            data={'email': 'newbie@x.com', 'role': 'editor'},
+        )
+        self.assertIn(r.status_code, [200, 302])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('WelcomeOrg', mail.outbox[0].subject)

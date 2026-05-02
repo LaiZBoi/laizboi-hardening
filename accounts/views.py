@@ -921,6 +921,51 @@ def organization_service_info(request, org_id, service_slug):
     })
 
 
+def send_member_welcome_email(membership, request=None, *, invited_by=None):
+    """
+    v3.17.214: Send a short welcome email to a user who was just added
+    to an organization. Best-effort — failures are logged, never raised
+    (so a transient SMTP outage can't block the membership creation).
+
+    Returns True on send, False on skip / failure. Skips when:
+    - the user has no email on file
+    - the user is being added to their own / the staff org and is_active=False
+      (uninitialized account — portal_invite handles those)
+    """
+    from django.core.mail import EmailMultiAlternatives
+    user = membership.user
+    if not user.email:
+        return False
+    org_name = membership.organization.name
+    role_label = membership.get_role_display()
+    inviter = invited_by or getattr(membership, 'invited_by', None)
+    inviter_line = ''
+    if inviter and getattr(inviter, 'username', ''):
+        full = (f'{inviter.first_name} {inviter.last_name}').strip() or inviter.username
+        inviter_line = f'You were added by {full}.\n\n'
+    login_url = ''
+    if request is not None:
+        try:
+            login_url = request.build_absolute_uri('/')
+        except Exception:
+            login_url = ''
+    subject = f'You have been added to {org_name}'
+    text = (
+        f'Hello{(" " + (user.first_name or user.username))},\n\n'
+        f'You now have access to {org_name} as {role_label}.\n\n'
+        f'{inviter_line}'
+        + (f'Sign in here: {login_url}\n\n' if login_url else '')
+        + 'If you did not expect this, please contact your administrator.\n'
+    )
+    try:
+        msg = EmailMultiAlternatives(subject, text, to=[user.email])
+        msg.send(fail_silently=False)
+        return True
+    except Exception as exc:
+        logger.warning('member welcome email failed for %s: %s', user.email, exc)
+        return False
+
+
 @login_required
 @require_owner
 def member_add(request, org_id):
@@ -959,8 +1004,14 @@ def member_add(request, org_id):
                     membership.user = user
                     membership.organization = org
                     membership.is_active = True
+                    membership.invited_by = request.user
                     membership.save()
-                    messages.success(request, f"Added {user.username} to {org.name} as {membership.get_role_display()}.")
+                    sent = send_member_welcome_email(membership, request=request,
+                                                     invited_by=request.user)
+                    msg = f"Added {user.username} to {org.name} as {membership.get_role_display()}."
+                    if sent:
+                        msg += ' Welcome email sent.'
+                    messages.success(request, msg)
 
                 return redirect('accounts:organization_detail', org_id=org.id)
             else:
@@ -1199,7 +1250,9 @@ def user_add_membership(request, user_id):
                     existing.role_template = get_object_or_404(RoleTemplate, id=role_template_id)
                 else:
                     existing.role_template = None
+                existing.invited_by = request.user
                 existing.save()
+                send_member_welcome_email(existing, request=request, invited_by=request.user)
                 messages.success(request, f"Reactivated {user.username}'s membership in {organization.name}.")
         else:
             # Create new membership
@@ -1207,12 +1260,14 @@ def user_add_membership(request, user_id):
                 user=user,
                 organization=organization,
                 role=role,
-                is_active=True
+                is_active=True,
+                invited_by=request.user,
             )
             if role_template_id:
                 from .models import RoleTemplate
                 membership.role_template = get_object_or_404(RoleTemplate, id=role_template_id)
             membership.save()
+            send_member_welcome_email(membership, request=request, invited_by=request.user)
             messages.success(request, f"Added {user.username} to {organization.name} as {membership.get_role_display()}.")
 
     return redirect('accounts:user_edit', user_id=user_id)
