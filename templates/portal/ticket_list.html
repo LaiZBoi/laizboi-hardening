@@ -1,6 +1,45 @@
 {% extends "portal/base.html" %}
 {% block title %}My Tickets{% endblock %}
 {% block content %}
+
+{% csrf_token %}
+
+{% if announcements %}
+<div id="portal-announcements" class="mb-3">
+    {% for a in announcements %}
+    <div class="alert alert-{{ a.severity }} alert-dismissible fade show" role="alert"
+         data-announcement-id="{{ a.pk }}">
+        <strong>{{ a.title }}</strong>
+        {% if a.body %}<div class="mt-1" style="white-space: pre-wrap;">{{ a.body }}</div>{% endif %}
+        {% if a.is_dismissable %}
+        <button type="button" class="btn-close js-dismiss-announcement"
+                data-bs-dismiss="alert" aria-label="Dismiss"
+                data-dismiss-url="{% url 'portal:announcement_dismiss' a.pk %}"></button>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+<script>
+(function() {
+    var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    var csrfToken = csrfInput ? csrfInput.value : '';
+    document.querySelectorAll('.js-dismiss-announcement').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var url = btn.dataset.dismissUrl;
+            if (!url) return;
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            }).catch(function() { /* server-side persists; UI already hides via Bootstrap */ });
+        });
+    });
+})();
+</script>
+{% endif %}
+
 <h1 class="mb-4">My Support Tickets</h1>
 
 <div class="btn-group mb-3" role="group">

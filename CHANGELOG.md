@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.232] - 2026-05-02
+
+### Added — Phase 12 v2 Portal Announcements
+Banners on the customer portal home page so MSP staff (or client admins) can post maintenance notices, outage updates, scheduled-change advisories — anything portal users should see when they next log in.
+
+- **New `portal.PortalAnnouncement` model.** Fields: organization, title, body (free text, newlines preserved), severity (info/success/warning/danger), is_active, expires_at, is_dismissable, created_by + timestamps. Migration `portal.0001_initial` (the portal app's first model).
+- **`active_for_org(organization)` classmethod** — returns visible announcements for an org right now (active=True AND not expired). Used by the portal home and any future portal pages that want to surface banners.
+- **Portal home (`portal:ticket_list`) injects active announcements** into the context, filtered by per-session dismissed IDs so each user only sees each dismissable banner once until they clear their session.
+- **Bootstrap `alert-{severity}` rendering** at the top of the portal home — `info` blue, `success` green, `warning` yellow, `danger` red. Title is bold; body is plain text with newlines preserved (`white-space: pre-wrap`). Critical (`is_dismissable=False`) banners have no close button.
+- **POST `/portal/announcement/<pk>/dismiss/`** — adds the pk to `request.session['portal_dismissed_announcements']`. Server-side rejects 400 if `is_dismissable=False` (defense against UI tampering); 404 cross-org. Bootstrap's `data-bs-dismiss="alert"` hides the banner immediately for the user; the fetch persists the dismissal so it stays hidden across page reloads.
+- **Django admin registration** for `PortalAnnouncement` with list_display + list_filter + search — admins can manage announcements without a custom form for now.
+
+### Tests
+- 7 tests in `PortalAnnouncementTests`:
+  - `active_for_org` filters out inactive + expired rows.
+  - Portal home renders only active, non-expired announcements for the user's org.
+  - Cross-org leak prevention — OtherCo's announcement does not appear on PortalCo's home.
+  - Dismiss endpoint adds the pk to session; subsequent page render hides the dismissed banner.
+  - Dismiss endpoint rejects non-dismissable announcements with 400.
+  - Dismiss endpoint 404s on cross-org pk.
+  - Critical (non-dismissable) announcements render without the close button — regex check on the rendered HTML inside the announcement's div.
+
+### Roadmap
+- Phase 12 sub-bullet "Portal announcements" annotated `*(shipped v3.17.232 — per-org banners with severity, expiry, and per-session dismissal)*`.
+
 ## [3.17.231] - 2026-05-02
 
 ### Added — Phase 12 v1 CSAT surveys post-ticket-close

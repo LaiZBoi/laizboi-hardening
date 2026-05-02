@@ -15,7 +15,7 @@ from __future__ import annotations
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -68,6 +68,19 @@ def portal_required(view_func):
     return wrapped
 
 
+def _active_announcements(request, organization):
+    """v3.17.232: announcements visible to the requester for this org.
+    Filters out session-dismissed IDs so each portal user only sees
+    each dismissable banner once (until they clear their session).
+    """
+    from .models import PortalAnnouncement
+    dismissed = set(request.session.get('portal_dismissed_announcements') or [])
+    return [
+        a for a in PortalAnnouncement.active_for_org(organization)
+        if a.pk not in dismissed
+    ]
+
+
 @portal_required
 def ticket_list(request):
     """Tickets owned by the user's portal organization, client-visible only."""
@@ -85,7 +98,31 @@ def ticket_list(request):
         'tickets': qs.order_by('-created_at')[:200],
         'status_filter': status or '',
         'organization': m.organization,
+        'announcements': _active_announcements(request, m.organization),
     })
+
+
+@portal_required
+@require_http_methods(['POST'])
+def announcement_dismiss(request, pk):
+    """v3.17.232: portal user dismisses an announcement for the rest of
+    the session. Only works on `is_dismissable=True` announcements; the
+    flag is enforced server-side in case the client lies.
+    """
+    from .models import PortalAnnouncement
+    m = request.portal_membership
+    try:
+        ann = PortalAnnouncement.objects.get(pk=pk, organization=m.organization)
+    except PortalAnnouncement.DoesNotExist:
+        return JsonResponse({'error': 'not found'}, status=404)
+    if not ann.is_dismissable:
+        return JsonResponse({'error': 'not dismissable'}, status=400)
+    dismissed = list(request.session.get('portal_dismissed_announcements') or [])
+    if pk not in dismissed:
+        dismissed.append(pk)
+        request.session['portal_dismissed_announcements'] = dismissed
+        request.session.modified = True
+    return JsonResponse({'ok': True})
 
 
 @portal_required

@@ -7,6 +7,9 @@ app_name = 'portal'
 
 urlpatterns = [
     path('', views.ticket_list, name='ticket_list'),
+    # v3.17.232 — Phase 12 portal announcements (per-session dismissal).
+    path('announcement/<int:pk>/dismiss/',
+         views.announcement_dismiss, name='announcement_dismiss'),
     path('new/', views.ticket_create, name='ticket_create'),
     path('t/<str:ticket_number>/', views.ticket_detail, name='ticket_detail'),
     path('t/<str:ticket_number>/reply/', views.post_reply, name='post_reply'),

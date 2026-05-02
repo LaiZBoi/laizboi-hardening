@@ -275,7 +275,7 @@ Planned capabilities:
 Planned capabilities:
 - Customer satisfaction (CSAT) surveys post-ticket-close *(shipped v3.17.231 — token-based 1-5 star rating + optional comment, gated by `psa_csat_enabled` SystemSetting flag)*
 - Branded client portals *(extends Phase v3.17.112 per-org branding)*
-- Portal announcements
+- Portal announcements *(shipped v3.17.232 — per-org banners on the portal home with severity, expiry, dismissable flag + per-session dismissal endpoint; managed via Django admin in v1)*
 - Customer approval workflows
 - Threaded customer communication
 - SMS ticket communication (using existing SMS provider plumbing)
