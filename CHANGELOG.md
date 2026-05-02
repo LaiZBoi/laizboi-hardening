@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.239] - 2026-05-02
+
+### Added — Phase 12 Customer approval workflows + closeout
+Last functional Phase 12 sub-bullet — portal users can now act on `PSAApproval` rows that staff route to them.
+
+- **New `PSAApproval.is_client_approval`** flag (migration `psa.0034`, default False — backward compatible). When True, the approval is routed to the client side rather than staff.
+- **New portal endpoints `/portal/approvals/`** (list pending + recent decided) and **`POST /portal/approvals/<pk>/decide/`** (calls existing `PSAApproval.decide()`). Tenant-ACL'd: 404 for staff-only approvals or cross-org pks.
+- **Portal nav** gains an "Approvals" link with a check-circle icon, sitting between Credentials and the cog (preferences).
+- **List page** renders pending approvals as warning-bordered cards (kind, related ticket link, requester comment, optional response textarea, Approve/Deny buttons) with a separate "Recent decisions" table below for the last 25 decided rows.
+
+### Phase 12 close-out
+- **Secure customer messaging** sub-bullet deferred to a future phase: it requires an encrypted-thread model + key management distinct from the existing AES-GCM vault — substantial scope, low priority vs other planned phases. Captured in ROADMAP as a future enhancement.
+- **Phase 12 marked `[complete]`** with the deferred note. All other sub-bullets shipped across v3.17.231 → v3.17.239 (CSAT, announcements, branded portals, notification prefs, customer-facing KB, ticket voting, escalation, threaded comms, SMS, customer approvals).
+
+### Tests
+- 5 new tests in `PortalApprovalTests`: list filters to client-side rows for the user's org, approve marks correctly, deny marks correctly, can't touch staff-only approvals (404), can't touch other-org approvals (404).
+- All 32 portal tests pass.
+
 ## [3.17.238] - 2026-05-02
 
 ### Added — Phase 12 SMS ticket communication for portal users

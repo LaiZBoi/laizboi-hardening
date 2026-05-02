@@ -30,4 +30,7 @@ urlpatterns = [
     path('vault/admin/<int:pk>/', views.org_admin_vault_item, name='org_admin_vault_item'),
     # v3.17.233 — portal user notification preferences.
     path('preferences/', views.preferences, name='preferences'),
+    # v3.17.239 — Phase 12 customer approval workflows.
+    path('approvals/', views.approvals_list, name='approvals_list'),
+    path('approvals/<int:pk>/decide/', views.approval_decide, name='approval_decide'),
 ]

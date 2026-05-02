@@ -550,6 +550,101 @@ class PortalPreferencesTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PortalApprovalTests(TestCase):
+    """v3.17.239: customer-side approval workflow."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from psa.models import ClientPSASettings, PSAApproval
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='ApproveCo', slug='approve-co')
+        cls.other_org = Organization.objects.create(name='OtherApproveCo', slug='other-approve')
+        ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
+        cls.user = User.objects.create_user('approve-user', 'a@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        cls.client_pending = PSAApproval.objects.create(
+            organization=cls.org, kind='quote',
+            object_type='psa.Quote', object_id=1,
+            object_repr='Q-2026-00001 — Network refresh',
+            request_comment='Please sign off on this quote',
+            is_client_approval=True,
+        )
+        cls.staff_pending = PSAApproval.objects.create(
+            organization=cls.org, kind='time',
+            object_type='psa.TicketTimeEntry', object_id=99,
+            object_repr='Internal time approval',
+            is_client_approval=False,
+        )
+        cls.other_org_client = PSAApproval.objects.create(
+            organization=cls.other_org, kind='quote',
+            object_type='psa.Quote', object_id=2,
+            object_repr='OTHER-ORG-QUOTE-99',
+            is_client_approval=True,
+        )
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def test_list_shows_only_client_approvals_for_user_org(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/approvals/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Network refresh')
+        self.assertNotContains(r, 'Internal time approval')
+        self.assertNotContains(r, 'OTHER-ORG-QUOTE-99')
+
+    def test_decide_approve_marks_approval(self):
+        from psa.models import PSAApproval
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/approvals/{self.client_pending.pk}/decide/', data={
+            'decision': 'approve',
+            'comment': 'Looks good',
+        })
+        self.assertEqual(r.status_code, 302)
+        approval = PSAApproval.objects.get(pk=self.client_pending.pk)
+        self.assertEqual(approval.status, 'approved')
+        self.assertEqual(approval.decided_by_id, self.user.id)
+        self.assertEqual(approval.decision_comment, 'Looks good')
+
+    def test_decide_deny_marks_approval(self):
+        from psa.models import PSAApproval
+        c = Client()
+        self._login(c)
+        c.post(f'/portal/approvals/{self.client_pending.pk}/decide/', data={
+            'decision': 'deny',
+            'comment': 'Out of budget',
+        })
+        approval = PSAApproval.objects.get(pk=self.client_pending.pk)
+        self.assertEqual(approval.status, 'denied')
+
+    def test_decide_cant_touch_staff_only_approval(self):
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/approvals/{self.staff_pending.pk}/decide/', data={
+            'decision': 'approve',
+        })
+        self.assertEqual(r.status_code, 404)
+
+    def test_decide_cant_touch_other_org_approval(self):
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/approvals/{self.other_org_client.pk}/decide/', data={
+            'decision': 'approve',
+        })
+        self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class PortalSMSNotifyTests(TestCase):
     """v3.17.238: SMS portal user on ticket status change."""
 

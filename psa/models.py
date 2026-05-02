@@ -959,12 +959,19 @@ class PSAApproval(models.Model):
         help_text='If the approval is tied to a specific ticket',
     )
 
+    # Phase 12 v9 (v3.17.239): customer approval workflow.
+    # When True, this approval is routed to the client (via the portal)
+    # rather than to internal staff. Examples: customer-side sign-off on
+    # a SOW, approval to spend over an MSA cap, etc.
+    is_client_approval = models.BooleanField(default=False)
+
     class Meta:
         db_table = 'psa_approvals'
         ordering = ['-requested_at']
         indexes = [
             models.Index(fields=['organization', 'status', '-requested_at']),
             models.Index(fields=['object_type', 'object_id']),
+            models.Index(fields=['is_client_approval', 'status']),
         ]
 
     def __str__(self):

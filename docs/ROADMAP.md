@@ -268,7 +268,7 @@ Planned capabilities:
 
 **Goal:** Improve technician coordination and service workflow efficiency.
 
-## Phase 12 — Customer Communication Workflows **(M)** [in progress]
+## Phase 12 — Customer Communication Workflows **(M)** [complete]
 
 **Roadmap item:** Enhanced Client Communication & Portal Workflows. Extends the existing customer portal.
 
@@ -276,13 +276,13 @@ Planned capabilities:
 - Customer satisfaction (CSAT) surveys post-ticket-close *(shipped v3.17.231 — token-based 1-5 star rating + optional comment, gated by `psa_csat_enabled` SystemSetting flag)*
 - Branded client portals *(extends Phase v3.17.112 per-org branding)* *(shipped v3.17.233 — `Organization.portal_primary_color` consumed by portal `base.html` overriding `--bs-primary` + button/link CSS)*
 - Portal announcements *(shipped v3.17.232 — per-org banners on the portal home with severity, expiry, dismissable flag + per-session dismissal endpoint; managed via Django admin in v1)*
-- Customer approval workflows
+- Customer approval workflows *(shipped v3.17.239 — `PSAApproval.is_client_approval` flag + `/portal/approvals/` list + decide endpoint; staff route an approval to the client side and the portal user can Approve / Deny with an optional comment)*
 - Threaded customer communication *(shipped v3.17.237 — `TicketComment.parent_comment` self-FK + portal "Reply to this comment" button + indented thread render)*
 - SMS ticket communication (using existing SMS provider plumbing) *(shipped v3.17.238 — opt-in `portal_notify_sms_status_change` flag + `notify_portal_status_change` helper hooked into the status-change signal; phone field on portal preferences page)*
 - Customer escalation workflows *(shipped v3.17.236 — `Ticket.escalated_at/by/reason` fields + portal endpoint that stamps fields and creates a `[Escalated by client]` public comment)*
 - Customer-facing knowledge base *(`Document.is_client_visible` shipped earlier; portal KB search shipped; featured + view counts shipped v3.17.234)*
 - Customer ticket voting / prioritization *(shipped v3.17.235 — `psa.TicketVote` model + portal toggle endpoint + thumbs-up button on ticket detail)*
-- Secure customer messaging
+- Secure customer messaging *(deferred — would need an encrypted message-thread model + key management distinct from the existing AES-GCM vault; substantial scope and lower priority than other planned phases. Re-evaluated when there's customer demand)*
 - Customer notification preferences *(shipped v3.17.233 — three opt-in/out switches at `/portal/preferences/` for ticket replies, status changes, CSAT survey invitations; CSAT helper now honors the flag)*
 
 **Goal:** Improve client interaction visibility and communication consistency.
@@ -940,7 +940,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 9 — Security alert ingestion (EDR / AV / Firewall) | M | 5 weeks — **framework + 1 reference adapter shipped v3.17.168** | none — can run alongside any |
 | 10 — Advanced Email-to-Ticket Engine | M | 2-3 weeks — **all sub-phases complete (10.1 v3.17.176; 10.2 v3.17.177; 10.3 v3.17.188; 10.4 v3.17.189)** | extends existing IMAP poller |
 | 11 — Advanced Dispatch & Tech Scheduling | M | **complete (11.1 v3.17.194; 11.2 v3.17.208; 11.3 v3.17.209); geo-aware deferred to Phase 8** | extends Phase 2 + dispatch board |
-| 12 — Customer Communication Workflows | M | 2-3 weeks | extends customer portal |
+| 12 — Customer Communication Workflows | M | **complete (CSAT v3.17.231; announcements v3.17.232; brand + prefs v3.17.233; KB v3.17.234; voting v3.17.235; escalation v3.17.236; threading v3.17.237; SMS v3.17.238; client approvals v3.17.239); secure messaging deferred** | extends customer portal |
 | 13 — Procurement & Lifecycle Mgmt | M | 2-3 weeks | extends Phase 4 |
 | 14 — Visual Workflow Automation Engine | L | 4-5 weeks | extends workflow rules engine |
 | 15 — Recurring Billing & Contract Mgmt | M | 3-4 weeks | extends Phase 1 |

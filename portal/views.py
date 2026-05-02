@@ -655,3 +655,56 @@ def preferences(request):
         'profile': profile,
         'organization': request.portal_membership.organization,
     })
+
+
+@portal_required
+def approvals_list(request):
+    """
+    Phase 12 v9 (v3.17.239): pending customer approvals routed to the
+    portal user's org. Shows kind, requested_at, related_ticket, and
+    accept/reject buttons.
+    """
+    from psa.models import PSAApproval
+    m = request.portal_membership
+    pending = (PSAApproval.objects
+               .filter(organization=m.organization,
+                       is_client_approval=True,
+                       status='pending')
+               .select_related('related_ticket', 'requested_by')
+               .order_by('-requested_at'))
+    decided = (PSAApproval.objects
+               .filter(organization=m.organization,
+                       is_client_approval=True)
+               .exclude(status='pending')
+               .select_related('related_ticket', 'decided_by')
+               .order_by('-decided_at')[:25])
+    return render(request, 'portal/approvals_list.html', {
+        'pending': pending,
+        'decided': decided,
+        'organization': m.organization,
+    })
+
+
+@portal_required
+@require_http_methods(['POST'])
+def approval_decide(request, pk):
+    """v3.17.239: portal user approves/denies a client-side approval."""
+    from psa.models import PSAApproval
+    m = request.portal_membership
+    approval = get_object_or_404(
+        PSAApproval,
+        pk=pk, organization=m.organization,
+        is_client_approval=True, status='pending',
+    )
+    decision = request.POST.get('decision') or ''
+    comment = (request.POST.get('comment') or '').strip()[:5000]
+    if decision not in ('approve', 'deny'):
+        messages.error(request, 'Pick Approve or Deny.')
+        return redirect('portal:approvals_list')
+    approval.decide(user=request.user, approved=(decision == 'approve'),
+                    comment=comment)
+    messages.success(
+        request,
+        f'Approval marked as {"Approved" if decision == "approve" else "Denied"}.',
+    )
+    return redirect('portal:approvals_list')
