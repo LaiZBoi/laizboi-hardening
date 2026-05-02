@@ -17,6 +17,9 @@ class Process(BaseModel):
     CATEGORY_CHOICES = [
         ('onboarding', 'User Onboarding'),
         ('offboarding', 'User Offboarding'),
+        ('client_onboarding', 'Client Onboarding'),
+        ('client_offboarding', 'Client Offboarding'),
+        ('client_termination', 'Client Termination'),
         ('deployment', 'System Deployment'),
         ('maintenance', 'Maintenance'),
         ('incident', 'Incident Response'),
@@ -338,6 +341,13 @@ class ProcessStageCompletion(BaseModel):
     )
     completed_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    spawned_ticket = models.ForeignKey(
+        'psa.Ticket',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='spawned_from_stage_completions',
+        help_text='PSA ticket created from this stage via the runbook-to-ticket flow.',
+    )
 
     class Meta:
         db_table = 'process_stage_completions'

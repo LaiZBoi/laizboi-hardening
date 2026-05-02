@@ -819,17 +819,17 @@ Dependencies: Phase 31 (`vault.VaultAccessRule` infra — extend rather than rep
 
 **Goal:** Make sensitive credentials require explicit human authorization to reveal, while preserving a documented escape hatch for genuine emergencies.
 
-## Phase 38 — Client Onboarding / Offboarding Runbooks **(M)** [planned]
+## Phase 38 — Client Onboarding / Offboarding Runbooks **(M)** [in progress]
 
 Repeatable runbooks for client onboarding, employee onboarding/offboarding, and client termination. Each runbook is a structured checklist with verification steps and ticket-spawning hooks. Builds on the existing `processes/` workflow engine.
 
 Planned capabilities:
-- **Repeatable onboarding templates** — clone a template per new client; tracks completion percentage; renders a punch list on the org dashboard until done
-- **Employee onboarding / offboarding workflows** — per-employee variant: provision accounts, assign hardware, set up MFA, schedule training, hand back equipment, revoke access
-- **Client termination checklist** — structured offramp: data export, credential rotation, asset disposition, contract closeout, archive vs. delete decisions
+- **Repeatable onboarding templates** — clone an `is_template=True` Process per new client; copies all stages with linked entities preserved *(shipped v3.17.223)*
+- **Employee onboarding / offboarding workflows** *(category support shipped — `onboarding` / `offboarding` already existed; `client_*` companions added v3.17.223)*
+- **Client termination checklist** — `client_termination` category added so the existing Process model carries the termination flow *(category shipped v3.17.223)*
 - **Access removal verification** — for offboarding, mechanically verify that the user is actually removed from each documented system (poll vault, M365, RMM, etc.) and surface any orphaned access
-- **Documentation completion scoring** — score per client / per employee on how complete their runbook is (e.g. "70% — missing emergency-contact list, missing wifi password")
-- **Runbook-to-ticket conversion** — any runbook step can spawn a Ticket assigned to the right tech with the right SLA
+- **Documentation completion scoring** — `ProcessExecution.completion_percentage` already tracks per-execution stage completion; per-client roll-up across multiple runbooks remains planned
+- **Runbook-to-ticket conversion** — any runbook step can spawn a Ticket; created ticket is recorded on `ProcessStageCompletion.spawned_ticket` *(shipped v3.17.223)*
 
 Dependencies: `processes/` app (existing), Phase 14 (visual workflow builder for runbook editing).
 

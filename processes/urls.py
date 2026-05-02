@@ -24,10 +24,15 @@ urlpatterns = [
     path('<slug:slug>/edit/', views.process_edit, name='process_edit'),
     path('<slug:slug>/delete/', views.process_delete, name='process_delete'),
     path('<slug:slug>/reorder/', views.stage_reorder, name='stage_reorder'),
+    # Phase 38: clone an is_template=True Process into a new run.
+    path('<slug:slug>/clone-template/', views.process_clone_template, name='process_clone_template'),
 
     # Process Execution
     path('<slug:slug>/execute/', views.execution_create, name='execution_create'),
     path('execution/<int:pk>/', views.execution_detail, name='execution_detail'),
+    # Phase 38: spawn a PSA Ticket from a stage in a running execution.
+    path('execution/<int:execution_pk>/stage/<int:stage_pk>/spawn-ticket/',
+         views.stage_spawn_ticket, name='stage_spawn_ticket'),
     path('execution/<int:pk>/audit-log/', views.execution_audit_log, name='execution_audit_log'),
     path('execution/<int:pk>/delete/', views.execution_delete, name='execution_delete'),
     path('completion/<int:pk>/complete/', views.stage_complete, name='stage_complete'),

@@ -260,3 +260,158 @@ class ProcessStageCompletionConstraintTests(TestCase):
             execution=self.execution, stage=stage2, is_completed=False,
         )
         self.assertIn('○', str(c_open))
+
+
+# ---------------------------------------------------------------------------
+# Phase 38 — Runbook clone-template + spawn-ticket
+# ---------------------------------------------------------------------------
+
+from django.conf import settings as django_settings
+from django.test import Client, override_settings
+from accounts.models import Membership, Role
+
+
+_TEST_MIDDLEWARE = [
+    m for m in django_settings.MIDDLEWARE
+    if 'Enforce2FAMiddleware' not in m and 'AxesMiddleware' not in m
+]
+
+
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProcessCloneTemplateTests(TestCase):
+    """Phase 38: clone an is_template=True Process into a runnable copy."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='RunbookCo', slug='rb-co')
+        cls.user = User.objects.create_user('rb-user', 'rb@x.com', 'pw')
+        Membership.objects.create(
+            user=cls.user, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        cls.tpl = Process.objects.create(
+            organization=cls.org, title='Client Onboarding Template',
+            description='Standard new-client onboarding',
+            is_template=True, category='client_onboarding',
+            created_by=cls.user,
+        )
+        ProcessStage.objects.create(process=cls.tpl, title='Provision M365', order=1,
+                                     description='Create accounts')
+        ProcessStage.objects.create(process=cls.tpl, title='Set up vault', order=2,
+                                     description='Add credentials')
+        ProcessStage.objects.create(process=cls.tpl, title='Schedule kickoff', order=3,
+                                     description='Send invite')
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_clone_creates_new_process_with_all_stages(self):
+        c = Client()
+        self._login(c)
+        before = Process.objects.count()
+        r = c.post(f'/processes/{self.tpl.slug}/clone-template/')
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(Process.objects.count(), before + 1)
+        clone = Process.objects.exclude(pk=self.tpl.pk).get(organization=self.org)
+        self.assertFalse(clone.is_template)
+        self.assertIn('Client Onboarding Template', clone.title)
+        self.assertEqual(clone.category, 'client_onboarding')
+        self.assertEqual(clone.stages.count(), 3)
+        titles = list(clone.stages.order_by('order').values_list('title', flat=True))
+        self.assertEqual(titles, ['Provision M365', 'Set up vault', 'Schedule kickoff'])
+
+    def test_clone_rejects_non_template_source(self):
+        # Create a NON-template Process and try to clone it.
+        non_tpl = Process.objects.create(
+            organization=self.org, title='Ad-hoc workflow',
+            is_template=False, created_by=self.user,
+        )
+        c = Client()
+        self._login(c)
+        before = Process.objects.count()
+        r = c.post(f'/processes/{non_tpl.slug}/clone-template/')
+        self.assertEqual(r.status_code, 302)
+        # No new Process created.
+        self.assertEqual(Process.objects.count(), before)
+
+    def test_new_categories_accept_client_onboarding(self):
+        # The Process model's CATEGORY_CHOICES gained client_*
+        # values in v3.17.223 — make sure they save without ValidationError.
+        for cat in ('client_onboarding', 'client_offboarding', 'client_termination'):
+            p = Process.objects.create(
+                organization=self.org, title=f'Cat {cat}',
+                category=cat, created_by=self.user,
+                last_modified_by=self.user,
+            )
+            p.full_clean()
+            self.assertEqual(p.category, cat)
+
+
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProcessStageSpawnTicketTests(TestCase):
+    """Phase 38: spawn a PSA Ticket from a runbook stage in a running execution."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        cls.org = Organization.objects.create(name='SpawnCo', slug='spawn-co')
+        cls.user = User.objects.create_user('spawn-user', 'sp@x.com', 'pw')
+        Membership.objects.create(
+            user=cls.user, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        cls.process = Process.objects.create(
+            organization=cls.org, title='Onboard',
+            category='client_onboarding', created_by=cls.user,
+        )
+        cls.stage = ProcessStage.objects.create(
+            process=cls.process, title='Provision endpoint',
+            description='Deploy laptop + image', order=1,
+        )
+        cls.execution = ProcessExecution.objects.create(
+            process=cls.process, organization=cls.org,
+            assigned_to=cls.user, status='in_progress',
+        )
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_spawn_creates_ticket_and_links_completion(self):
+        from psa.models import Ticket
+        c = Client()
+        self._login(c)
+        before = Ticket.objects.filter(organization=self.org).count()
+        r = c.post(
+            f'/processes/execution/{self.execution.pk}/stage/{self.stage.pk}/spawn-ticket/'
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(Ticket.objects.filter(organization=self.org).count(), before + 1)
+        completion = ProcessStageCompletion.objects.get(
+            execution=self.execution, stage=self.stage,
+        )
+        self.assertIsNotNone(completion.spawned_ticket)
+        self.assertIn('Provision endpoint', completion.spawned_ticket.subject)
+
+    def test_spawn_is_idempotent(self):
+        # First call creates; second call must NOT create another ticket.
+        from psa.models import Ticket
+        c = Client()
+        self._login(c)
+        c.post(f'/processes/execution/{self.execution.pk}/stage/{self.stage.pk}/spawn-ticket/')
+        first_count = Ticket.objects.filter(organization=self.org).count()
+        c.post(f'/processes/execution/{self.execution.pk}/stage/{self.stage.pk}/spawn-ticket/')
+        second_count = Ticket.objects.filter(organization=self.org).count()
+        self.assertEqual(first_count, second_count)
+
+    def test_spawn_rejects_get(self):
+        c = Client()
+        self._login(c)
+        r = c.get(f'/processes/execution/{self.execution.pk}/stage/{self.stage.pk}/spawn-ticket/')
+        self.assertEqual(r.status_code, 405)

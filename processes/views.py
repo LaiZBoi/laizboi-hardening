@@ -1102,3 +1102,113 @@ def stage_reorder(request, slug):
         ProcessStage.objects.filter(id=stage_id, process=process).update(order=new_order)
 
     return JsonResponse({'success': True})
+
+
+@login_required
+@require_http_methods(['POST'])
+def process_clone_template(request, slug):
+    """
+    Phase 38: clone an `is_template=True` Process — including its stages
+    — into a new non-template Process for the user's current org.
+    """
+    from django.utils.text import slugify
+    org = get_request_organization(request)
+    src = get_object_or_404(
+        Process,
+        Q(slug=slug) & (Q(organization=org) | Q(is_global=True)),
+    )
+    if not src.is_template:
+        messages.error(request, 'Only templates can be cloned. Use the New Workflow form for ad-hoc runbooks.')
+        return redirect('processes:process_detail', slug=src.slug)
+    if org is None:
+        messages.error(request, 'Pick an organization context first.')
+        return redirect('processes:process_list')
+
+    today = timezone.now().date()
+    new_title = f'[{today.isoformat()}] {src.title}'
+    base_slug = slugify(new_title)[:240] or 'runbook-run'
+    candidate_slug = base_slug
+    n = 2
+    while Process.objects.filter(organization=org, slug=candidate_slug).exists():
+        candidate_slug = f'{base_slug}-{n}'
+        n += 1
+
+    clone = Process.objects.create(
+        organization=org,
+        title=new_title[:255],
+        slug=candidate_slug,
+        description=src.description,
+        is_template=False,
+        is_published=True,
+        is_archived=False,
+        is_global=False,
+        category=src.category,
+        linked_diagram=src.linked_diagram,
+        created_by=request.user,
+        last_modified_by=request.user,
+    )
+    for stage in src.stages.all().order_by('order'):
+        ProcessStage.objects.create(
+            process=clone,
+            order=stage.order,
+            title=stage.title,
+            description=stage.description,
+            linked_document=stage.linked_document,
+            linked_password=stage.linked_password,
+            linked_secure_note=stage.linked_secure_note,
+            linked_asset=stage.linked_asset,
+            requires_confirmation=stage.requires_confirmation,
+            estimated_duration_minutes=stage.estimated_duration_minutes,
+        )
+    messages.success(request, f'Runbook "{clone.title}" created from template "{src.title}".')
+    return redirect('processes:process_detail', slug=clone.slug)
+
+
+@login_required
+@require_http_methods(['POST'])
+def stage_spawn_ticket(request, execution_pk, stage_pk):
+    """
+    Phase 38: create a PSA Ticket from a runbook stage. Subject = stage
+    title, description = stage description, org = execution's org. The
+    created ticket is recorded on `ProcessStageCompletion.spawned_ticket`
+    so the runbook UI can link back to it. Idempotent.
+    """
+    from psa.models import Ticket, Queue, TicketPriority, TicketStatus, TicketType
+    org = get_request_organization(request)
+    qs = ProcessExecution.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    elif not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        qs = qs.none()
+    execution = get_object_or_404(qs, pk=execution_pk)
+    stage = get_object_or_404(ProcessStage, pk=stage_pk, process=execution.process)
+
+    completion, _ = ProcessStageCompletion.objects.get_or_create(
+        execution=execution, stage=stage,
+    )
+    if completion.spawned_ticket_id:
+        messages.info(request, f'Ticket {completion.spawned_ticket.ticket_number} already linked to this stage.')
+        return redirect('processes:execution_detail', pk=execution.pk)
+
+    queue = Queue.objects.filter(is_active=True).first()
+    priority = TicketPriority.objects.first()
+    ttype = TicketType.objects.first()
+    status = TicketStatus.objects.filter(slug='new').first()
+    if not (queue and priority and ttype and status):
+        messages.error(request, 'PSA defaults missing — cannot spawn ticket. Run psa_seed_defaults.')
+        return redirect('processes:execution_detail', pk=execution.pk)
+
+    ticket = Ticket.objects.create(
+        organization=execution.organization,
+        subject=f'[Runbook] {stage.title}'[:200],
+        description=stage.description or f'Spawned from runbook stage "{stage.title}" in execution #{execution.pk}.',
+        queue=queue, priority=priority, ticket_type=ttype, status=status,
+        source='manual',
+        assigned_to=execution.assigned_to,
+        created_by=request.user,
+    )
+    completion.spawned_ticket = ticket
+    completion.save(update_fields=['spawned_ticket'])
+    messages.success(request, f'Ticket {ticket.ticket_number} created from stage "{stage.title}".')
+    return redirect('processes:execution_detail', pk=execution.pk)
+

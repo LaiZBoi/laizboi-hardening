@@ -5,6 +5,30 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.223] - 2026-05-02
+
+### Added — Phase 38 Client Onboarding/Offboarding Runbooks (v1)
+The `processes/` app already had Process + ProcessStage + ProcessExecution + completion-percentage with onboarding/offboarding categories — most of the Phase 38 engine was in place. v3.17.223 adds the three pieces it was missing: client-scope categories, clone-template-to-run, and stage-to-ticket conversion.
+
+- **Three new `Process.category` choices:** `client_onboarding`, `client_offboarding`, `client_termination`. The existing `onboarding` / `offboarding` choices remain but are now labeled "User Onboarding" / "User Offboarding" — distinct from the new client-scoped flavors.
+- **Clone-template flow.** New `POST /processes/<slug>/clone-template/` endpoint copies an `is_template=True` Process — including all its stages, in order, with linked entities (document/password/secure-note/asset/diagram) preserved — into a non-template Process owned by the user's current org. Title gets a `[YYYY-MM-DD]` date prefix; slug is uniquified within the org. Source Process must be the user's org's OR `is_global=True`.
+- **Spawn-ticket-from-stage.** New `POST /processes/execution/<execution_pk>/stage/<stage_pk>/spawn-ticket/` endpoint creates a `psa.Ticket` with subject `[Runbook] {stage.title}`, description copied from stage, organization = execution's org, assignee = execution's assignee. The created ticket is linked back via the new `ProcessStageCompletion.spawned_ticket` FK so the runbook UI can render the ticket number next to the stage. Idempotent — re-firing the endpoint returns to the execution page without creating a duplicate.
+
+### Migrations
+- `processes.0006_processstagecompletion_spawned_ticket_and_more` — adds `spawned_ticket` FK on `ProcessStageCompletion` + alters the `Process.category` choices. No data backfill required.
+
+### Tests
+- 6 new tests:
+  - `ProcessCloneTemplateTests.test_clone_creates_new_process_with_all_stages` — verifies stage count + title-prefix + non-template flag + category preserved.
+  - `ProcessCloneTemplateTests.test_clone_rejects_non_template_source` — non-template Process returns redirect with no new Process created.
+  - `ProcessCloneTemplateTests.test_new_categories_accept_client_onboarding` — `full_clean()` passes for all three new category choices.
+  - `ProcessStageSpawnTicketTests.test_spawn_creates_ticket_and_links_completion` — happy path: ticket created, completion linked.
+  - `ProcessStageSpawnTicketTests.test_spawn_is_idempotent` — second call doesn't create a second ticket.
+  - `ProcessStageSpawnTicketTests.test_spawn_rejects_get` — GET → 405.
+
+### Roadmap
+- Phase 38 sub-bullets updated: "Repeatable onboarding templates", "Client termination checklist", "Runbook-to-ticket conversion" → `*(shipped v3.17.223)*`. Access removal verification + completion scoring remain planned (completion scoring partially shipped via existing `ProcessExecution.completion_percentage`).
+
 ## [3.17.222] - 2026-05-02
 
 ### Added — Phase 39 Compliance Evidence Packs (v1)
