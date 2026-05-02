@@ -744,3 +744,155 @@ class Phase8BillingTests(TestCase):
         self.assertEqual(inv.balance, Decimal('300.00'))
 
 
+
+
+# ---------------------------------------------------------------------------
+# Phase 36 v2 — Pre-Invoice Approval Gate (v3.17.228)
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class InvoiceApprovalGateTests(TestCase):
+    """Phase 36 v2: pre-invoice approval workflow."""
+
+    def setUp(self):
+        from accounts.models import Membership, Role
+        _setup_seed()
+        from core.models import SystemSetting
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='InvApprMSP', slug='inv-appr-msp')
+        self.client_org = Organization.objects.create(name='InvApprClient', slug='inv-appr-c')
+        self.admin = User.objects.create_user('inv-admin', password='pw', email='ia@x.com',
+                                                is_superuser=True, is_staff=True)
+        Membership.objects.update_or_create(
+            user=self.admin, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+
+    def test_flag_for_approval_above_total_threshold(self):
+        from psa.models import Invoice
+        from datetime import date
+        from decimal import Decimal as _D
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Big invoice', invoice_date=date.today(),
+            total=_D('15000'),
+        )
+        flagged = inv.flag_for_approval(total_threshold=10000)
+        self.assertTrue(flagged)
+        self.assertTrue(inv.requires_approval)
+        self.assertIn('total', inv.approval_reason)
+        self.assertIn('15000', inv.approval_reason)
+
+    def test_flag_for_approval_below_total_threshold(self):
+        from psa.models import Invoice
+        from datetime import date
+        from decimal import Decimal as _D
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Small invoice', invoice_date=date.today(),
+            total=_D('500'),
+        )
+        flagged = inv.flag_for_approval(total_threshold=10000)
+        self.assertFalse(flagged)
+        self.assertFalse(inv.requires_approval)
+
+    def test_flag_for_approval_above_overage_threshold(self):
+        from psa.models import Invoice, Contract
+        from datetime import date
+        from decimal import Decimal as _D
+        contract = Contract.objects.create(
+            organization=self.org, client_org=self.client_org,
+            name='Block-overage', contract_type='block_hours',
+            status='active', start_date=date.today(),
+            total_hours=_D('100'), hours_used_minutes=130 * 60,  # 130% used
+        )
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Inv with overage', invoice_date=date.today(),
+            total=_D('500'), source_contract=contract,
+        )
+        flagged = inv.flag_for_approval(total_threshold=10000, overage_pct_threshold=110)
+        self.assertTrue(flagged)
+        self.assertIn('Block-overage', inv.approval_reason)
+
+    def test_approve_clears_gate_and_records_user(self):
+        from psa.models import Invoice
+        from datetime import date
+        from decimal import Decimal as _D
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Pending', invoice_date=date.today(), total=_D('500'),
+            requires_approval=True, approval_reason='manual',
+        )
+        inv.approve(user=self.admin)
+        inv.refresh_from_db()
+        self.assertFalse(inv.requires_approval)
+        self.assertEqual(inv.approved_by_id, self.admin.id)
+        self.assertIsNotNone(inv.approved_at)
+
+    def test_invoice_approve_view_201(self):
+        from psa.models import Invoice
+        from datetime import date
+        from decimal import Decimal as _D
+        from django.test import Client
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='To approve', invoice_date=date.today(), total=_D('500'),
+            requires_approval=True, approval_reason='over threshold',
+        )
+        c = Client()
+        c.force_login(self.admin)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+        r = c.post(f'/psa/invoices/{inv.pk}/approve/')
+        self.assertEqual(r.status_code, 302)
+        inv.refresh_from_db()
+        self.assertFalse(inv.requires_approval)
+        self.assertEqual(inv.approved_by_id, self.admin.id)
+
+    def test_push_to_accounting_blocked_when_pending_approval(self):
+        from psa.models import Invoice
+        from datetime import date
+        from decimal import Decimal as _D
+        from django.test import Client
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Pending push', invoice_date=date.today(), total=_D('500'),
+            requires_approval=True, approval_reason='hold',
+        )
+        c = Client()
+        c.force_login(self.admin)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+        # Should redirect with error and NOT touch accounting_external_id.
+        r = c.post(f'/psa/invoices/{inv.pk}/push/')
+        self.assertEqual(r.status_code, 302)
+        inv.refresh_from_db()
+        self.assertEqual(inv.accounting_external_id, '')
+
+    def test_request_approval_view_sets_flag(self):
+        from psa.models import Invoice
+        from datetime import date
+        from decimal import Decimal as _D
+        from django.test import Client
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Manual flag', invoice_date=date.today(), total=_D('500'),
+        )
+        self.assertFalse(inv.requires_approval)
+        c = Client()
+        c.force_login(self.admin)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+        r = c.post(f'/psa/invoices/{inv.pk}/request-approval/',
+                   data={'reason': 'Customer dispute pending'})
+        self.assertEqual(r.status_code, 302)
+        inv.refresh_from_db()
+        self.assertTrue(inv.requires_approval)
+        self.assertIn('Customer dispute', inv.approval_reason)

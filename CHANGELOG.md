@@ -5,6 +5,34 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.228] - 2026-05-02
+
+### Added — Phase 36 v2 Pre-invoice approval gate
+v3.17.225 surfaced over-served and under-served clients on the reconciliation report. v3.17.228 adds the *gate* — invoices over a configured threshold (or against a contract running over the overage % limit) require explicit human approval before they can be pushed to accounting.
+
+- **Three new fields on `psa.Invoice`:** `requires_approval` (bool), `approval_reason` (free text — surfaced to the approver so they know *why* the gate fired), `approved_by` (FK), `approved_at` (timestamp). Migration `psa.0029` ships these + a composite index on `(requires_approval, approved_at)` for fast pending-approval lookups.
+- **`Invoice.flag_for_approval(*, total_threshold, overage_pct_threshold)` method** — evaluates the invoice against caller-supplied thresholds. If `total >= total_threshold` OR the source contract is at >= the overage % threshold, sets `requires_approval = True` and writes a human-readable `approval_reason` ("total $15000 ≥ $10000 threshold"). Idempotent. Doesn't save — caller persists.
+- **`Invoice.approve(*, user)`** — clears the gate. Sets `approved_by` + `approved_at` and saves only those fields.
+- **New endpoint `POST /psa/invoices/<pk>/approve/`** — admin-gated (existing `@require_admin` decorator). Logs an `AuditLog` entry with the old approval reason in the description for traceability.
+- **New endpoint `POST /psa/invoices/<pk>/request-approval/`** — manual flag for edge cases the threshold-based auto-flag missed (customer dispute, billing freeze, etc.). Accepts a `reason` POST field.
+- **Push-to-accounting blocked when `requires_approval=True`.** `invoice_push_to_accounting` view now short-circuits with a flash error if the gate is set, before touching the AccountingConnection. Prevents an admin from bypassing approval by clicking Push directly.
+
+### Migration
+- `psa.0029_invoice_approval_reason_invoice_approved_at_and_more` — adds 4 fields + 1 composite index. No data backfill.
+
+### Tests
+- 7 new tests in `InvoiceApprovalGateTests` (in `psa/tests/test_phase3_5_features.py`):
+  - `test_flag_for_approval_above_total_threshold` — total $15000 ≥ $10000 threshold sets the gate; reason text mentions both numbers.
+  - `test_flag_for_approval_below_total_threshold` — total below threshold leaves the invoice unflagged.
+  - `test_flag_for_approval_above_overage_threshold` — invoice tied to a contract at 130% consumed flags when threshold is 110%.
+  - `test_approve_clears_gate_and_records_user` — direct method call clears the gate + stamps `approved_by` / `approved_at`.
+  - `test_invoice_approve_view_201` — POST endpoint clears the gate.
+  - `test_push_to_accounting_blocked_when_pending_approval` — push view short-circuits; `accounting_external_id` stays empty.
+  - `test_request_approval_view_sets_flag` — manual flag POST sets `requires_approval=True` with custom reason.
+
+### Roadmap
+- Phase 36 sub-bullet "Pre-invoice approval workflow" annotated `*(shipped v3.17.228)*`.
+
 ## [3.17.227] - 2026-05-02
 
 ### Added — Phase 38 v2 Runbook completion dashboard

@@ -3570,6 +3570,73 @@ def payment_add(request, invoice_pk):
 @require_admin
 @require_psa_enabled
 @require_http_methods(['POST'])
+def invoice_approve(request, pk):
+    """
+    Phase 36 v2 (v3.17.228): clear the pre-invoice approval gate. Sets
+    `approved_by` + `approved_at`, clears `requires_approval`. Logs the
+    action to AuditLog. Restricted to admin/owner roles.
+    """
+    from .models import Invoice
+    org = get_request_organization(request)
+    qs = Invoice.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    if not item.requires_approval:
+        messages.info(request, f'Invoice {item.invoice_number} does not require approval.')
+        return redirect('psa:invoice_detail', pk=item.pk)
+    item.approve(user=request.user)
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=org or item.organization,
+        object_type='psa.Invoice', object_id=item.pk,
+        object_repr=item.invoice_number,
+        description=f'Approved invoice {item.invoice_number} (was: {item.approval_reason or "manual hold"})',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Approved invoice {item.invoice_number}.')
+    return redirect('psa:invoice_detail', pk=item.pk)
+
+
+@login_required
+@require_write
+@require_psa_enabled
+@require_http_methods(['POST'])
+def invoice_request_approval(request, pk):
+    """
+    Phase 36 v2 (v3.17.228): manually flag an invoice as requiring
+    approval before it can be sent. Used when the threshold-based auto
+    flag missed an edge case (e.g. unusual customer, billing dispute).
+    """
+    from .models import Invoice
+    org = get_request_organization(request)
+    qs = Invoice.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    item = get_object_or_404(qs, pk=pk)
+    reason = (request.POST.get('reason') or 'Manual hold').strip()[:200]
+    item.requires_approval = True
+    item.approval_reason = reason
+    item.approved_by = None
+    item.approved_at = None
+    item.save(update_fields=['requires_approval', 'approval_reason',
+                             'approved_by', 'approved_at', 'updated_at'])
+    AuditLog.log(
+        user=request.user, action='update',
+        organization=org or item.organization,
+        object_type='psa.Invoice', object_id=item.pk,
+        object_repr=item.invoice_number,
+        description=f'Flagged invoice {item.invoice_number} for approval: {reason}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Invoice {item.invoice_number} flagged for approval.')
+    return redirect('psa:invoice_detail', pk=item.pk)
+
+
+@login_required
+@require_admin
+@require_psa_enabled
+@require_http_methods(['POST'])
 def invoice_push_to_accounting(request, pk):
     """Push the invoice to the configured accounting provider for this org."""
     from .models import Invoice
@@ -3580,6 +3647,15 @@ def invoice_push_to_accounting(request, pk):
     if org is not None:
         qs = qs.filter(organization=org)
     invoice = get_object_or_404(qs, pk=pk)
+
+    # Phase 36 v2: block pushes when the approval gate is set.
+    if invoice.requires_approval:
+        messages.error(
+            request,
+            f'Invoice {invoice.invoice_number} requires approval before push '
+            f'({invoice.approval_reason or "no reason given"}).',
+        )
+        return redirect('psa:invoice_detail', pk=invoice.pk)
 
     conn = AccountingConnection.objects.filter(
         organization=invoice.organization,

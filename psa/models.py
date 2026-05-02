@@ -1790,6 +1790,25 @@ class Invoice(models.Model):
     last_push_error = models.TextField(blank=True)
 
     notes = models.TextField(blank=True)
+    # Phase 36 v2 (v3.17.228): pre-invoice approval gate. When the invoice
+    # exceeds a configured total threshold OR the source contract is over
+    # an overage % threshold, the invoice is flagged for human review
+    # before it can be marked sent or pushed to accounting.
+    requires_approval = models.BooleanField(
+        default=False,
+        help_text='Set when the invoice exceeds a pre-billing approval '
+                  'threshold (total or contract overage %). Must be approved '
+                  'before status can move from draft → sent.',
+    )
+    approval_reason = models.CharField(
+        max_length=200, blank=True,
+        help_text='Why the invoice was flagged — surfaced to the approver.',
+    )
+    approved_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approved_psa_invoices',
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='created_psa_invoices',
@@ -1803,6 +1822,7 @@ class Invoice(models.Model):
         indexes = [
             models.Index(fields=['organization', 'status', '-invoice_date']),
             models.Index(fields=['client_org', 'status']),
+            models.Index(fields=['requires_approval', 'approved_at']),
         ]
 
     def __str__(self):
@@ -1817,6 +1837,45 @@ class Invoice(models.Model):
         if not self.invoice_number:
             self.invoice_number = self._next_number()
         super().save(*args, **kwargs)
+
+    def flag_for_approval(self, *, total_threshold=None, overage_pct_threshold=None):
+        """
+        v3.17.228: evaluate this invoice against pre-billing thresholds and
+        set `requires_approval` + `approval_reason` if any threshold is
+        exceeded. Idempotent — safe to call repeatedly.
+
+        Returns True when flagged, False otherwise. Doesn't save the row;
+        the caller decides whether to persist (typically right after
+        recompute_totals()).
+        """
+        from decimal import Decimal as _D
+        reasons = []
+        if total_threshold is not None and self.total and _D(self.total) >= _D(total_threshold):
+            reasons.append(f'total ${self.total} ≥ ${total_threshold} threshold')
+        if (overage_pct_threshold is not None
+                and self.source_contract_id
+                and self.source_contract.total_hours):
+            consumed_min = self.source_contract.hours_used_minutes or 0
+            allowance_min = float(self.source_contract.total_hours) * 60
+            if allowance_min > 0:
+                pct = 100 * consumed_min / allowance_min
+                if pct >= float(overage_pct_threshold):
+                    reasons.append(
+                        f'contract {self.source_contract.name} at {pct:.0f}% '
+                        f'(≥ {overage_pct_threshold}% threshold)'
+                    )
+        if reasons:
+            self.requires_approval = True
+            self.approval_reason = '; '.join(reasons)[:200]
+            return True
+        return False
+
+    def approve(self, *, user):
+        """v3.17.228: clear the approval gate. Sets approved_by + approved_at."""
+        self.requires_approval = False
+        self.approved_by = user
+        self.approved_at = timezone.now()
+        self.save(update_fields=['requires_approval', 'approved_by', 'approved_at', 'updated_at'])
 
     def _next_number(self) -> str:
         year = timezone.now().year

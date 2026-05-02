@@ -91,6 +91,9 @@ urlpatterns = [
     path('invoices/<int:pk>/edit/', views.invoice_form, name='invoice_edit'),
     path('invoices/<int:pk>/payment/', views.payment_add, name='payment_add'),
     path('invoices/<int:pk>/push/', views.invoice_push_to_accounting, name='invoice_push_to_accounting'),
+    # Phase 36 v2: pre-invoice approval gate.
+    path('invoices/<int:pk>/approve/', views.invoice_approve, name='invoice_approve'),
+    path('invoices/<int:pk>/request-approval/', views.invoice_request_approval, name='invoice_request_approval'),
     path('invoices/<int:pk>/pdf/', views.invoice_pdf, name='invoice_pdf'),
     path('invoices/<int:pk>/email/', views.invoice_email, name='invoice_email'),
     path('invoices/from-ticket/<str:ticket_number>/', views.invoice_from_ticket, name='invoice_from_ticket'),

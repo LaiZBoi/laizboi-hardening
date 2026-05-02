@@ -797,7 +797,7 @@ Planned capabilities:
 - **Included vs billable labor reconciliation** — every TicketTimeEntry classified as "covered by agreement" / "billable on top" based on the agreement type; misclassifications flagged for review
 - **Over-serviced / under-serviced client alerts** — if a client consistently uses < 30% of included hours (under-served = upsell signal) or > 130% of included hours 3 months running (over-served = re-quote signal), alert the account manager *(shipped v3.17.225 — surfaced as status badges + summary counts on the reconciliation page; recurring-pattern detection across multiple periods deferred to v2)*
 - **Agreement profitability reports** *(extends Phase 3.2 contract profitability with per-agreement P&L; cost-of-labor at tech rate vs. contracted revenue)*
-- **Pre-invoice approval workflow** *(extends Phase 20 approval routing — gate any draft invoice over $X or with > Y% overage on a manager queue before sending)*
+- **Pre-invoice approval workflow** *(extends Phase 20 approval routing — gate any draft invoice over $X or with > Y% overage on a manager queue before sending)* *(shipped v3.17.228 — `Invoice.flag_for_approval` + `Invoice.approve` + `/psa/invoices/<pk>/approve/` endpoint + push-to-accounting blocked while pending)*
 - **Revenue leakage detection expansion** *(extends the existing `revenue_leakage` query that powers the `unbilled_hours` widget; adds aging buckets, per-tech leakage attribution, and a per-client leakage trend)*
 
 Dependencies: Phase 1 (contract engine — `Contract`, `ContractBundle`, `ContractBundleItem`), Phase 15 (recurring billing automation), Phase 20 (approval routing).
