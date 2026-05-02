@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.219] - 2026-05-02
+
+### Roadmap — 8 new phases planned + Phase 21 extended
+Roadmap-only release. Captures user-requested feature lines so they're tracked + visible on `/core/roadmap.json` and the in-app roadmap page rather than living in chat history.
+
+- **Phase 33 — Network Discovery & Auto Documentation (L) [planned].** Multi-protocol persistent discovery — SNMP / LLDP / CDP / ARP from a lightweight per-site collector, scheduled scans, auto-topology, switch-port-to-MAC correlation. Layers on top of the lighter Phase 32 single-shot ping/ARP script.
+- **Phase 34 — Network Configuration Backup (M) [planned].** Versioned config backup for firewalls / switches / routers, scheduled jobs, line-level diff viewer, drift alerts, firmware tracking, EOL/warranty metadata.
+- **Phase 35 — Advanced Project Management (L) [planned].** Extends the existing `psa.Project` model (quote→project shipped v3.17.213) with project templates, milestones, budget tracking, profitability, project-to-ticket spawning, project billing, Gantt/calendar planning view.
+- **Phase 36 — Agreement Reconciliation & Pre-Invoice Approval (M) [planned].** MSP-specific reconciliation between agreement coverage and labor consumption — included-vs-billable hour classification, over/under-served client alerts, pre-invoice approval gate, expanded revenue-leakage detection. Extends Phases 1, 15, 20 (and complements Phase 27's GL-level reconciliation).
+- **Phase 37 — Vault Approval & Break-Glass Workflow (M) [planned].** Per-credential approval gates on vault reveal, break-glass with mandatory justification, manager/admin notifications, full audit trail, optional client-level approval rules. Extends Phase 31's `VaultAccessRule` (shipped v3.17.163) with workflow constraints.
+- **Phase 38 — Client Onboarding / Offboarding Runbooks (M) [planned].** Repeatable runbook templates for client + employee + termination flows. Access-removal verification, completion scoring, runbook-to-ticket conversion.
+- **Phase 39 — Compliance Evidence Packs (M) [planned].** Single-click client audit packet bundling 2FA status, user access, password access history, asset inventory, vulnerability summary, SSL/domain expiration, ticket/SLA history, backup/uptime evidence — sourced from data already in the system.
+- **Phase 40 — Public / Client-Facing Status Page (M) [planned].** Public or per-client-private status page surfacing service status, maintenance windows, incident history, and uptime — sourced from the existing monitoring + psa Ticket infra.
+- **Phase 21 (Advanced Mobile Technician Workflows) extended** with three Field Mode capabilities the user called out: site check-in / check-out (per-ticket arrival evidence, distinct from generic Timeclock), mileage and trip logging (auto from geofence transitions or manual), and quick asset edit from phone (was lookup-only).
+- **Phase 27 cross-reference** — Phase 36 covers MSP-specific agreement reconciliation; Phase 27 covers GL-level reconciliation against QBO/Xero. Note added so they don't appear redundant.
+- **Sizing table** updated with rows 33-40 + dependency annotations.
+
+All eight new phases carry the parseable `[planned]` status marker so the JSON feed at `/core/roadmap.json` reports them correctly.
+
 ## [3.17.218] - 2026-05-02
 
 ### Added — Categories on three more widget sources

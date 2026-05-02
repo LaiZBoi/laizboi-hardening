@@ -449,9 +449,9 @@ Planned capabilities:
 
 Planned capabilities:
 - Offline workflow support (work without connectivity, sync on reconnect)
-- Camera uploads
+- Camera uploads (photo upload from the phone, attached to the ticket)
 - Barcode scanning *(partial — vehicle inventory QR shipped)*
-- QR scanning *(partial — same)*
+- QR scanning *(partial — same; extends to client-asset QR scan)*
 - NFC scanning
 - GPS time tracking *(planned — Phase 8.2)*
 - Technician signatures (canvas signature pad on completion)
@@ -460,6 +460,9 @@ Planned capabilities:
 - Voice-to-ticket workflows
 - Mobile dispatch routing (turn-by-turn from current GPS to next ticket)
 - Mobile asset lookup
+- **Site check-in / check-out (Field Mode)** — explicit "I have arrived" / "I have left" buttons against the active ticket, separate from the generic Timeclock — gives per-ticket onsite-duration evidence for billing
+- **Mileage and trip logging** — auto-distance from previous geofence to current geofence, plus manual override; rolls up into per-tech / per-org mileage reports
+- **Quick asset edit from phone** — beyond lookup, lets a tech update serial / location / notes inline without leaving the ticket
 
 **Goal:** Improve field technician workflow efficiency and mobility.
 
@@ -584,6 +587,8 @@ Planned capabilities:
 Dependencies: existing AccountingConnection pattern. Builds on Phase 15.
 
 **Goal:** Eliminate manual cross-checking between Client St0r and the accounting system.
+
+Cross-references: Phase 36 (Agreement Reconciliation) layers an MSP-specific reconciliation flow — included-vs-billable labor, over/under-served clients, pre-invoice approval — on top of the GL-level reconciliation this phase covers.
 
 ## Phase 28 — Browser Extension + Offline Vault Access **(L)**
 
@@ -728,6 +733,142 @@ Token generation; expiration; revocation; valid upload; expired token rejected; 
 
 Provide MSP-friendly remote network discovery without standing up a full RMM agent. Everything is **temporary, scoped, auditable**, and bound to a single org + location. Not a backdoor. Not a persistent agent.
 
+Phase 33 layers the deeper, persistent / scheduled, multi-protocol discovery on top of this single-shot foundation.
+
+---
+
+## Phase 33 — Network Discovery & Auto Documentation **(L)** [planned]
+
+Multi-protocol persistent network discovery and topology inference. Phase 32 ships a one-shot, scoped, single-use ping / ARP script — useful for the first walk-through of a new client. Phase 33 is the always-on companion: a lightweight per-site collector that polls SNMP / LLDP / CDP / ARP on a schedule, keeps the asset inventory current, and generates topology diagrams without manual draw-time.
+
+Planned capabilities:
+- **Lightweight site collector / agent** — one per client site, packaged as a small container or systemd unit. Pulls config from server, pushes results back. No persistent admin credentials embedded; uses a per-site rotating token similar to Phase 32's scheme.
+- SNMP, ICMP, ARP, LLDP, CDP discovery
+- Automatic device inventory import *(extends the single-shot Phase 32 import flow)*
+- Auto-generated topology maps *(extends Phase 16 Documentation Relationship Mapping with a dedicated network-layer view)*
+- Device relationship mapping (which switches connect which APs / endpoints)
+- Switch port / MAC / IP correlation table (resolve "which port is this device on" per VLAN)
+- Manual and scheduled scans (cron-driven background jobs; on-demand trigger from the UI)
+- Per-client and per-location discovery keys (rotation + revocation, audit log)
+
+Dependencies: Phase 32 (token + import models — extend rather than replace), Phase 16 (relationship graph rendering), Asset model.
+
+**Goal:** Reduce manual network documentation work — keep the topology, switch port assignments, and device inventory in sync with reality without a tech having to redraw or re-export anything.
+
+## Phase 34 — Network Configuration Backup **(M)** [planned]
+
+Versioned configuration backup for firewalls, switches, routers, and other manageable network gear. Treats device configs the same way the existing `Document` versioning treats KB articles — every change snapshotted, diffable, alertable.
+
+Planned capabilities:
+- **Firewall, switch, and router config backup** — pulled via SSH / SCP / SNMP / vendor APIs depending on device. Per-device adapter pattern matching the integration framework shipped in Phase 7.
+- Scheduled backup jobs (per-device cadence; default daily)
+- Config diff viewer — line-level diff between any two snapshots; latest-vs-prior on the device detail page by default
+- Alert on unauthorized config changes — diff against the last "approved" snapshot; surfaces in the security-alerts dashboard (Phase 9) when something changes outside of an approved change window (Phase 6.1 CAB)
+- Firmware / version tracking — captures running firmware version on each backup so EOL transitions are visible
+- End-of-life and warranty metadata fields on the device record (extends Phase 13 lifecycle tracking)
+
+Dependencies: Phase 33 (device inventory provides the target list), Phase 9 (alert framework for drift notifications), Phase 6.1 (CAB / change-window awareness for "unauthorized" classification).
+
+**Goal:** Eliminate the manual config-export-and-store-in-a-folder routine. Make unauthorized changes loud.
+
+## Phase 35 — Advanced Project Management **(L)** [planned]
+
+Mature the existing `psa.Project` and `psa.ProjectTask` models *(quote-to-project automation shipped v3.17.213)* into a full delivery management feature.
+
+Planned capabilities:
+- **Project templates** — predefined task lists for common project types (server migration, M365 cutover, network refresh). Drop a template onto a new project to populate the work breakdown in one click.
+- Project phases and milestones *(milestones partial — `ProjectTask.is_milestone` flag exists)*
+- Project budget tracking — hours budget + dollar budget vs. actuals
+- Project profitability *(extends Phase 3.2 contract profitability with project-scoped breakdown)*
+- Project-to-ticket task generation *(partial — quote line items already become ProjectTasks per v3.17.213; this phase makes any ProjectTask spawnable as a Ticket on demand)*
+- Project billing support — project-bundled invoice generation, fixed-fee vs. T&M handling, milestone billing triggers
+- Gantt / calendar-style planning view — drag-to-reschedule task bars on a timeline, dependency arrows between tasks
+
+Dependencies: existing `psa.Project` + `psa.ProjectTask` models, Phase 3 (profitability infra), Phase 1 (contract / billing engine).
+
+**Goal:** Take the lightweight Project model from "lets you group tickets" to "actually runs delivery engagements end-to-end."
+
+## Phase 36 — Agreement Reconciliation & Pre-Invoice Approval **(M)** [planned]
+
+MSP-specific reconciliation between what an agreement covers and what's actually being consumed. Phase 27 handles GL-level reconciliation against QBO/Xero; this phase handles agreement-vs-labor reconciliation against the contract itself, plus an explicit pre-invoice review gate so nothing goes out the door without a human nod.
+
+Planned capabilities:
+- **Recurring agreement billing review** — monthly (or per-cycle) review screen that lists every agreement, included-hours bucket consumed, overage hours, and the draft invoice
+- **Included vs billable labor reconciliation** — every TicketTimeEntry classified as "covered by agreement" / "billable on top" based on the agreement type; misclassifications flagged for review
+- **Over-serviced / under-serviced client alerts** — if a client consistently uses < 30% of included hours (under-served = upsell signal) or > 130% of included hours 3 months running (over-served = re-quote signal), alert the account manager
+- **Agreement profitability reports** *(extends Phase 3.2 contract profitability with per-agreement P&L; cost-of-labor at tech rate vs. contracted revenue)*
+- **Pre-invoice approval workflow** *(extends Phase 20 approval routing — gate any draft invoice over $X or with > Y% overage on a manager queue before sending)*
+- **Revenue leakage detection expansion** *(extends the existing `revenue_leakage` query that powers the `unbilled_hours` widget; adds aging buckets, per-tech leakage attribution, and a per-client leakage trend)*
+
+Dependencies: Phase 1 (contract engine — `Contract`, `ContractBundle`, `ContractBundleItem`), Phase 15 (recurring billing automation), Phase 20 (approval routing).
+
+**Goal:** Stop money walking out the door. Make every agreement's profitability and consumption visible before invoicing, not after.
+
+## Phase 37 — Vault Approval & Break-Glass Workflow **(M)** [planned]
+
+Per-credential approval gates and emergency-access ("break-glass") flow for the password vault. Phase 31 *(shipped v3.17.163)* provides geo / IP / time-window restrictions; this phase adds workflow restrictions on top.
+
+Planned capabilities:
+- **Require approval before revealing sensitive vault entries** — flag a `vault.Password` row as "requires approval"; reveal triggers an in-app approval request to the assigned approver(s); revealed only on accept; auto-expires
+- **Emergency break-glass access** — bypass the approval gate with a mandatory written justification ("production down, on-call paging") + auto-notification to admin chain
+- **Manager / admin notifications** — every reveal request, every approve, every break-glass event emits an in-app notification + optional email
+- **Full access audit trail** *(extends the per-action vault audit shipped v3.17.181 — reveal events join the existing edit/delete events)*
+- **Optional client-level vault approval rules** — for client-portal users with vault access, the client's own admin approves rather than the MSP
+
+Dependencies: Phase 31 (`vault.VaultAccessRule` infra — extend rather than replace), Phase 20 (approval routing engine).
+
+**Goal:** Make sensitive credentials require explicit human authorization to reveal, while preserving a documented escape hatch for genuine emergencies.
+
+## Phase 38 — Client Onboarding / Offboarding Runbooks **(M)** [planned]
+
+Repeatable runbooks for client onboarding, employee onboarding/offboarding, and client termination. Each runbook is a structured checklist with verification steps and ticket-spawning hooks. Builds on the existing `processes/` workflow engine.
+
+Planned capabilities:
+- **Repeatable onboarding templates** — clone a template per new client; tracks completion percentage; renders a punch list on the org dashboard until done
+- **Employee onboarding / offboarding workflows** — per-employee variant: provision accounts, assign hardware, set up MFA, schedule training, hand back equipment, revoke access
+- **Client termination checklist** — structured offramp: data export, credential rotation, asset disposition, contract closeout, archive vs. delete decisions
+- **Access removal verification** — for offboarding, mechanically verify that the user is actually removed from each documented system (poll vault, M365, RMM, etc.) and surface any orphaned access
+- **Documentation completion scoring** — score per client / per employee on how complete their runbook is (e.g. "70% — missing emergency-contact list, missing wifi password")
+- **Runbook-to-ticket conversion** — any runbook step can spawn a Ticket assigned to the right tech with the right SLA
+
+Dependencies: `processes/` app (existing), Phase 14 (visual workflow builder for runbook editing).
+
+**Goal:** Turn ad-hoc tribal-knowledge onboarding/offboarding into a measurable, repeatable, completable workflow.
+
+## Phase 39 — Compliance Evidence Packs **(M)** [planned]
+
+One-click exportable audit packet per client. Bundles the evidence regulators / auditors / cyber-insurance underwriters consistently ask for, sourced from data already living in Client St0r — no manual screenshot-and-paste required.
+
+Planned capabilities:
+- **Exportable client audit packet** — single PDF (or zip with PDFs + CSVs) generated on demand for a given client + date range
+- 2FA status — which users on the account have 2FA enrolled, by method
+- User access report — current memberships, role templates, last-login per user
+- Password access history *(extends vault audit shipped v3.17.181 — every reveal / edit / delete event in the period)*
+- Asset inventory — current asset list with serial / vendor / location / lifecycle stage
+- Vulnerability scan summary *(extends Phase 9 security framework + the existing OS Package Scanner)*
+- SSL / domain expiration summary *(extends the WebsiteMonitor expiration infra)*
+- Ticket / SLA history — ticket counts, SLA-met percentages, response and resolution medians
+- Backup and uptime evidence — backup-job success rate, monitor uptime percentages over the period
+
+Dependencies: Phase 9 (security data), vault, monitoring/, psa (SLA history), assets.
+
+**Goal:** Reduce the "audit prep" interrupt to a button-press. The data is already in the system; this phase wraps it in the standardized export shape auditors expect.
+
+## Phase 40 — Public / Client-Facing Status Page **(M)** [planned]
+
+Public or per-client-private status page surfacing current service status, scheduled maintenance, incident history, and uptime. Sourced from the WebsiteMonitor + ticket-incident infrastructure already in place.
+
+Planned capabilities:
+- **Client-visible service status** — green / degraded / outage indicator per service the MSP runs for the client; sourced from the existing monitoring app + recent incident tickets
+- **Maintenance windows** — scheduled-maintenance posts with start/end + affected services; scheduled in advance so the page shows them as upcoming
+- **Incident history** — each incident is a ticket with `is_status_page = True`; rendered as a timeline with updates, root cause, and resolution
+- **Uptime history** — 30 / 90 / 365 day uptime percentage per monitored service, sourced from `WebsiteMonitor` history
+- **Optional per-client private status pages** — each client gets their own URL gated by client-portal auth; alternative: a single fully-public page for MSPs that want to broadcast status to all customers + prospects
+
+Dependencies: `monitoring/` app (uptime data), `psa.Ticket` (incident history with new `is_status_page` flag).
+
+**Goal:** Take the "is anything broken?" call volume out of the queue by giving clients somewhere to look first.
+
 ---
 
 ## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)**
@@ -820,6 +961,14 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 30 — Endpoint Remote Access (alt to Phase 24) | L | 4-6 weeks | none |
 | 31 — Vault GeoIP / IP / Time Access Rules | S | shipped v3.17.163 | extends FirewallMiddleware GeoIP infra |
 | 32 — Remote Network Discovery Import | M | 2-3 weeks | future / late-stage — non-RMM, scoped, single-use tokens |
+| 33 — Network Discovery & Auto Documentation | L | 4-6 weeks | extends Phase 32 + Phase 16 |
+| 34 — Network Configuration Backup | M | 2-3 weeks | extends Phase 33 + Phase 9 alerts |
+| 35 — Advanced Project Management | L | 4-5 weeks | extends `psa.Project` (v3.17.213 quote→project shipped) |
+| 36 — Agreement Reconciliation & Pre-Invoice Approval | M | 2-3 weeks | extends Phase 1 + 15 + 20 |
+| 37 — Vault Approval & Break-Glass Workflow | M | 2-3 weeks | extends Phase 31 (VaultAccessRule) + Phase 20 |
+| 38 — Client Onboarding / Offboarding Runbooks | M | 2-3 weeks | extends `processes/` + Phase 14 |
+| 39 — Compliance Evidence Packs | M | 2-3 weeks | extends Phase 9 + vault + monitoring + psa |
+| 40 — Public / Client-Facing Status Page | M | 2-3 weeks | extends monitoring + psa Tickets |
 | 8 — Mobile apps + GPS auto-time + Timeclock | L | 10-13 weeks | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.
