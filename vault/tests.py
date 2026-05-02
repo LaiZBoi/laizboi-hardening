@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from django.conf import settings as django_settings
 from django.contrib.auth.models import User
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
 from core.models import Organization
@@ -252,3 +252,191 @@ class PasswordMutationAuditTests(TestCase):
             'expected the view-level audit row carrying the original title')
         self.assertTrue(log.success)
         self.assertIn('deleted', log.description.lower())
+
+
+# ---------------------------------------------------------------------------
+# Phase 37 — Vault Approval & Break-Glass Workflow (v3.17.241)
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class VaultApprovalAndBreakGlassTests(TestCase):
+    """Phase 37 v1: per-credential reveal approval + emergency break-glass."""
+
+    def setUp(self):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from vault.models import Password
+        self.org = Organization.objects.create(name='AppRevCo', slug='appr-co')
+        self.user = User.objects.create_user('appr-user', 'a@x.com', 'pw')
+        Membership.objects.create(user=self.user, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+        self.admin = User.objects.create_user('appr-admin', 'admin@x.com', 'pw',
+                                                is_superuser=True, is_staff=True)
+        Membership.objects.create(user=self.admin, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+        self.password = Password.objects.create(
+            organization=self.org, title='Locked credential',
+            requires_reveal_approval=True,
+        )
+        self.password.set_password('s3cret-value')
+        self.password.save()
+
+    def _login(self, c, user):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_reveal_blocked_without_approval(self):
+        c = Client()
+        self._login(c, self.user)
+        r = c.post(f'/vault/{self.password.pk}/reveal/')
+        self.assertEqual(r.status_code, 403)
+        body = r.json()
+        self.assertTrue(body.get('requires_approval'))
+
+    def test_request_reveal_creates_pending_row(self):
+        from vault.models import VaultRevealRequest
+        c = Client()
+        self._login(c, self.user)
+        r = c.post(f'/vault/{self.password.pk}/request-reveal/', data={
+            'justification': 'Need to reset prod database',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(VaultRevealRequest.objects.count(), 1)
+        req = VaultRevealRequest.objects.first()
+        self.assertEqual(req.status, 'pending')
+        self.assertEqual(req.requester_id, self.user.id)
+        self.assertFalse(req.is_break_glass)
+
+    def test_request_reveal_rejects_empty_justification(self):
+        from vault.models import VaultRevealRequest
+        c = Client()
+        self._login(c, self.user)
+        r = c.post(f'/vault/{self.password.pk}/request-reveal/', data={
+            'justification': '',
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(VaultRevealRequest.objects.count(), 0)
+
+    def test_admin_approve_unlocks_reveal(self):
+        from vault.models import VaultRevealRequest
+        # User requests
+        c_user = Client()
+        self._login(c_user, self.user)
+        c_user.post(f'/vault/{self.password.pk}/request-reveal/',
+                    data={'justification': 'standard maintenance'})
+        req = VaultRevealRequest.objects.first()
+
+        # Admin approves
+        c_admin = Client()
+        self._login(c_admin, self.admin)
+        ar = c_admin.post(f'/vault/reveal-requests/{req.pk}/decide/', data={
+            'decision': 'approve', 'notes': 'OK proceed',
+        })
+        self.assertEqual(ar.status_code, 200)
+        req.refresh_from_db()
+        self.assertEqual(req.status, 'approved')
+        self.assertEqual(req.decided_by_id, self.admin.id)
+        self.assertIsNotNone(req.expires_at)
+
+        # User can now reveal
+        rr = c_user.post(f'/vault/{self.password.pk}/reveal/')
+        self.assertEqual(rr.status_code, 200)
+        body = rr.json()
+        self.assertEqual(body['password'], 's3cret-value')
+
+        # And the approval is marked single-use (revealed_at set).
+        req.refresh_from_db()
+        self.assertIsNotNone(req.revealed_at)
+
+        # A second reveal needs a fresh request — gate fires again.
+        rr2 = c_user.post(f'/vault/{self.password.pk}/reveal/')
+        self.assertEqual(rr2.status_code, 403)
+
+    def test_admin_deny_keeps_block(self):
+        from vault.models import VaultRevealRequest
+        c_user = Client()
+        self._login(c_user, self.user)
+        c_user.post(f'/vault/{self.password.pk}/request-reveal/',
+                    data={'justification': 'curious'})
+        req = VaultRevealRequest.objects.first()
+        c_admin = Client()
+        self._login(c_admin, self.admin)
+        c_admin.post(f'/vault/reveal-requests/{req.pk}/decide/', data={
+            'decision': 'deny', 'notes': 'no business need',
+        })
+        req.refresh_from_db()
+        self.assertEqual(req.status, 'denied')
+        rr = c_user.post(f'/vault/{self.password.pk}/reveal/')
+        self.assertEqual(rr.status_code, 403)
+
+    def test_break_glass_bypasses_approval_with_long_justification(self):
+        from vault.models import VaultRevealRequest
+        c = Client()
+        self._login(c, self.user)
+        r = c.post(f'/vault/{self.password.pk}/break-glass/', data={
+            'justification': 'Production is down at 3am, on-call has been paging me for an hour.',
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body['is_break_glass'])
+        self.assertEqual(body['status'], 'approved')
+        # Reveal works immediately
+        rr = c.post(f'/vault/{self.password.pk}/reveal/')
+        self.assertEqual(rr.status_code, 200)
+        self.assertEqual(rr.json()['password'], 's3cret-value')
+
+    def test_break_glass_requires_long_justification(self):
+        from vault.models import VaultRevealRequest
+        c = Client()
+        self._login(c, self.user)
+        r = c.post(f'/vault/{self.password.pk}/break-glass/', data={
+            'justification': 'too short',
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(VaultRevealRequest.objects.count(), 0)
+
+    def test_password_without_flag_skips_gate(self):
+        from vault.models import Password
+        unguarded = Password.objects.create(
+            organization=self.org, title='Free reveal',
+            requires_reveal_approval=False,
+        )
+        unguarded.set_password('open-secret')
+        unguarded.save()
+        c = Client()
+        self._login(c, self.user)
+        rr = c.post(f'/vault/{unguarded.pk}/reveal/')
+        self.assertEqual(rr.status_code, 200)
+        self.assertEqual(rr.json()['password'], 'open-secret')
+
+    def test_non_staff_cannot_decide_request(self):
+        from vault.models import VaultRevealRequest
+        c_user = Client()
+        self._login(c_user, self.user)
+        c_user.post(f'/vault/{self.password.pk}/request-reveal/',
+                    data={'justification': 'reason'})
+        req = VaultRevealRequest.objects.first()
+
+        # Different non-staff user tries to decide.
+        from accounts.models import Membership, Role
+        peer = User.objects.create_user('peer', 'p@x.com', 'pw')
+        Membership.objects.create(user=peer, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+        c_peer = Client()
+        self._login(c_peer, peer)
+        r = c_peer.post(f'/vault/reveal-requests/{req.pk}/decide/', data={
+            'decision': 'approve',
+        })
+        self.assertEqual(r.status_code, 403)
+        req.refresh_from_db()
+        self.assertEqual(req.status, 'pending')
+
+    def test_reveal_request_list_renders_for_staff(self):
+        c = Client()
+        self._login(c, self.admin)
+        r = c.get('/vault/reveal-requests/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Vault Reveal Approvals')

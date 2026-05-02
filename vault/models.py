@@ -4,6 +4,7 @@ Vault models - Password storage with encryption
 from django.conf import settings as django_settings
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 from core.models import Organization, Tag, BaseModel
 from core.utils import OrganizationManager
 from .encryption_v2 import (
@@ -122,6 +123,16 @@ class Password(BaseModel):
 
     # My Vault (personal passwords)
     is_personal = models.BooleanField(default=False, help_text='Personal password (My Vault)')
+
+    # Phase 37 (v3.17.241): per-credential approval gate. When True, the
+    # `password_reveal` endpoint requires an approved VaultRevealRequest
+    # (or a break-glass override) before it returns the plaintext.
+    requires_reveal_approval = models.BooleanField(
+        default=False,
+        help_text='When set, revealing this password requires an approved '
+                  'VaultRevealRequest (or an explicit break-glass override) '
+                  'rather than just the requester\'s permissions.',
+    )
     personal_owner = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='personal_passwords')
 
     # Metadata
@@ -749,3 +760,100 @@ class VaultAccessRule(models.Model):
         if self.scope == 'organization':
             return self.organization_id == password.organization_id
         return False
+
+
+class VaultRevealRequest(models.Model):
+    """
+    Phase 37 (v3.17.241): a request from a user to reveal a password
+    that has `requires_reveal_approval=True`. Either approved by an
+    admin (normal flow) or self-approved with `is_break_glass=True`
+    and a mandatory justification (emergency flow).
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('denied', 'Denied'),
+        ('cancelled', 'Cancelled'),
+        ('expired', 'Expired'),
+    ]
+
+    password = models.ForeignKey(
+        Password, on_delete=models.CASCADE, related_name='reveal_requests',
+    )
+    requester = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='vault_reveal_requests',
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    justification = models.TextField(
+        help_text='Why the requester needs to reveal this password.',
+    )
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    decided_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='vault_reveal_decisions',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_notes = models.TextField(blank=True)
+
+    is_break_glass = models.BooleanField(
+        default=False,
+        help_text='True when the requester self-approved via the emergency '
+                  'break-glass flow. Logs harder + auto-notifies admins.',
+    )
+    expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the approved reveal window closes. Default: 1 hour '
+                  'after approval. Reveals after this point require a fresh request.',
+    )
+    revealed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the requester actually revealed the password using '
+                  'this approval. Single-use (cleared on use).',
+    )
+
+    class Meta:
+        db_table = 'vault_reveal_requests'
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['password', 'status']),
+            models.Index(fields=['requester', '-requested_at']),
+            models.Index(fields=['status', 'expires_at']),
+        ]
+
+    def __str__(self):
+        flag = ' (break-glass)' if self.is_break_glass else ''
+        return f'{self.requester.username} → {self.password.title}{flag} [{self.status}]'
+
+    @property
+    def is_currently_valid(self) -> bool:
+        """True if this approval can be used to reveal right now."""
+        if self.status != 'approved':
+            return False
+        if self.revealed_at is not None:
+            return False  # single-use
+        if self.expires_at and self.expires_at <= timezone.now():
+            return False
+        return True
+
+    def approve(self, *, user, notes='', window_minutes=60):
+        from datetime import timedelta as _td
+        self.status = 'approved'
+        self.decided_by = user
+        self.decided_at = timezone.now()
+        self.decision_notes = (notes or '')[:5000]
+        self.expires_at = self.decided_at + _td(minutes=window_minutes)
+        self.save(update_fields=['status', 'decided_by', 'decided_at',
+                                  'decision_notes', 'expires_at'])
+
+    def deny(self, *, user, notes=''):
+        self.status = 'denied'
+        self.decided_by = user
+        self.decided_at = timezone.now()
+        self.decision_notes = (notes or '')[:5000]
+        self.save(update_fields=['status', 'decided_by', 'decided_at',
+                                  'decision_notes'])
+
+    def mark_revealed(self):
+        self.revealed_at = timezone.now()
+        self.save(update_fields=['revealed_at'])

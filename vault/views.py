@@ -263,6 +263,32 @@ def password_reveal(request, pk):
         password = get_object_or_404(Password, pk=pk, organization=org)
 
     if request.method == 'POST':
+        # Phase 37 (v3.17.241): per-credential approval gate. If
+        # `requires_reveal_approval=True`, the user needs a currently-
+        # valid (approved, not expired, not yet used) VaultRevealRequest.
+        # The break-glass flow creates an auto-approved request itself,
+        # so it ends up satisfying this gate.
+        if password.requires_reveal_approval:
+            from .models import VaultRevealRequest
+            approval = (VaultRevealRequest.objects
+                        .filter(password=password, requester=request.user,
+                                status='approved', revealed_at__isnull=True)
+                        .order_by('-decided_at').first())
+            if approval is None or not approval.is_currently_valid:
+                AuditLog.objects.create(
+                    organization=password.organization,
+                    user=request.user, username=request.user.username,
+                    action='reveal_blocked_no_approval',
+                    object_type='password', object_id=password.pk,
+                    object_repr=password.title,
+                    description='Password reveal blocked — no valid approval on file',
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                    success=False,
+                )
+                return JsonResponse({
+                    'error': 'This credential requires approval before reveal. Request approval or use break-glass.',
+                    'requires_approval': True,
+                }, status=403)
         # v3.17.163: VaultAccessRule gate -- GeoIP / IP / time-of-day check.
         decision = _evaluate_vault_access(password, request.user, request)
         AuditLog.log(
@@ -295,6 +321,17 @@ def password_reveal(request, pk):
         try:
             plaintext = password.get_password()
 
+            # Phase 37 (v3.17.241): mark the satisfying approval as used so
+            # the next reveal needs a fresh request.
+            if password.requires_reveal_approval:
+                from .models import VaultRevealRequest
+                approval = (VaultRevealRequest.objects
+                            .filter(password=password, requester=request.user,
+                                    status='approved', revealed_at__isnull=True)
+                            .order_by('-decided_at').first())
+                if approval is not None:
+                    approval.mark_revealed()
+
             # Create audit log for password reveal
             AuditLog.objects.create(
                 organization=org,
@@ -320,6 +357,215 @@ def password_reveal(request, pk):
             return JsonResponse({'error': 'An unexpected error occurred'}, status=500)
 
     return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+# ---------------------------------------------------------------------------
+# Phase 37 (v3.17.241) — Vault Approval & Break-Glass Workflow
+# ---------------------------------------------------------------------------
+
+@login_required
+def password_request_reveal(request, pk):
+    """
+    Submit a `VaultRevealRequest` for a password whose
+    `requires_reveal_approval=True`. POST: justification (required).
+    Notifies superusers via email so they can approve.
+    """
+    from django.views.decorators.http import require_http_methods
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_request_organization(request)
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+    if in_global_view:
+        password = get_object_or_404(Password, pk=pk)
+    else:
+        password = get_object_or_404(Password, pk=pk, organization=org)
+
+    if not password.requires_reveal_approval:
+        return JsonResponse({'error': 'This password does not require approval'},
+                            status=400)
+
+    justification = (request.POST.get('justification') or '').strip()
+    if not justification:
+        return JsonResponse({'error': 'Justification is required'}, status=400)
+    from .models import VaultRevealRequest
+    req = VaultRevealRequest.objects.create(
+        password=password, requester=request.user,
+        justification=justification[:5000],
+    )
+    AuditLog.objects.create(
+        organization=password.organization,
+        user=request.user, username=request.user.username,
+        action='vault_reveal_requested',
+        object_type='password', object_id=password.pk,
+        object_repr=password.title,
+        description=f'Reveal approval requested: {justification[:200]}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    _notify_admins_of_reveal_request(req)
+    return JsonResponse({'ok': True, 'request_id': req.pk, 'status': req.status})
+
+
+@login_required
+def password_break_glass(request, pk):
+    """
+    Emergency reveal — bypasses the approval queue. Creates a
+    `VaultRevealRequest` flagged `is_break_glass=True` and immediately
+    approves it (with the requester themselves as the approver). Logs
+    HARD + emails admins. The justification is mandatory and ≥30 chars
+    so the requester has to actually explain themselves.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_request_organization(request)
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    in_global_view = not org and (request.user.is_superuser or is_staff)
+    if in_global_view:
+        password = get_object_or_404(Password, pk=pk)
+    else:
+        password = get_object_or_404(Password, pk=pk, organization=org)
+
+    if not password.requires_reveal_approval:
+        return JsonResponse({'error': 'This password does not require approval'},
+                            status=400)
+    justification = (request.POST.get('justification') or '').strip()
+    if len(justification) < 30:
+        return JsonResponse({
+            'error': 'Break-glass requires a justification of at least 30 characters.',
+        }, status=400)
+
+    from .models import VaultRevealRequest
+    req = VaultRevealRequest.objects.create(
+        password=password, requester=request.user,
+        justification=justification[:5000],
+        is_break_glass=True,
+    )
+    req.approve(user=request.user,
+                notes='[BREAK-GLASS] self-approved emergency access')
+    AuditLog.objects.create(
+        organization=password.organization,
+        user=request.user, username=request.user.username,
+        action='vault_break_glass',
+        object_type='password', object_id=password.pk,
+        object_repr=password.title,
+        description=f'BREAK-GLASS reveal: {justification[:200]}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    _notify_admins_of_break_glass(req)
+    return JsonResponse({'ok': True, 'request_id': req.pk,
+                         'status': req.status, 'is_break_glass': True})
+
+
+@login_required
+def vault_reveal_request_decide(request, pk):
+    """Approve or deny a pending VaultRevealRequest. Staff/superuser only."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not (request.user.is_superuser or is_staff):
+        return JsonResponse({'error': 'Only staff/superuser can decide reveal requests'},
+                            status=403)
+    from .models import VaultRevealRequest
+    req = get_object_or_404(VaultRevealRequest, pk=pk)
+    if req.status != 'pending':
+        return JsonResponse({'error': f'Request already {req.status}'}, status=400)
+    decision = request.POST.get('decision') or ''
+    notes = (request.POST.get('notes') or '').strip()[:5000]
+    if decision == 'approve':
+        req.approve(user=request.user, notes=notes)
+        AuditLog.objects.create(
+            organization=req.password.organization,
+            user=request.user, username=request.user.username,
+            action='vault_reveal_approved',
+            object_type='vault.VaultRevealRequest', object_id=req.pk,
+            object_repr=str(req),
+            description=f'Approved reveal request for {req.password.title}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+    elif decision == 'deny':
+        req.deny(user=request.user, notes=notes)
+        AuditLog.objects.create(
+            organization=req.password.organization,
+            user=request.user, username=request.user.username,
+            action='vault_reveal_denied',
+            object_type='vault.VaultRevealRequest', object_id=req.pk,
+            object_repr=str(req),
+            description=f'Denied reveal request for {req.password.title}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+    else:
+        return JsonResponse({'error': 'decision must be approve or deny'},
+                            status=400)
+    return JsonResponse({'ok': True, 'status': req.status})
+
+
+@login_required
+def vault_reveal_request_list(request):
+    """Staff list of pending VaultRevealRequest rows + recent decisions."""
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not (request.user.is_superuser or is_staff):
+        return redirect('core:dashboard')
+    from .models import VaultRevealRequest
+    pending = (VaultRevealRequest.objects.filter(status='pending')
+               .select_related('password', 'requester'))
+    decided = (VaultRevealRequest.objects.exclude(status='pending')
+               .select_related('password', 'requester', 'decided_by')
+               .order_by('-decided_at')[:50])
+    return render(request, 'vault/reveal_request_list.html', {
+        'pending': pending,
+        'decided': decided,
+    })
+
+
+def _notify_admins_of_reveal_request(req):
+    try:
+        from django.core.mail import send_mail
+        admin_emails = list(
+            User.objects.filter(is_superuser=True, is_active=True)
+                         .exclude(email='').values_list('email', flat=True)
+        )
+        if not admin_emails:
+            return
+        send_mail(
+            subject=f'[Vault] Reveal approval requested: {req.password.title}',
+            message=(
+                f'{req.requester.username} has requested approval to reveal '
+                f'"{req.password.title}".\n\n'
+                f'Justification:\n{req.justification}\n\n'
+                f'Review at /vault/reveal-requests/'
+            ),
+            from_email=None,
+            recipient_list=admin_emails,
+            fail_silently=True,
+        )
+    except Exception:
+        logger.warning('Failed to notify admins of reveal request', exc_info=True)
+
+
+def _notify_admins_of_break_glass(req):
+    try:
+        from django.core.mail import send_mail
+        admin_emails = list(
+            User.objects.filter(is_superuser=True, is_active=True)
+                         .exclude(email='').values_list('email', flat=True)
+        )
+        if not admin_emails:
+            return
+        send_mail(
+            subject=f'[Vault BREAK-GLASS] {req.requester.username} revealed {req.password.title}',
+            message=(
+                f'BREAK-GLASS emergency access used.\n\n'
+                f'Requester: {req.requester.username}\n'
+                f'Credential: {req.password.title}\n\n'
+                f'Justification:\n{req.justification}\n\n'
+                f'Review at /vault/reveal-requests/'
+            ),
+            from_email=None,
+            recipient_list=admin_emails,
+            fail_silently=True,
+        )
+    except Exception:
+        logger.warning('Failed to notify admins of break-glass event', exc_info=True)
 
 
 @login_required

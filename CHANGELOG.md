@@ -5,6 +5,35 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.241] - 2026-05-02
+
+### Added — Phase 37 Vault Approval & Break-Glass Workflow
+Per-credential approval gating: an admin marks a `Password` as `requires_reveal_approval=True`, and from that point on the reveal endpoint requires either a manager-approved `VaultRevealRequest` or an explicit break-glass override with a long mandatory justification.
+
+- **`Password.requires_reveal_approval`** flag (default False — backward compatible).
+- **New `VaultRevealRequest` model** (migration `vault.0013`): password FK, requester, justification, status (pending/approved/denied/cancelled/expired), decided_by, decided_at, decision_notes, is_break_glass, expires_at (default 1 hour after approval), revealed_at (single-use marker).
+- **`password_reveal` view gated** — when `requires_reveal_approval=True`, requires a currently-valid (approved, not expired, not yet used) `VaultRevealRequest` for the (password, user) pair. Reveal marks the approval as used (`revealed_at`) so the next reveal needs a fresh request. Hard `AuditLog` row on every block.
+- **POST `/vault/<pk>/request-reveal/`** — creates a pending request with mandatory justification. Notifies superusers via email so they can review.
+- **POST `/vault/<pk>/break-glass/`** — emergency self-approval with mandatory ≥30-char justification. Auto-approves and writes a hard `vault_break_glass` AuditLog. Notifies admins via email immediately.
+- **POST `/vault/reveal-requests/<pk>/decide/`** — staff/superuser approve or deny. Approval sets a 60-minute window; denial leaves the password locked.
+- **GET `/vault/reveal-requests/`** — staff list with pending requests rendered as warning-bordered cards (red border for break-glass), inline notes textarea + Approve/Deny buttons, plus a "Recent decisions" table.
+
+### Tests
+- 10 tests in `VaultApprovalAndBreakGlassTests`:
+  - Reveal blocked without approval (403, `requires_approval: true`).
+  - Request creates pending row.
+  - Request rejects empty justification.
+  - Admin approve unlocks reveal; reveal returns plaintext; approval marked single-use; second reveal blocked.
+  - Admin deny keeps the block.
+  - Break-glass with 30+ char justification approves immediately and reveal works.
+  - Break-glass rejects short justification.
+  - Password without the flag skips the gate entirely (backward-compat).
+  - Non-staff peer cannot decide a request (403).
+  - Staff list page renders.
+
+### Roadmap
+- Phase 37 sub-bullets "Require approval before revealing", "Emergency break-glass access", "Manager/admin notifications", "Full access audit trail" annotated `*(shipped v3.17.241)*`. Phase 37 marked `[in progress]` (optional client-level vault approval rules planned for v2).
+
 ## [3.17.240] - 2026-05-02
 
 ### Added — Phase 18 Multi-Location Client Hierarchy

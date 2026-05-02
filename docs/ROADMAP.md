@@ -804,15 +804,15 @@ Dependencies: Phase 1 (contract engine — `Contract`, `ContractBundle`, `Contra
 
 **Goal:** Stop money walking out the door. Make every agreement's profitability and consumption visible before invoicing, not after.
 
-## Phase 37 — Vault Approval & Break-Glass Workflow **(M)** [planned]
+## Phase 37 — Vault Approval & Break-Glass Workflow **(M)** [in progress]
 
 Per-credential approval gates and emergency-access ("break-glass") flow for the password vault. Phase 31 *(shipped v3.17.163)* provides geo / IP / time-window restrictions; this phase adds workflow restrictions on top.
 
 Planned capabilities:
-- **Require approval before revealing sensitive vault entries** — flag a `vault.Password` row as "requires approval"; reveal triggers an in-app approval request to the assigned approver(s); revealed only on accept; auto-expires
-- **Emergency break-glass access** — bypass the approval gate with a mandatory written justification ("production down, on-call paging") + auto-notification to admin chain
-- **Manager / admin notifications** — every reveal request, every approve, every break-glass event emits an in-app notification + optional email
-- **Full access audit trail** *(extends the per-action vault audit shipped v3.17.181 — reveal events join the existing edit/delete events)*
+- **Require approval before revealing sensitive vault entries** *(shipped v3.17.241 — `Password.requires_reveal_approval` flag + `VaultRevealRequest` model + `password_reveal` view gates on currently-valid approval)*
+- **Emergency break-glass access** *(shipped v3.17.241 — `/vault/<pk>/break-glass/` endpoint with mandatory ≥30-char justification, self-approves, hard audit log)*
+- **Manager / admin notifications** *(shipped v3.17.241 — every reveal request emails superusers; every break-glass emails superusers immediately)*
+- **Full access audit trail** *(extends the per-action vault audit shipped v3.17.181 — `vault_reveal_requested`, `vault_reveal_approved`, `vault_reveal_denied`, `vault_break_glass`, `reveal_blocked_no_approval` join the existing edit/delete events; shipped v3.17.241)*
 - **Optional client-level vault approval rules** — for client-portal users with vault access, the client's own admin approves rather than the MSP
 
 Dependencies: Phase 31 (`vault.VaultAccessRule` infra — extend rather than replace), Phase 20 (approval routing engine).
