@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.229] - 2026-05-02
+
+### Changed — Report Templates page compacted
+The `/reports/templates/` page was rendering each template as a `col-md-4` card with its own card-body + card-footer block, three to a row. With multiple report types each adding an h5 header + a fresh row, the page scrolled excessively even with only a handful of templates. Switched to a denser per-type table layout — one row per template with name, description, scope badge, and inline action buttons. Same data, ~70% less vertical space. Header row now uses `flex-wrap` so the Create Template button doesn't stack awkwardly on narrow viewports. Description column uses `truncatewords:20` like before.
+
 ## [3.17.228] - 2026-05-02
 
 ### Added — Phase 36 v2 Pre-invoice approval gate
