@@ -26,8 +26,33 @@
             <span class="badge bg-secondary">{{ ticket.ticket_number }}</span>
             <span class="badge bg-info">{{ ticket.priority.name }}</span>
             <span class="badge bg-primary">{{ ticket.status.name }}</span>
+            {% if ticket.escalated_at %}<span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> Escalated</span>{% endif %}
             <span class="text-muted">— created <span data-utc="{{ ticket.created_at|date:'c' }}">{{ ticket.created_at|date:'Y-m-d H:i' }}</span></span>
         </p>
+
+        {# v3.17.236 — Phase 12: portal-side escalation. #}
+        {% if not ticket.status.is_terminal %}
+        <details class="mb-2">
+            <summary class="text-danger small" style="cursor: pointer;">
+                <i class="fas fa-exclamation-triangle"></i>
+                {% if ticket.escalated_at %}Update escalation reason{% else %}Escalate this ticket{% endif %}
+            </summary>
+            <form method="post" action="{% url 'portal:ticket_escalate' ticket.ticket_number %}" class="mt-2">
+                {% csrf_token %}
+                <div class="mb-2">
+                    <label class="form-label small text-muted">
+                        Why does this need urgent attention?
+                    </label>
+                    <textarea name="reason" rows="2" class="form-control" required maxlength="500"
+                              placeholder="e.g. Production is down, multiple users blocked.">{{ ticket.escalation_reason|default:'' }}</textarea>
+                </div>
+                <button type="submit" class="btn btn-sm btn-danger">
+                    <i class="fas fa-bullhorn me-1"></i>
+                    {% if ticket.escalated_at %}Update escalation{% else %}Escalate now{% endif %}
+                </button>
+            </form>
+        </details>
+        {% endif %}
         {% if ticket.description %}
         <hr>
         <p>{{ ticket.description|linebreaksbr }}</p>

@@ -148,6 +148,83 @@ class PortalAnnouncementTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PortalTicketEscalateTests(TestCase):
+    """v3.17.236: portal-side escalation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from psa.models import (
+            ClientPSASettings, Queue, Ticket, TicketPriority,
+            TicketStatus, TicketType,
+        )
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='EscCo', slug='esc-co')
+        ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
+        cls.user = User.objects.create_user('esc-user', 'esc@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        cls.ticket = Ticket.objects.create(
+            organization=cls.org, subject='Servers slow',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            client_can_view=True,
+        )
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def test_escalate_sets_fields_and_creates_comment(self):
+        from psa.models import Ticket, TicketComment
+        c = Client()
+        self._login(c)
+        before = TicketComment.objects.filter(ticket=self.ticket).count()
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/escalate/', data={
+            'reason': 'Whole office offline since 9am',
+        })
+        self.assertEqual(r.status_code, 302)
+        ticket = Ticket.objects.get(pk=self.ticket.pk)
+        self.assertIsNotNone(ticket.escalated_at)
+        self.assertEqual(ticket.escalated_by_id, self.user.id)
+        self.assertEqual(ticket.escalation_reason, 'Whole office offline since 9am')
+        # Public comment created with the [Escalated by client] tag.
+        after = TicketComment.objects.filter(ticket=self.ticket).count()
+        self.assertEqual(after, before + 1)
+        last = TicketComment.objects.filter(ticket=self.ticket).order_by('-created_at').first()
+        self.assertIn('Escalated by client', last.body)
+
+    def test_escalate_rejects_empty_reason(self):
+        from psa.models import Ticket
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/escalate/', data={
+            'reason': '   ',
+        })
+        self.assertEqual(r.status_code, 302)
+        ticket = Ticket.objects.get(pk=self.ticket.pk)
+        self.assertIsNone(ticket.escalated_at)
+
+    def test_second_escalate_updates_reason(self):
+        from psa.models import Ticket
+        c = Client()
+        self._login(c)
+        c.post(f'/portal/t/{self.ticket.ticket_number}/escalate/', data={'reason': 'first'})
+        c.post(f'/portal/t/{self.ticket.ticket_number}/escalate/', data={'reason': 'second'})
+        ticket = Ticket.objects.get(pk=self.ticket.pk)
+        self.assertEqual(ticket.escalation_reason, 'second')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class PortalTicketVoteTests(TestCase):
     """v3.17.235: portal user 'I'm affected too' vote on a ticket."""
 

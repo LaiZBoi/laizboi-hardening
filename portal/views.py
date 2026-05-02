@@ -150,6 +150,44 @@ def ticket_detail(request, ticket_number):
 
 @portal_required
 @require_http_methods(['POST'])
+def ticket_escalate(request, ticket_number):
+    """
+    Phase 12 v6 (v3.17.236): portal user escalates a ticket. Sets
+    escalated_at/by/reason + posts a public TicketComment so the staff
+    timeline shows the escalation in order.
+    Idempotent — a second post just updates the reason.
+    """
+    m = request.portal_membership
+    ticket = get_object_or_404(
+        Ticket.objects.filter(organization=m.organization, client_can_view=True),
+        ticket_number=ticket_number,
+    )
+    reason = (request.POST.get('reason') or '').strip()[:500]
+    if not reason:
+        messages.error(request, 'Please describe why this needs urgent attention.')
+        return redirect('portal:ticket_detail', ticket_number=ticket_number)
+    was_escalated = ticket.escalated_at is not None
+    ticket.escalated_at = timezone.now()
+    ticket.escalated_by = request.user
+    ticket.escalation_reason = reason
+    ticket.save(update_fields=['escalated_at', 'escalated_by',
+                                'escalation_reason', 'updated_at'])
+    TicketComment.objects.create(
+        ticket=ticket, author=request.user,
+        body=f'[Escalated by client] {reason}',
+        is_internal=False, source='portal',
+        author_name=request.user.get_full_name() or request.user.username,
+        author_email=request.user.email or '',
+    )
+    if was_escalated:
+        messages.info(request, 'Escalation reason updated.')
+    else:
+        messages.success(request, 'Ticket escalated. The team has been notified.')
+    return redirect('portal:ticket_detail', ticket_number=ticket_number)
+
+
+@portal_required
+@require_http_methods(['POST'])
 def ticket_vote(request, ticket_number):
     """v3.17.235: toggle a portal user's "I care about this too" vote."""
     from psa.models import TicketVote

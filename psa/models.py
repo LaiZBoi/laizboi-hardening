@@ -292,6 +292,14 @@ class Ticket(models.Model):
     # the email poller on every inbound match/create.
     last_inbound_message_id = models.CharField(max_length=998, blank=True)
 
+    # Phase 12 v6 (v3.17.236) — customer escalation workflow.
+    escalated_at = models.DateTimeField(null=True, blank=True)
+    escalated_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='escalated_tickets',
+    )
+    escalation_reason = models.CharField(max_length=500, blank=True)
+
     # Closure
     CLOSURE_CATEGORIES = [
         ('fixed', 'Fixed'),

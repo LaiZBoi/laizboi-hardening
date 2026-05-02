@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.236] - 2026-05-02
+
+### Added — Phase 12 Customer escalation workflow
+Portal users can flag a ticket as urgent without having to call dispatch. Sets a hard escalation marker that's visible everywhere staff look, and posts a public comment so the timeline carries the context.
+
+- **3 new fields on `psa.Ticket`** (migration `psa.0032`): `escalated_at`, `escalated_by` FK, `escalation_reason`. Tracks the escalation independent of priority changes (so a tech can choose whether/how to bump priority based on the reason).
+- **Portal endpoint `POST /portal/t/<ticket_number>/escalate/`** — accepts a `reason` (required, ≤500 chars), stamps the fields, and creates a public `[Escalated by client] <reason>` `TicketComment` so the staff conversation panel shows the escalation in order.
+- **Portal UI** — collapsible `<details>` block on ticket detail (closed tickets hide the option). On second submit, updates the reason rather than overwriting the original timestamp + creating a duplicate comment.
+- **Red "Escalated" badge** on the ticket detail header so the user sees the escalation is registered.
+
+### Tests
+- 3 new tests in `PortalTicketEscalateTests`: fields + comment, empty-reason rejection, reason update on second post.
+
+### Roadmap
+- Phase 12 sub-bullet "Customer escalation workflows" annotated `*(shipped v3.17.236)*`.
+
 ## [3.17.235] - 2026-05-02
 
 ### Added — Phase 12 Customer ticket voting / prioritization
