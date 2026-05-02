@@ -1897,12 +1897,20 @@ def security_alert_mtta_report(request):
 # ---------------------------------------------------------------------------
 
 def _user_can_see_wallboards(user, organization):
-    """Wallboards are visible to staff/superuser globally and to any active
-    member of the wallboard's organization. Mirrors the dashboard ACL."""
+    """
+    Wallboards are visible to:
+      - superuser / staff users — always (any org board, plus globals).
+      - any other user — only their own active-membership orgs.
+
+    `organization=None` means a v3.17.216 "global" board: visible
+    only to staff/superuser. Plain org members never see globals.
+    """
     if not user.is_authenticated:
         return False
     if user.is_superuser or getattr(user, 'is_staff', False):
         return True
+    if organization is None:
+        return False
     return user.memberships.filter(
         organization=organization, is_active=True,
     ).exists()
@@ -1911,11 +1919,20 @@ def _user_can_see_wallboards(user, organization):
 @login_required
 @require_perm('reports_view_dashboards')
 def wallboard_list(request):
-    """List wallboards across the user's accessible orgs."""
+    """
+    List wallboards. Org-scoped boards are filtered to the user's accessible
+    orgs; global boards (organization=NULL, v3.17.216) are added for
+    staff/superusers only.
+    """
     orgs = get_user_organizations(request.user)
-    qs = Wallboard.objects.filter(organization__in=orgs).select_related('organization')
+    user = request.user
+    is_staff_like = user.is_superuser or getattr(user, 'is_staff', False)
+    qs = Wallboard.objects.filter(
+        Q(organization__in=orgs) | (Q(organization__isnull=True) if is_staff_like else Q(pk__in=[]))
+    ).select_related('organization')
     return render(request, 'reports/wallboard_list.html', {
         'wallboards': qs.order_by('organization__name', 'order', 'name'),
+        'can_create_global': is_staff_like,
     })
 
 
@@ -2019,6 +2036,7 @@ def wallboard_form(request, pk=None):
             raise Http404('Wallboard not found')
 
     orgs = get_user_organizations(request.user)
+    is_staff_like = request.user.is_superuser or getattr(request.user, 'is_staff', False)
 
     if request.method == 'POST':
         org_id = request.POST.get('organization')
@@ -2038,18 +2056,24 @@ def wallboard_form(request, pk=None):
             return redirect(request.path)
 
         if instance is None:
-            try:
-                org = orgs.get(pk=org_id)
-            except (Organization.DoesNotExist, ValueError):
-                messages.error(request, 'Pick an organization you belong to.')
-                return redirect(request.path)
+            # v3.17.216: org_id == "" or "global" + staff-like user → null org
+            from core.models import Organization
+            if (org_id in ('', 'global', None)) and is_staff_like:
+                org = None
+            else:
+                try:
+                    org = orgs.get(pk=org_id)
+                except (Organization.DoesNotExist, ValueError, TypeError):
+                    messages.error(request, 'Pick an organization you belong to.')
+                    return redirect(request.path)
             instance = Wallboard.objects.create(
                 organization=org, name=name, description=description,
                 refresh_seconds=refresh_seconds, rotate_seconds=rotate_seconds,
                 order=order, is_active=is_active,
                 created_by=request.user,
             )
-            messages.success(request, f'Wallboard "{instance.name}" created.')
+            label = instance.name + (' (Global)' if org is None else '')
+            messages.success(request, f'Wallboard "{label}" created.')
         else:
             instance.name = name
             instance.description = description
@@ -2064,6 +2088,7 @@ def wallboard_form(request, pk=None):
     return render(request, 'reports/wallboard_form.html', {
         'wallboard': instance,
         'organizations': orgs,
+        'can_create_global': is_staff_like,
     })
 
 

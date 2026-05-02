@@ -268,16 +268,29 @@ class AnalyticsEvent(models.Model):
 
 class Wallboard(models.Model):
     """
-    A named TV-ready dashboard owned by an organization.
+    A named TV-ready dashboard.
+
+    Two flavors:
+    - **Org-scoped** (`organization` set) — visible to members of that
+      organization plus staff/superusers. The original v3.17.211 mode.
+    - **Global** (`organization=NULL`, v3.17.216) — visible to any
+      staff_user / superuser; widgets render aggregates across every
+      tenant in the system. Use this for an "Operations Overview" TV
+      board in the NOC.
 
     `refresh_seconds` controls the meta-refresh on the rendered page;
     `rotate_seconds` (when > 0) is used by the rotation view to cycle to
-    the next active wallboard for this org. `order` is the rotation
-    position (lower fires first; ties broken by name).
+    the next active wallboard. Rotation cycles within scope: a global
+    board cycles only with other globals; an org board cycles with that
+    org's other boards.
     """
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE,
         related_name='wallboards',
+        null=True, blank=True,
+        help_text='Org that owns this wallboard. Leave empty for a '
+                  '"Global" board visible to staff/superusers and '
+                  'aggregating across every tenant.',
     )
     name = models.CharField(
         max_length=120,
@@ -316,14 +329,20 @@ class Wallboard(models.Model):
             models.Index(fields=['organization', 'is_active', 'order']),
         ]
 
+    @property
+    def is_global(self) -> bool:
+        return self.organization_id is None
+
     def __str__(self):
+        if self.organization_id is None:
+            return f'{self.name} (Global)'
         return f'{self.name} ({self.organization.name})'
 
     def next_in_rotation(self):
         """
-        Return the next wallboard in this org's rotation, or self when
-        there's only one rotatable board. Used by the rotation view to
-        compute the redirect target.
+        Return the next wallboard in the same rotation scope, or self
+        when there's only one rotatable board. Global boards rotate only
+        with other globals; org boards rotate within their own org.
         """
         rotatable = (Wallboard.objects
                      .filter(organization=self.organization,

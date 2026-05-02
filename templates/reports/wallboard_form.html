@@ -30,12 +30,21 @@
 
             {% if not wallboard %}
             <div class="mb-3">
-                <label class="form-label">Organization <span class="text-danger">*</span></label>
+                <label class="form-label">Scope <span class="text-danger">*</span></label>
                 <select name="organization" class="form-select" required>
+                    {% if can_create_global %}
+                    <option value="global">— Global (all tenants, staff-only) —</option>
+                    {% endif %}
                     {% for o in organizations %}
                     <option value="{{ o.pk }}">{{ o.name }}</option>
                     {% endfor %}
                 </select>
+                {% if can_create_global %}
+                <div class="form-text">
+                    Global boards aggregate across every tenant and are visible
+                    only to staff/superusers. Use them for an MSP-wide NOC overview.
+                </div>
+                {% endif %}
             </div>
             {% endif %}
 

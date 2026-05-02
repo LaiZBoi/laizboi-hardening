@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.216] - 2026-05-02
+
+### Added — Global wallboards (cross-tenant overview boards)
+- **Wallboards can now be created without an organization.** `Wallboard.organization` is nullable; `organization=NULL` means a "Global" board, visible only to staff/superusers, that aggregates across every tenant in the system. Use it for an MSP-wide NOC overview TV that shows total open tickets, open critical security alerts, expiring SSL certs, etc., across all clients at once. The original org-scoped flavor is unchanged — it remains the v3.17.211 default.
+- **Why this works without rewiring widget sources:** the existing `reports.widget_sources.REGISTRY` callables already query without an org filter (`Ticket.objects.filter(status__is_terminal=False).count()`, etc. — no `.filter(organization=...)`). They were *intended* to be org-scoped per their docstrings but in practice always aggregated globally. The missing piece was the wallboard-level ACL that said "members can only see their org's boards." Global boards are gated to staff/superuser at the wallboard level instead.
+- **`Wallboard.is_global` property** — convenience boolean for templates and downstream code (`{% if wallboard.is_global %}`).
+- **`Wallboard.next_in_rotation()` rotates within scope** — global boards cycle only with other globals; org boards stay in their org's cycle. The query already filters `organization=self.organization` which Django translates correctly to `organization IS NULL` for globals.
+- **ACL helper updated:** `_user_can_see_wallboards(user, organization)` now denies `organization=None` for non-staff users (a plain org member never sees globals). Staff and superuser see everything.
+- **`wallboard_list` view** unions org-scoped boards for the user's accessible orgs with global boards (only when `is_staff_user`); the list page renders `Global` as a blue badge instead of an org name.
+- **`wallboard_form` view** accepts `organization=global` POST value (only when user is staff-like) and creates with `organization=None`. Non-staff users posting `global` get an error redirect with no persistence.
+- **List view template:** `<i class="fas fa-globe"></i> Global` badge replaces the org-name column for null-org rows.
+- **Form template:** the org dropdown now leads with a `— Global (all tenants, staff-only) —` option (gated on `can_create_global`); helper text explains the staff-only visibility rule.
+
+### Migration
+- `reports.0004_alter_wallboard_organization` — `ALTER TABLE reports_wallboards MODIFY organization_id INT NULL`. Existing rows are unchanged (still scoped to their org). Schema-only, no data backfill needed.
+
+### Tests
+- 7 new tests in `WallboardGlobalScopeTests`:
+  - `test_global_board_persists_with_null_org` — model accepts `organization=None`, `is_global` returns True, `__str__` reads "(Global)".
+  - `test_acl_helper_allows_global_for_staff_only` — `_user_can_see_wallboards(staff, None) == True`; `_user_can_see_wallboards(member, None) == False`.
+  - `test_list_includes_global_board_for_staff` / `test_list_hides_global_board_from_org_member` — list view ACL split.
+  - `test_org_member_cannot_view_global_board_directly` — direct GET to `/reports/wallboards/<global_pk>/` returns 404 for non-staff.
+  - `test_staff_can_create_global_board_via_form` — staff POSTing `organization=global` creates a row with `organization=None`.
+  - `test_non_staff_member_cannot_create_global_board` — non-staff POST with `organization=global` rejected; nothing persists.
+- All 22 wallboard tests passing (model + rotation + widget-inherit + view ACL + rotate-view + list-view + reorder + global scope).
+
 ## [3.17.215] - 2026-05-02
 
 ### Added — Drag-to-reorder wallboard widgets

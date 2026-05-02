@@ -1367,6 +1367,114 @@ class WallboardListViewTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WallboardGlobalScopeTests(TestCase):
+    """v3.17.216: organization-null = global wallboard, staff-only."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from reports.models import Wallboard
+        cls.org = Organization.objects.create(name='GlobCo', slug='wb-glob-co')
+        cls.staff = User.objects.create_user(
+            'wb-glob-staff', email='wbgs@x.com', password='pw',
+            is_staff=True, is_superuser=True,
+        )
+        cls.member = User.objects.create_user(
+            'wb-glob-mem', email='wbgm@x.com', password='pw',
+        )
+        Membership.objects.create(
+            user=cls.member, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        cls.org_board = Wallboard.objects.create(organization=cls.org, name='Org-NOC')
+        cls.global_board = Wallboard.objects.create(organization=None, name='Global-NOC')
+
+    def test_global_board_persists_with_null_org(self):
+        from reports.models import Wallboard
+        b = Wallboard.objects.get(pk=self.global_board.pk)
+        self.assertIsNone(b.organization)
+        self.assertTrue(b.is_global)
+        self.assertIn('Global', str(b))
+
+    def test_acl_helper_allows_global_for_staff_only(self):
+        from reports.views import _user_can_see_wallboards
+        self.assertTrue(_user_can_see_wallboards(self.staff, None))
+        self.assertFalse(_user_can_see_wallboards(self.member, None))
+        # Both can see the org board (member via membership; staff via flag).
+        self.assertTrue(_user_can_see_wallboards(self.staff, self.org))
+        self.assertTrue(_user_can_see_wallboards(self.member, self.org))
+
+    def _login(self, c, user):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_list_includes_global_board_for_staff(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/wallboards/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Global-NOC')
+        self.assertContains(r, 'Org-NOC')
+
+    def test_list_hides_global_board_from_org_member(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member)
+        r = c.get('/reports/wallboards/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Org-NOC')
+        self.assertNotContains(r, 'Global-NOC')
+
+    def test_org_member_cannot_view_global_board_directly(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member)
+        r = c.get(f'/reports/wallboards/{self.global_board.pk}/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_staff_can_create_global_board_via_form(self):
+        from django.test import Client
+        from reports.models import Wallboard
+        c = Client()
+        self._login(c, self.staff)
+        r = c.post('/reports/wallboards/new/', data={
+            'organization': 'global',
+            'name': 'Made-Global',
+            'description': '',
+            'refresh_seconds': 60,
+            'rotate_seconds': 0,
+            'order': 100,
+            'is_active': 'on',
+        })
+        self.assertIn(r.status_code, [200, 302])
+        b = Wallboard.objects.get(name='Made-Global')
+        self.assertIsNone(b.organization)
+
+    def test_non_staff_member_cannot_create_global_board(self):
+        from django.test import Client
+        from reports.models import Wallboard
+        c = Client()
+        self._login(c, self.member)
+        r = c.post('/reports/wallboards/new/', data={
+            'organization': 'global',
+            'name': 'BadGlobal',
+            'description': '',
+            'refresh_seconds': 60,
+            'rotate_seconds': 0,
+            'order': 100,
+            'is_active': 'on',
+        })
+        # The view rejects "global" for non-staff with an error redirect;
+        # nothing persists.
+        self.assertFalse(Wallboard.objects.filter(name='BadGlobal').exists())
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class WallboardWidgetReorderTests(TestCase):
     """v3.17.215: drag-to-reorder widget endpoint."""
 
