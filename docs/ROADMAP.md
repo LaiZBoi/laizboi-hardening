@@ -828,7 +828,7 @@ Planned capabilities:
 - **Employee onboarding / offboarding workflows** *(category support shipped — `onboarding` / `offboarding` already existed; `client_*` companions added v3.17.223)*
 - **Client termination checklist** — `client_termination` category added so the existing Process model carries the termination flow *(category shipped v3.17.223)*
 - **Access removal verification** — for offboarding, mechanically verify that the user is actually removed from each documented system (poll vault, M365, RMM, etc.) and surface any orphaned access
-- **Documentation completion scoring** — `ProcessExecution.completion_percentage` already tracks per-execution stage completion; per-client roll-up across multiple runbooks remains planned
+- **Documentation completion scoring** — per-execution `ProcessExecution.completion_percentage` already shipped; per-org dashboard with rollup across all in-flight runbooks at `/processes/dashboard/` *(shipped v3.17.227)*
 - **Runbook-to-ticket conversion** — any runbook step can spawn a Ticket; created ticket is recorded on `ProcessStageCompletion.spawned_ticket` *(shipped v3.17.223)*
 
 Dependencies: `processes/` app (existing), Phase 14 (visual workflow builder for runbook editing).

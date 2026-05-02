@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.227] - 2026-05-02
+
+### Added — Phase 38 v2 Runbook completion dashboard
+v3.17.223 shipped clone-template + spawn-ticket. v3.17.227 adds the per-org dashboard view that aggregates completion across all in-flight runbooks — the "documentation completion scoring" piece from the Phase 38 roadmap.
+
+- **New view `GET /processes/dashboard/`** (uses the user's current org context) and `GET /processes/dashboard/<org_id>/` (explicit, gated to staff/superuser or active members of that org).
+- **Three rollup cards** at the top: total active runbooks for the org, stages completed vs total, overall completion percentage with a progress bar.
+- **Grouped tables per workflow category** — Client Onboarding, Client Termination, etc. Each row shows runbook title, assignee, status, per-execution progress bar, started date, due date with overdue badge.
+- Excludes `cancelled` and `failed` executions — those are noise on a dashboard meant for "what's in flight." Still visible via the existing `/processes/executions/` list.
+- **Tenant ACL:** explicit `org_id` blocks non-members with 404. Staff/superuser pass through.
+
+### Tests
+- 5 new tests in `RunbookDashboardTests`:
+  - `test_dashboard_shows_active_executions_grouped_by_category` — both runbooks render under their category headers.
+  - `test_dashboard_overall_completion_aggregates` — 3 stages total, 1 completed → 33.3% rollup.
+  - `test_dashboard_excludes_cancelled_and_failed` — cancelled execution disappears from the dashboard.
+  - `test_dashboard_org_url_blocks_non_member` — non-member trying to load another org's dashboard → 404.
+  - `test_dashboard_org_url_allows_staff` — staff/superuser pass through.
+- All 11 processes Phase 38 tests pass.
+
+### Routing fix
+- The new `/processes/dashboard/` URL was originally placed after the `<slug:slug>/` patterns, which intercepted "dashboard" as a slug and returned 404. Moved above the slug patterns so it resolves correctly. Same pattern as the existing `executions/` and `global/` routes.
+
+### Roadmap
+- Phase 38 sub-bullet "Documentation completion scoring" annotated `*(per-execution + per-org rollup shipped v3.17.227; per-client roll-up across multiple runbooks already lives at /processes/dashboard/<org>/)*`.
+
 ## [3.17.226] - 2026-05-02
 
 ### Added — Phase 39 v2 Compliance Evidence Pack — remaining 4 sections

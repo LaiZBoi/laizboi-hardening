@@ -18,6 +18,10 @@ urlpatterns = [
     path('global/', views.global_process_list, name='global_process_list'),
     path('global/create/', views.global_process_create, name='global_process_create'),
 
+    # Phase 38 v2: per-org runbook dashboard - MUST come before slug patterns.
+    path('dashboard/', views.runbook_dashboard, name='runbook_dashboard'),
+    path('dashboard/<int:org_id>/', views.runbook_dashboard, name='runbook_dashboard_org'),
+
     # Process detail/edit/delete - slug patterns come AFTER specific paths
     path('<slug:slug>/', views.process_detail, name='process_detail'),
     path('<slug:slug>/generate-diagram/', views.process_generate_diagram, name='process_generate_diagram'),

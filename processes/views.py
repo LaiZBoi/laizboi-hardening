@@ -1212,3 +1212,77 @@ def stage_spawn_ticket(request, execution_pk, stage_pk):
     messages.success(request, f'Ticket {ticket.ticket_number} created from stage "{stage.title}".')
     return redirect('processes:execution_detail', pk=execution.pk)
 
+
+
+@login_required
+def runbook_dashboard(request, org_id=None):
+    """
+    Phase 38 v2 (v3.17.227): per-client runbook completion dashboard.
+
+    Lists every active ProcessExecution scoped to the requested org (or
+    the user's current org context when org_id is omitted), grouped by
+    runbook category and rendered with each execution's
+    completion_percentage. The org-level rollup at the top sums covered
+    vs total stages so a tech can see "OrgA is 65% through their
+    onboarding runbooks" at a glance.
+
+    URL:
+      /processes/dashboard/             → user's current org
+      /processes/dashboard/<org_id>/    → explicit org (staff/superuser)
+    """
+    from core.models import Organization
+    if org_id is not None:
+        org = get_object_or_404(Organization, pk=org_id)
+        if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+            if not request.user.memberships.filter(
+                organization=org, is_active=True,
+            ).exists():
+                from django.http import Http404
+                raise Http404('Organization not visible')
+    else:
+        org = get_request_organization(request)
+        if org is None:
+            messages.info(request, 'Pick an organization context to see its runbook dashboard.')
+            return redirect('processes:execution_list')
+
+    # All non-cancelled executions for the org; group by category of the
+    # underlying Process. Cancelled / failed are excluded — they're noise
+    # for "what's in flight" view but visible via execution_list.
+    qs = (ProcessExecution.objects
+          .filter(organization=org)
+          .exclude(status__in=['cancelled', 'failed'])
+          .select_related('process', 'assigned_to')
+          .order_by('process__category', '-created_at'))
+
+    groups = {}
+    total_stages = 0
+    completed_stages = 0
+    for ex in qs:
+        cat = ex.process.category
+        groups.setdefault(cat, []).append(ex)
+        n_stages = ex.process.stages.count()
+        n_done = ex.stage_completions.filter(is_completed=True).count()
+        total_stages += n_stages
+        completed_stages += n_done
+
+    overall_pct = round(100 * completed_stages / total_stages, 1) if total_stages else 0
+
+    # Render category labels using model choices for readability.
+    cat_choices = dict(Process.CATEGORY_CHOICES)
+    rendered_groups = []
+    for cat, executions in sorted(groups.items()):
+        rendered_groups.append({
+            'category_key': cat,
+            'category_label': cat_choices.get(cat, cat.title()),
+            'executions': executions,
+            'count': len(executions),
+        })
+
+    return render(request, 'processes/runbook_dashboard.html', {
+        'organization': org,
+        'groups': rendered_groups,
+        'total_executions': qs.count(),
+        'overall_pct': overall_pct,
+        'total_stages': total_stages,
+        'completed_stages': completed_stages,
+    })

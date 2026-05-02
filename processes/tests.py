@@ -415,3 +415,105 @@ class ProcessStageSpawnTicketTests(TestCase):
         self._login(c)
         r = c.get(f'/processes/execution/{self.execution.pk}/stage/{self.stage.pk}/spawn-ticket/')
         self.assertEqual(r.status_code, 405)
+
+
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class RunbookDashboardTests(TestCase):
+    """Phase 38 v2 (v3.17.227): per-org runbook completion dashboard."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='DashCo', slug='dash-co')
+        cls.outsider_org = Organization.objects.create(name='OutsideCo', slug='dash-out')
+        cls.user = User.objects.create_user('dash-user', 'd@x.com', 'pw')
+        Membership.objects.create(
+            user=cls.user, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        cls.staff = User.objects.create_user('dash-staff', 's@x.com', 'pw',
+                                              is_superuser=True, is_staff=True)
+        # Two processes, two executions, with stages partially completed.
+        cls.proc_a = Process.objects.create(
+            organization=cls.org, title='Onboarding A',
+            category='client_onboarding', created_by=cls.user,
+            last_modified_by=cls.user,
+        )
+        cls.proc_b = Process.objects.create(
+            organization=cls.org, title='Termination B',
+            category='client_termination', created_by=cls.user,
+            last_modified_by=cls.user,
+        )
+        ProcessStage.objects.create(process=cls.proc_a, title='S1', order=1)
+        ProcessStage.objects.create(process=cls.proc_a, title='S2', order=2)
+        ProcessStage.objects.create(process=cls.proc_b, title='S1', order=1)
+        cls.exec_a = ProcessExecution.objects.create(
+            process=cls.proc_a, organization=cls.org,
+            assigned_to=cls.user, status='in_progress',
+        )
+        cls.exec_b = ProcessExecution.objects.create(
+            process=cls.proc_b, organization=cls.org,
+            assigned_to=cls.user, status='not_started',
+        )
+        # Mark one of exec_a's stages complete so completion_percentage = 50.
+        ProcessStageCompletion.objects.create(
+            execution=cls.exec_a, stage=cls.proc_a.stages.order_by('order').first(),
+            is_completed=True, completed_by=cls.user,
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_dashboard_shows_active_executions_grouped_by_category(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.get('/processes/dashboard/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Onboarding A')
+        self.assertContains(r, 'Termination B')
+        self.assertContains(r, 'Client Onboarding')
+        self.assertContains(r, 'Client Termination')
+
+    def test_dashboard_overall_completion_aggregates(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.get('/processes/dashboard/')
+        ctx = r.context
+        # 3 stages total (2 in proc_a + 1 in proc_b); 1 completed → 33.3%
+        self.assertEqual(ctx['total_stages'], 3)
+        self.assertEqual(ctx['completed_stages'], 1)
+        self.assertAlmostEqual(ctx['overall_pct'], 33.3, places=1)
+        self.assertEqual(ctx['total_executions'], 2)
+
+    def test_dashboard_excludes_cancelled_and_failed(self):
+        from django.test import Client
+        # Mark exec_b as cancelled — should disappear from the dashboard.
+        self.exec_b.status = 'cancelled'
+        self.exec_b.save(update_fields=['status'])
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.get('/processes/dashboard/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Onboarding A')
+        self.assertNotContains(r, 'Termination B')
+
+    def test_dashboard_org_url_blocks_non_member(self):
+        from django.test import Client
+        c = Client()
+        # Non-staff user is NOT a member of outsider_org → 404.
+        self._login(c, self.user, self.org)
+        r = c.get(f'/processes/dashboard/{self.outsider_org.id}/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_dashboard_org_url_allows_staff(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff, self.org)
+        r = c.get(f'/processes/dashboard/{self.outsider_org.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'OutsideCo')

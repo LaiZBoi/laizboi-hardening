@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Runbook Dashboard — {{ organization.name }}{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'processes:process_list' %}">Workflows</a></li>
+        <li class="breadcrumb-item active">Runbook Dashboard</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">
+        <i class="fas fa-tasks me-2"></i>Runbook Dashboard — {{ organization.name }}
+    </h2>
+    <a href="{% url 'processes:execution_list' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-list me-1"></i>All Executions
+    </a>
+</div>
+
+<p class="text-muted">
+    Per-organization view of every in-flight runbook (cancelled / failed are excluded).
+    Use the rollup card to see overall completion across all the org's active runbooks at a glance.
+</p>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-primary">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Active runbooks</div>
+                <div class="display-6 fw-bold">{{ total_executions }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Stages completed</div>
+                <div class="display-6 fw-bold">{{ completed_stages }} / {{ total_stages }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-info">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Overall progress</div>
+                <div class="display-6 fw-bold">{{ overall_pct }}%</div>
+                <div class="progress mt-2" style="height: 8px;">
+                    <div class="progress-bar bg-info" style="width: {{ overall_pct }}%;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if not groups %}
+<div class="card">
+    <div class="card-body text-center text-muted py-5">
+        <i class="fas fa-tasks fa-2x mb-2"></i><br>
+        No active runbooks for this organization.
+        <a href="{% url 'processes:process_list' %}" class="d-block mt-2">Browse workflows →</a>
+    </div>
+</div>
+{% endif %}
+
+{% for g in groups %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="fas fa-layer-group me-2"></i>{{ g.category_label }}</strong>
+        <span class="badge bg-secondary">{{ g.count }} active</span>
+    </div>
+    <table class="table table-sm mb-0 small">
+        <thead class="table-light">
+            <tr>
+                <th>Runbook</th>
+                <th>Assigned to</th>
+                <th>Status</th>
+                <th class="text-end">Progress</th>
+                <th>Started</th>
+                <th>Due</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for ex in g.executions %}
+            <tr>
+                <td>
+                    <a href="{% url 'processes:execution_detail' ex.pk %}">{{ ex.process.title|truncatechars:50 }}</a>
+                </td>
+                <td>{{ ex.assigned_to.username|default:'—' }}</td>
+                <td>
+                    {% if ex.status == 'completed' %}<span class="badge bg-success">Completed</span>
+                    {% elif ex.status == 'in_progress' %}<span class="badge bg-info">In progress</span>
+                    {% elif ex.status == 'not_started' %}<span class="badge bg-secondary">Not started</span>
+                    {% else %}<span class="badge bg-warning text-dark">{{ ex.get_status_display }}</span>{% endif %}
+                </td>
+                <td class="text-end" style="min-width: 200px;">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-1" style="height: 6px;">
+                            <div class="progress-bar {% if ex.completion_percentage == 100 %}bg-success{% elif ex.completion_percentage >= 50 %}bg-info{% else %}bg-warning{% endif %}"
+                                 style="width: {{ ex.completion_percentage }}%;"></div>
+                        </div>
+                        <span class="text-muted small">{{ ex.completion_percentage }}%</span>
+                    </div>
+                </td>
+                <td>{{ ex.created_at|date:'Y-m-d' }}</td>
+                <td>
+                    {% if ex.due_date %}
+                        {{ ex.due_date|date:'Y-m-d' }}
+                        {% if ex.is_overdue %}<span class="badge bg-danger ms-1">Overdue</span>{% endif %}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+
+{% endblock %}
