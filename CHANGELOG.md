@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.196] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `assets/` app** (audit punch-list / Phase 7 polish — 7th of 16 originally-untested apps). Foundational app: `Asset`, `Contact`, `EquipmentModel`, `Vendor`, `AssetType` are referenced from every other surface (vault for asset linking, docs for KB→asset, PSA for ticket→asset, monitoring for rack→asset). Bugs here ripple. **16 tests across 6 classes:**
+  - `AssetModelTests` (4) — minimal create, `__str__` includes name + display label, default `asset_type='other'`, `OrganizationManager.for_organization()` filtering.
+  - `ContactModelTests` (4) — `full_name` property, `__str__` returns full name, blank email allowed (matches model + migration), `for_organization()` filtering.
+  - `AssetTypeModelTests` (2) — basic create, default `icon='fa-box'` and `color='#0d6efd'`.
+  - `AssetListViewTests` (2) — anonymous → 302/401 (login redirect), authenticated → 200 with own-org assets visible.
+  - `AssetDetailIsolationTests` (2) — own-org PK returns 200; cross-org PK returns 404 (matches `core.tests.test_tenant_isolation` pattern).
+  - `EquipmentModelLookupTests` (2) — create with vendor + model_name + slug + equipment_type; back-reference via `Asset.equipment_model` FK populates `em.assets`.
+- 16/16 in 7 s. **No production bugs surfaced** — assets/ is the first new-baseline app this session that came out clean. (Previous three new-baseline efforts each caught a real bug: tenant-isolation, api/, audit/.)
+
 ## [3.17.195] - 2026-05-02
 
 ### Fixed
