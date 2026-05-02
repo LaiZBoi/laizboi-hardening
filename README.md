@@ -1,7 +1,7 @@
 # Client St0r
 
 [![GitHub Stars](https://img.shields.io/github/stars/agit8or1/clientst0r?style=social)](https://github.com/agit8or1/clientst0r/stargazers)
-[![Version 3.17.185](https://img.shields.io/badge/version-3.17.185-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
+[![Version 3.17.190](https://img.shields.io/badge/version-3.17.190-brightgreen)](https://github.com/agit8or1/clientst0r/releases)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green)](https://github.com/agit8or1/clientst0r)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-blue)](https://www.djangoproject.com/)
