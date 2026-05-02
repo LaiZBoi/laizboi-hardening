@@ -1475,6 +1475,146 @@ class WallboardGlobalScopeTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WallboardFormCleanupTests(TestCase):
+    """v3.17.220: in-form widget add/delete + starter templates."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from reports.models import Wallboard, WallboardWidget
+        cls.org = Organization.objects.create(name='FormCleanCo', slug='wb-fc-co')
+        cls.staff = User.objects.create_user(
+            'wb-fc-staff', email='wbfcs@x.com', password='pw',
+            is_staff=True, is_superuser=True,
+        )
+        Membership.objects.create(
+            user=cls.staff, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        cls.board = Wallboard.objects.create(organization=cls.org, name='ToEdit')
+        cls.widget = WallboardWidget.objects.create(
+            wallboard=cls.board, title='Existing', widget_type='metric',
+            data_source='open_tickets_count', order=10,
+        )
+
+    def _login(self, c):
+        c.force_login(self.staff)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_template_constant_has_expected_keys(self):
+        from reports.widget_sources import WALLBOARD_TEMPLATES, get_template
+        keys = [t['key'] for t in WALLBOARD_TEMPLATES]
+        for required in ('custom', 'operations', 'tickets', 'alerts', 'sales', 'health'):
+            self.assertIn(required, keys)
+        self.assertIsNone(get_template('does-not-exist'))
+        self.assertEqual(get_template('operations')['key'], 'operations')
+
+    def test_create_with_template_populates_widgets(self):
+        from django.test import Client
+        from reports.models import Wallboard
+        c = Client()
+        self._login(c)
+        r = c.post('/reports/wallboards/new/', data={
+            'organization': self.org.pk,
+            'name': 'TplBoard',
+            'description': '',
+            'refresh_seconds': 60,
+            'rotate_seconds': 0,
+            'order': 100,
+            'is_active': 'on',
+            'template': 'operations',
+        })
+        self.assertIn(r.status_code, [200, 302])
+        b = Wallboard.objects.get(name='TplBoard')
+        self.assertEqual(b.widgets.count(), 6)  # Operations template has 6 widgets
+
+    def test_create_with_custom_template_creates_no_widgets(self):
+        from django.test import Client
+        from reports.models import Wallboard
+        c = Client()
+        self._login(c)
+        r = c.post('/reports/wallboards/new/', data={
+            'organization': self.org.pk,
+            'name': 'EmptyBoard',
+            'description': '',
+            'refresh_seconds': 60,
+            'rotate_seconds': 0,
+            'order': 100,
+            'is_active': 'on',
+            'template': 'custom',
+        })
+        self.assertIn(r.status_code, [200, 302])
+        b = Wallboard.objects.get(name='EmptyBoard')
+        self.assertEqual(b.widgets.count(), 0)
+
+    def test_widget_add_view_creates_widget(self):
+        from django.test import Client
+        from reports.models import WallboardWidget
+        c = Client()
+        self._login(c)
+        before = self.board.widgets.count()
+        r = c.post(f'/reports/wallboards/{self.board.pk}/widgets/add/', data={
+            'title': 'New One',
+            'data_source': 'overdue_tickets_count',
+            'widget_type': 'metric',
+        })
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.board.widgets.count(), before + 1)
+        new = self.board.widgets.get(title='New One')
+        self.assertEqual(new.data_source, 'overdue_tickets_count')
+
+    def test_widget_add_rejects_unknown_data_source(self):
+        from django.test import Client
+        c = Client()
+        self._login(c)
+        before = self.board.widgets.count()
+        r = c.post(f'/reports/wallboards/{self.board.pk}/widgets/add/', data={
+            'title': 'Bogus',
+            'data_source': 'definitely_does_not_exist',
+            'widget_type': 'metric',
+        })
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.board.widgets.count(), before)
+
+    def test_widget_add_rejects_unknown_widget_type(self):
+        from django.test import Client
+        c = Client()
+        self._login(c)
+        before = self.board.widgets.count()
+        r = c.post(f'/reports/wallboards/{self.board.pk}/widgets/add/', data={
+            'title': 'Bogus type',
+            'data_source': 'open_tickets_count',
+            'widget_type': 'sparkline_3d',
+        })
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.board.widgets.count(), before)
+
+    def test_widget_delete_view_removes_widget(self):
+        from django.test import Client
+        from reports.models import WallboardWidget
+        c = Client()
+        self._login(c)
+        wid = WallboardWidget.objects.create(
+            wallboard=self.board, title='Doomed', widget_type='metric',
+            data_source='open_tickets_count', order=99,
+        )
+        r = c.post(f'/reports/wallboards/widgets/{wid.pk}/delete/')
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(WallboardWidget.objects.filter(pk=wid.pk).exists())
+
+    def test_widget_add_rejects_get(self):
+        from django.test import Client
+        c = Client()
+        self._login(c)
+        r = c.get(f'/reports/wallboards/{self.board.pk}/widgets/add/')
+        self.assertEqual(r.status_code, 405)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class WallboardWidgetCategoryTests(TestCase):
     """v3.17.217: per-widget category dropdown + JSON refresh endpoint."""
 

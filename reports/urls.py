@@ -96,5 +96,10 @@ urlpatterns = [
     # v3.17.217 — per-widget category re-fetch. GET ?category=<value>.
     path('wallboards/widgets/<int:pk>/data/',
          views.wallboard_widget_data, name='wallboard_widget_data'),
+    # v3.17.220 — in-form widget add/delete (no Django admin trip).
+    path('wallboards/<int:pk>/widgets/add/',
+         views.wallboard_widget_add, name='wallboard_widget_add'),
+    path('wallboards/widgets/<int:pk>/delete/',
+         views.wallboard_widget_delete, name='wallboard_widget_delete'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

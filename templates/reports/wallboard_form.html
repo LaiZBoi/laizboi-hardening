@@ -10,84 +10,128 @@
     </ol>
 </nav>
 
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">
+        <i class="fas fa-tv me-2"></i>{% if wallboard %}Edit{% else %}New{% endif %} Wallboard
+        {% if wallboard %}<span class="text-muted small ms-2">— {{ wallboard.name }}</span>{% endif %}
+    </h2>
+    {% if wallboard %}
+    <div class="d-flex gap-2">
+        <a href="{% url 'reports:wallboard_view' wallboard.pk %}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-tv me-1"></i>Open board
+        </a>
+        <a href="{% url 'reports:wallboard_list' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-list me-1"></i>All wallboards
+        </a>
+    </div>
+    {% endif %}
+</div>
+
 <div class="row">
-    <div class="col-lg-8">
-        <h2 class="mb-3">
-            <i class="fas fa-tv me-2"></i>
-            {% if wallboard %}Edit{% else %}New{% endif %} Wallboard
-        </h2>
-
-        {% if not wallboard %}
-        <p class="text-muted mb-3">
-            After creating, add widgets via Django admin → Reports → Wallboard widgets.
-            Widget data sources are pulled from <code>reports.widget_sources.REGISTRY</code>
-            (the same registry that powers regular dashboards).
-        </p>
-        {% endif %}
-
-        <form method="post" novalidate>
+    <div class="col-lg-7">
+        <form method="post" novalidate id="wb-main-form">
             {% csrf_token %}
 
-            {% if not wallboard %}
-            <div class="mb-3">
-                <label class="form-label">Scope <span class="text-danger">*</span></label>
-                <select name="organization" class="form-select" required>
-                    {% if can_create_global %}
-                    <option value="global">— Global (all tenants, staff-only) —</option>
-                    {% endif %}
-                    {% for o in organizations %}
-                    <option value="{{ o.pk }}">{{ o.name }}</option>
-                    {% endfor %}
-                </select>
-                {% if can_create_global %}
-                <div class="form-text">
-                    Global boards aggregate across every tenant and are visible
-                    only to staff/superusers. Use them for an MSP-wide NOC overview.
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong><i class="fas fa-info-circle me-2"></i>Basics</strong>
                 </div>
-                {% endif %}
+                <div class="card-body">
+                    {% if not wallboard %}
+                    <div class="mb-3">
+                        <label class="form-label">Scope <span class="text-danger">*</span></label>
+                        <select name="organization" class="form-select" required>
+                            {% if can_create_global %}
+                            <option value="global">— Global (all tenants, staff-only) —</option>
+                            {% endif %}
+                            {% for o in organizations %}
+                            <option value="{{ o.pk }}">{{ o.name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% if can_create_global %}
+                        <div class="form-text">
+                            Global boards aggregate across every tenant and are visible only to staff/superusers.
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" maxlength="120" required
+                               value="{{ wallboard.name|default:'' }}"
+                               placeholder="e.g. NOC Overview, Service Desk, Sales TV">
+                    </div>
+
+                    <div class="mb-0">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="2"
+                                  placeholder="Optional — what this board is for, who watches it.">{{ wallboard.description|default:'' }}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            {% if not wallboard and wallboard_templates %}
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong><i class="fas fa-magic me-2"></i>Starter template</strong>
+                    <span class="text-muted small ms-2">Pre-populates the new board with a useful widget set. Pick "Custom" to start empty.</span>
+                </div>
+                <div class="card-body">
+                    {% for t in wallboard_templates %}
+                    <div class="form-check mb-2">
+                        <input type="radio" class="form-check-input" name="template" id="tpl-{{ t.key }}"
+                               value="{{ t.key }}" {% if forloop.first %}checked{% endif %}>
+                        <label class="form-check-label" for="tpl-{{ t.key }}">
+                            <strong>{{ t.label }}</strong>
+                            <span class="text-muted small d-block">{{ t.description }}</span>
+                            {% if t.widgets %}
+                            <span class="text-muted small">Includes {{ t.widgets|length }} widget{{ t.widgets|length|pluralize }}.</span>
+                            {% endif %}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
             {% endif %}
 
-            <div class="mb-3">
-                <label class="form-label">Name <span class="text-danger">*</span></label>
-                <input type="text" name="name" class="form-control" maxlength="120" required
-                       value="{{ wallboard.name|default:'' }}">
-                <div class="form-text">Free-text label shown in the list and as the page title.</div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Description</label>
-                <textarea name="description" class="form-control" rows="2">{{ wallboard.description|default:'' }}</textarea>
-            </div>
-
-            <div class="row">
-                <div class="col-md-4 mb-3">
-                    <label class="form-label">Refresh (seconds)</label>
-                    <input type="number" name="refresh_seconds" class="form-control" min="0"
-                           value="{{ wallboard.refresh_seconds|default:60 }}">
-                    <div class="form-text">0 disables auto-refresh.</div>
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong><i class="fas fa-clock me-2"></i>Refresh &amp; rotation</strong>
                 </div>
-                <div class="col-md-4 mb-3">
-                    <label class="form-label">Rotate-to-next (seconds)</label>
-                    <input type="number" name="rotate_seconds" class="form-control" min="0"
-                           value="{{ wallboard.rotate_seconds|default:0 }}">
-                    <div class="form-text">0 = skip in rotation.</div>
-                </div>
-                <div class="col-md-4 mb-3">
-                    <label class="form-label">Order</label>
-                    <input type="number" name="order" class="form-control" min="0"
-                           value="{{ wallboard.order|default:100 }}">
-                    <div class="form-text">Lower fires first in rotation.</div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Refresh (sec)</label>
+                            <input type="number" name="refresh_seconds" class="form-control" min="0"
+                                   value="{{ wallboard.refresh_seconds|default:60 }}">
+                            <div class="form-text">Whole-page reload cadence. 0 disables.</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Rotate-to-next (sec)</label>
+                            <input type="number" name="rotate_seconds" class="form-control" min="0"
+                                   value="{{ wallboard.rotate_seconds|default:0 }}">
+                            <div class="form-text">0 = skip rotation. NOC-TV mode jumps to the next board after this many seconds.</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Rotation order</label>
+                            <input type="number" name="order" class="form-control" min="0"
+                                   value="{{ wallboard.order|default:100 }}">
+                            <div class="form-text">Lower fires first.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch mb-0">
+                        <input type="checkbox" name="is_active" class="form-check-input" id="is_active"
+                               {% if wallboard.is_active|default_if_none:True %}checked{% endif %}>
+                        <label class="form-check-label" for="is_active">
+                            Active <span class="text-muted small">— off hides the board from the list view + rotation</span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
-            <div class="form-check form-switch mb-3">
-                <input type="checkbox" name="is_active" class="form-check-input" id="is_active"
-                       {% if wallboard.is_active|default_if_none:True %}checked{% endif %}>
-                <label class="form-check-label" for="is_active">Wallboard active (visible in rotation + list view)</label>
-            </div>
-
-            <div class="d-flex justify-content-end gap-2">
+            <div class="d-flex justify-content-end gap-2 mb-4">
                 <a href="{% url 'reports:wallboard_list' %}" class="btn btn-outline-secondary">Cancel</a>
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-save me-1"></i>{% if wallboard %}Save changes{% else %}Create wallboard{% endif %}
@@ -97,34 +141,99 @@
     </div>
 
     {% if wallboard %}
-    <div class="col-lg-4">
-        <div class="card">
+    <div class="col-lg-5">
+        <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-list me-2"></i>Widgets ({{ wallboard.widgets.count }})</span>
+                <span>
+                    <i class="fas fa-th me-2"></i>Widgets
+                    <span class="badge bg-secondary ms-1">{{ wallboard.widgets.count }}</span>
+                </span>
                 <span class="text-muted small" id="wb-reorder-status"></span>
             </div>
+
+            {# v3.17.220: in-form Add Widget. POSTs to wallboard_widget_add. #}
+            <div class="card-body border-bottom bg-light">
+                <form method="post" action="{% url 'reports:wallboard_widget_add' wallboard.pk %}"
+                      class="row g-2 align-items-end">
+                    {% csrf_token %}
+                    <div class="col-12">
+                        <label class="form-label small mb-1">Data source</label>
+                        <select name="data_source" class="form-select form-select-sm" id="wb-add-source" required>
+                            <option value="">— pick a data source —</option>
+                            {% for key, label, default_type in data_source_choices %}
+                            <option value="{{ key }}" data-default-type="{{ default_type }}" data-default-title="{{ label }}">
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-7">
+                        <label class="form-label small mb-1">Title</label>
+                        <input type="text" name="title" id="wb-add-title" class="form-control form-control-sm"
+                               maxlength="200" required placeholder="Auto-fills from source">
+                    </div>
+                    <div class="col-5">
+                        <label class="form-label small mb-1">Type</label>
+                        <select name="widget_type" id="wb-add-type" class="form-select form-select-sm" required>
+                            <option value="metric">Metric</option>
+                            <option value="table">Table</option>
+                            <option value="chart_line">Line chart</option>
+                            <option value="chart_bar">Bar chart</option>
+                            <option value="chart_pie">Pie chart</option>
+                        </select>
+                    </div>
+                    <div class="col-12 text-end">
+                        <button type="submit" class="btn btn-sm btn-success">
+                            <i class="fas fa-plus me-1"></i>Add widget
+                        </button>
+                    </div>
+                </form>
+            </div>
+
             <ul id="wb-widget-list" class="list-group list-group-flush small"
                 data-reorder-url="{% url 'reports:wallboard_widget_reorder' wallboard.pk %}">
                 {% for w in wallboard.widgets.all %}
                 <li class="list-group-item d-flex justify-content-between align-items-center"
                     data-widget-id="{{ w.pk }}" style="cursor: grab;">
-                    <span>
+                    <span class="text-truncate me-2">
                         <i class="fas fa-grip-vertical text-muted me-2"></i>
-                        <code>{{ w.data_source }}</code> — {{ w.title|truncatechars:40 }}
+                        <strong>{{ w.title|truncatechars:35 }}</strong>
+                        <span class="text-muted small d-block ms-4"><code>{{ w.data_source }}</code> · {{ w.widget_type }}</span>
                     </span>
-                    <span class="text-muted small">{{ w.widget_type }}</span>
+                    <form method="post" action="{% url 'reports:wallboard_widget_delete' w.pk %}"
+                          class="d-inline" onsubmit="return confirm('Remove widget &quot;{{ w.title|escapejs }}&quot;?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove widget">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </form>
                 </li>
                 {% empty %}
                 <li class="list-group-item text-muted">
-                    <em>No widgets yet. Add them via Django admin → Reports → Wallboard widgets.</em>
+                    <em>No widgets yet. Add one using the form above.</em>
                 </li>
                 {% endfor %}
             </ul>
+
             {% if wallboard.widgets.count > 1 %}
             <div class="card-footer small text-muted">
                 <i class="fas fa-info-circle me-1"></i>Drag rows to reorder. Saved automatically.
             </div>
             {% endif %}
+        </div>
+
+        <div class="card">
+            <div class="card-header"><strong><i class="fas fa-link me-2"></i>Quick actions</strong></div>
+            <div class="card-body small">
+                <a href="{% url 'reports:wallboard_view' wallboard.pk %}" class="btn btn-sm btn-outline-primary mb-1">
+                    <i class="fas fa-tv me-1"></i>Open this board
+                </a>
+                {% if wallboard.rotate_seconds > 0 %}
+                <a href="{% url 'reports:wallboard_rotate' wallboard.pk %}" class="btn btn-sm btn-outline-info mb-1">
+                    <i class="fas fa-sync me-1"></i>Start rotation from here
+                </a>
+                {% endif %}
+            </div>
         </div>
     </div>
     {% endif %}
@@ -133,12 +242,25 @@
 {% endblock %}
 
 {% block extra_js %}
+{% if wallboard %}
+{# Auto-fill title + widget type from picked data source. #}
+<script>
+(function() {
+    var src = document.getElementById('wb-add-source');
+    var title = document.getElementById('wb-add-title');
+    var type = document.getElementById('wb-add-type');
+    if (!src) return;
+    src.addEventListener('change', function() {
+        var opt = src.options[src.selectedIndex];
+        if (!opt || !opt.value) return;
+        if (title && !title.value) title.value = opt.dataset.defaultTitle || '';
+        if (type) type.value = opt.dataset.defaultType || 'metric';
+    });
+})();
+</script>
+{% endif %}
+
 {% if wallboard and wallboard.widgets.count > 1 %}
-{# v3.17.215: SortableJS-driven drag-to-reorder for wallboard widgets.
-   Posts the new order to wallboard_widget_reorder; server persists.
-   CDN load is idempotent — fine to include even on pages that don't
-   need it, but we gate on widgets.count > 1 to avoid pulling 17 KB
-   unnecessarily. #}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script>
 (function() {

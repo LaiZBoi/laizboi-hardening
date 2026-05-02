@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, FileResponse, JsonResponse
+from django.views.decorators.http import require_http_methods
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from datetime import date, timedelta
@@ -2090,6 +2091,22 @@ def wallboard_form(request, pk=None):
                 order=order, is_active=is_active,
                 created_by=request.user,
             )
+            # v3.17.220: optional starter-template populates initial widgets.
+            template_key = (request.POST.get('template') or '').strip()
+            if template_key:
+                from .widget_sources import get_template
+                tpl = get_template(template_key)
+                if tpl and tpl['widgets']:
+                    rank = 10
+                    for w in tpl['widgets']:
+                        WallboardWidget.objects.create(
+                            wallboard=instance,
+                            title=w['title'][:200],
+                            widget_type=w['widget_type'],
+                            data_source=w['data_source'],
+                            order=rank,
+                        )
+                        rank += 10
             label = instance.name + (' (Global)' if org is None else '')
             messages.success(request, f'Wallboard "{label}" created.')
         else:
@@ -2103,11 +2120,79 @@ def wallboard_form(request, pk=None):
             messages.success(request, f'Wallboard "{instance.name}" updated.')
         return redirect('reports:wallboard_list')
 
+    from .widget_sources import (
+        DATA_SOURCE_CHOICES, WALLBOARD_TEMPLATES,
+    )
     return render(request, 'reports/wallboard_form.html', {
         'wallboard': instance,
         'organizations': orgs,
         'can_create_global': is_staff_like,
+        'data_source_choices': DATA_SOURCE_CHOICES,
+        'wallboard_templates': WALLBOARD_TEMPLATES,
     })
+
+
+@login_required
+@require_perm('reports_manage_dashboards')
+@require_http_methods(['POST'])
+def wallboard_widget_add(request, pk):
+    """
+    v3.17.220: add a widget to an existing wallboard from the wallboard
+    form (instead of trip-to-Django-admin).
+
+    POST fields: title, data_source, widget_type. Server enforces:
+    - data_source must be in the registry.
+    - widget_type must be in the model's choices.
+    - Tenant ACL via parent wallboard.
+    """
+    from .widget_sources import REGISTRY
+    board = get_object_or_404(Wallboard, pk=pk)
+    if not _user_can_see_wallboards(request.user, board.organization):
+        from django.http import Http404
+        raise Http404('Wallboard not found')
+
+    title = (request.POST.get('title') or '').strip()
+    data_source = (request.POST.get('data_source') or '').strip()
+    widget_type = (request.POST.get('widget_type') or '').strip()
+
+    if not title or not data_source or not widget_type:
+        messages.error(request, 'Title, data source, and widget type are all required.')
+        return redirect('reports:wallboard_edit', pk=board.pk)
+    if data_source not in REGISTRY:
+        messages.error(request, f'Unknown data source "{data_source}".')
+        return redirect('reports:wallboard_edit', pk=board.pk)
+    valid_types = {t[0] for t in WallboardWidget.WIDGET_TYPES}
+    if widget_type not in valid_types:
+        messages.error(request, f'Unknown widget type "{widget_type}".')
+        return redirect('reports:wallboard_edit', pk=board.pk)
+
+    last = board.widgets.order_by('-order').first()
+    next_order = (last.order if last else 0) + 10
+    WallboardWidget.objects.create(
+        wallboard=board,
+        title=title[:200],
+        widget_type=widget_type,
+        data_source=data_source,
+        order=next_order,
+    )
+    messages.success(request, f'Added widget "{title}".')
+    return redirect('reports:wallboard_edit', pk=board.pk)
+
+
+@login_required
+@require_perm('reports_manage_dashboards')
+@require_http_methods(['POST'])
+def wallboard_widget_delete(request, pk):
+    """v3.17.220: remove a widget from its wallboard. Tenant-ACL'd."""
+    widget = get_object_or_404(WallboardWidget.objects.select_related('wallboard'), pk=pk)
+    board = widget.wallboard
+    if not _user_can_see_wallboards(request.user, board.organization):
+        from django.http import Http404
+        raise Http404('Wallboard not found')
+    title = widget.title
+    widget.delete()
+    messages.success(request, f'Removed widget "{title}".')
+    return redirect('reports:wallboard_edit', pk=board.pk)
 
 
 @login_required

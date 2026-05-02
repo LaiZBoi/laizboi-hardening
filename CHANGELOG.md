@@ -5,6 +5,44 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.220] - 2026-05-02
+
+### Changed — Wallboard form cleanup + in-form widget management + starter templates
+The wallboard form went from "fill out a name + go to Django admin to add widgets" to a self-contained CRUD page. Three pieces in one release:
+
+#### 1. Form cleanup
+- Form is now organized into three card sections — **Basics** (scope, name, description), **Refresh & rotation** (refresh_seconds, rotate_seconds, order, is_active), and the **Widgets** column (only on edit) — instead of a flat list of inputs. Section headers + icons make the page scannable.
+- Page header sprouts an "Open board" + "All wallboards" toolbar on edit, matching the pattern used elsewhere.
+- Removed the old "After creating, add widgets via Django admin" hint — that workflow is gone.
+- Active toggle moved into the refresh/rotation card with an inline help string.
+- Description textarea grew a placeholder.
+- Field order rearranged: scope first (since it's required and locked after create), then name, then description.
+
+#### 2. In-form widget add / remove
+- New endpoint `POST /reports/wallboards/<pk>/widgets/add/` — server-side validation on `data_source` (must be in `REGISTRY`) and `widget_type` (must be a valid model choice). Auto-numbers the new widget's `order` to last+10.
+- New endpoint `POST /reports/wallboards/widgets/<pk>/delete/` — tenant-ACL'd via parent wallboard.
+- Wallboard form's right column now hosts a small Add Widget panel: data-source dropdown (using `DATA_SOURCE_CHOICES` for friendly labels), title, widget type (defaults to the source's recommended type, auto-fills the title from the source's friendly label).
+- Each widget row gets a red trash button with a confirmation dialog. Drag-to-reorder still works alongside delete.
+- The empty-state message now reads "No widgets yet. Add one using the form above." (was: "Add them via Django admin → Reports → Wallboard widgets.")
+
+#### 3. Starter templates (wallboard "type")
+- `WALLBOARD_TEMPLATES` constant in `reports.widget_sources` defines six presets — **Custom** (empty), **Operations overview** (6 widgets — open tickets, overdue, alerts, active techs, opened-30d trend, by-priority table), **Tickets / Service Desk** (queue load, dispatch, flow), **Security & Alerts** (critical alerts + 24h breakdown), **Sales / Revenue** (revenue this period, trend, top clients, recent activity), **Client health** (health pie, at-risk table, SLA trend).
+- The Create form renders the templates as a radio list with the description and widget count next to each option.
+- On submit, the chosen template's widgets are created with sequential `order` (10, 20, 30…) so the user lands on a useful screen rather than empty.
+- New `get_template(key)` helper for lookup.
+
+### Tests
+- 8 new tests in `WallboardFormCleanupTests`:
+  - `test_template_constant_has_expected_keys` — sanity-check the 6 required template keys; `get_template` returns None for unknown keys.
+  - `test_create_with_template_populates_widgets` — POST `template=operations` creates the wallboard + 6 widgets.
+  - `test_create_with_custom_template_creates_no_widgets` — POST `template=custom` creates the wallboard with 0 widgets.
+  - `test_widget_add_view_creates_widget` — happy path POST creates a `WallboardWidget`.
+  - `test_widget_add_rejects_unknown_data_source` — bad `data_source` doesn't persist; messages.error path.
+  - `test_widget_add_rejects_unknown_widget_type` — bad `widget_type` ditto.
+  - `test_widget_delete_view_removes_widget` — happy path delete.
+  - `test_widget_add_rejects_get` — GET → 405.
+- All 41 wallboard tests passing (model + rotation + widget-inherit + view ACL + rotate-view + list-view + reorder + global scope + categories + form cleanup).
+
 ## [3.17.219] - 2026-05-02
 
 ### Roadmap — 8 new phases planned + Phase 21 extended

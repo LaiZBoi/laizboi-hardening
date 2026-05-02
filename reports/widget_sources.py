@@ -530,6 +530,89 @@ def default_category(data_source):
     return cats[0]['value'] if cats else None
 
 
+# v3.17.220: wallboard-type templates. Each template defines a starter set
+# of widgets; selecting one on the Create form pre-populates the new board
+# so the user lands on a useful screen instead of an empty grid.
+#
+# Each item:
+#   key (str)            — internal id; passed in the create form POST
+#   label (str)          — human-readable
+#   description (str)    — one-liner shown next to the option
+#   widgets (list)       — list of {data_source, title, widget_type}
+WALLBOARD_TEMPLATES = [
+    {
+        'key': 'custom',
+        'label': 'Custom (empty)',
+        'description': 'Start with no widgets — add them yourself.',
+        'widgets': [],
+    },
+    {
+        'key': 'operations',
+        'label': 'Operations overview',
+        'description': 'Open tickets, overdue, security alerts, ticket trend — the all-purpose NOC TV.',
+        'widgets': [
+            {'data_source': 'open_tickets_count', 'title': 'Open tickets', 'widget_type': 'metric'},
+            {'data_source': 'overdue_tickets_count', 'title': 'SLA overdue', 'widget_type': 'metric'},
+            {'data_source': 'security_alerts_open_critical', 'title': 'Security alerts', 'widget_type': 'metric'},
+            {'data_source': 'active_techs', 'title': 'Active techs (30d)', 'widget_type': 'metric'},
+            {'data_source': 'tickets_opened_30d', 'title': 'Tickets opened — 30d', 'widget_type': 'chart_line'},
+            {'data_source': 'tickets_by_priority', 'title': 'Open tickets by priority', 'widget_type': 'table'},
+        ],
+    },
+    {
+        'key': 'tickets',
+        'label': 'Tickets / Service Desk',
+        'description': 'Service-desk-focused — queue load, dispatch view, ticket flow.',
+        'widgets': [
+            {'data_source': 'open_tickets_count', 'title': 'Open tickets', 'widget_type': 'metric'},
+            {'data_source': 'overdue_tickets_count', 'title': 'SLA overdue', 'widget_type': 'metric'},
+            {'data_source': 'avg_resolution_hours', 'title': 'Avg resolution time', 'widget_type': 'metric'},
+            {'data_source': 'tickets_by_priority', 'title': 'Open tickets by priority', 'widget_type': 'table'},
+            {'data_source': 'tickets_opened_30d', 'title': 'Opened vs closed (30d)', 'widget_type': 'chart_line'},
+            {'data_source': 'sla_breach_trend', 'title': 'SLA breach trend', 'widget_type': 'chart_line'},
+        ],
+    },
+    {
+        'key': 'alerts',
+        'label': 'Security & Alerts',
+        'description': 'Critical alerts, recent fires, vulnerable surface area.',
+        'widgets': [
+            {'data_source': 'security_alerts_open_critical', 'title': 'Open critical alerts', 'widget_type': 'metric'},
+            {'data_source': 'security_alerts_24h', 'title': 'New alerts (24h) by severity', 'widget_type': 'table'},
+        ],
+    },
+    {
+        'key': 'sales',
+        'label': 'Sales / Revenue',
+        'description': 'Revenue this period, 30d trend, recent activity.',
+        'widgets': [
+            {'data_source': 'revenue_this_period', 'title': 'Revenue this period', 'widget_type': 'metric'},
+            {'data_source': 'unbilled_hours', 'title': 'Unbilled hours at risk', 'widget_type': 'metric'},
+            {'data_source': 'revenue_trend_30d', 'title': 'Revenue trend (30d)', 'widget_type': 'chart_bar'},
+            {'data_source': 'top_clients_by_revenue', 'title': 'Top clients by revenue', 'widget_type': 'table'},
+            {'data_source': 'recent_sales_activity', 'title': 'Recent sales activity', 'widget_type': 'table'},
+        ],
+    },
+    {
+        'key': 'health',
+        'label': 'Client health',
+        'description': 'At-risk clients + health breakdown + SLA pressure.',
+        'widgets': [
+            {'data_source': 'client_health_breakdown', 'title': 'Client health (pie)', 'widget_type': 'chart_pie'},
+            {'data_source': 'at_risk_clients', 'title': 'At-risk clients', 'widget_type': 'table'},
+            {'data_source': 'sla_breach_trend', 'title': 'SLA breach trend', 'widget_type': 'chart_line'},
+        ],
+    },
+]
+
+
+def get_template(key):
+    for t in WALLBOARD_TEMPLATES:
+        if t['key'] == key:
+            return t
+    return None
+
+
 def get_widget_data(data_source: str, params: dict) -> dict:
     """Lookup + execute. Returns {'error': str} if data source unknown
     or the callable raises (so a single bad widget doesn't crash the
