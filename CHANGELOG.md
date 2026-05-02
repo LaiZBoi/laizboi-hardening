@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.204] - 2026-05-02
+
+### Tests
+- **Baseline coverage for the `inventory/` app** (Phase 7 polish Wave 2 — 14th of 16). InventoryItem + transactions for spare parts, consumables, hardware stock. Bug here = wrong stock counts feed wrong reorder triggers, wrong on-hand reports, wrong audit. **15 tests across 5 classes:**
+  - `InventoryItemSaveTests` (4) — QR code auto-generated as `INV-` + 12 hex chars on first save; QR codes unique across items; explicit QR code preserved; `__str__` returns name.
+  - `InventoryItemStockLogicTests` (5) — `is_low_stock` boundary: true at minimum, true below, false above; `total_value` = quantity × unit_cost; None when unit_cost null.
+  - `InventoryItemFilteringTests` (1) — `OrganizationManager.for_organization()` tenant filter.
+  - `InventoryTransactionTests` (2) — `__str__` format `<item> <type> +<n>` with `:+d` spec; negative quantity-change renders with explicit minus.
+  - `InventoryCategoryAndLocationTests` (3) — Category + Location `__str__`; default color.
+- 15/15 in 1.5 s. **No production bugs surfaced.**
+
 ## [3.17.203] - 2026-05-02
 
 ### Tests
