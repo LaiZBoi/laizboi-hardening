@@ -1364,3 +1364,109 @@ class WallboardListViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'NOC')
         self.assertContains(resp, 'Sales')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WallboardWidgetReorderTests(TestCase):
+    """v3.17.215: drag-to-reorder widget endpoint."""
+
+    @classmethod
+    def setUpTestData(cls):
+        import json as _json
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from reports.models import Wallboard, WallboardWidget
+        cls.org = Organization.objects.create(name='ReorderCo', slug='wb-ro-co')
+        cls.other_org = Organization.objects.create(name='OtherCo', slug='wb-ro-other')
+        cls.user = User.objects.create_user(
+            'wb-ro-user', email='wbro@x.com', password='pw',
+        )
+        Membership.objects.create(
+            user=cls.user, organization=cls.org, role=Role.OWNER, is_active=True,
+        )
+        cls.board = Wallboard.objects.create(organization=cls.org, name='Reorderable')
+        cls.w1 = WallboardWidget.objects.create(
+            wallboard=cls.board, title='First', widget_type='metric',
+            data_source='open_tickets_count', order=10,
+        )
+        cls.w2 = WallboardWidget.objects.create(
+            wallboard=cls.board, title='Second', widget_type='metric',
+            data_source='open_tickets_count', order=20,
+        )
+        cls.w3 = WallboardWidget.objects.create(
+            wallboard=cls.board, title='Third', widget_type='metric',
+            data_source='open_tickets_count', order=30,
+        )
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_reorder_persists_new_order(self):
+        import json as _json
+        from django.test import Client
+        from reports.models import WallboardWidget
+        c = Client()
+        self._login(c)
+        # Reverse the order: third, first, second.
+        new_order = [self.w3.pk, self.w1.pk, self.w2.pk]
+        resp = c.post(
+            f'/reports/wallboards/{self.board.pk}/widgets/reorder/',
+            data=_json.dumps({'order': new_order}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body['ok'])
+        self.assertEqual(body['count'], 3)
+        # Verify the order field was rewritten 10/20/30 in the new sequence.
+        ranks = {w.pk: w.order for w in WallboardWidget.objects.filter(wallboard=self.board)}
+        self.assertEqual(ranks[self.w3.pk], 10)
+        self.assertEqual(ranks[self.w1.pk], 20)
+        self.assertEqual(ranks[self.w2.pk], 30)
+
+    def test_reorder_rejects_widget_from_different_wallboard(self):
+        import json as _json
+        from django.test import Client
+        from reports.models import Wallboard, WallboardWidget
+        # A second board with its own widget; supplying that pk in the order
+        # array must be rejected (cross-board contamination).
+        other_board = Wallboard.objects.create(organization=self.org, name='Other Board')
+        other_widget = WallboardWidget.objects.create(
+            wallboard=other_board, title='Stranger', widget_type='metric',
+            data_source='open_tickets_count', order=10,
+        )
+        c = Client()
+        self._login(c)
+        resp = c.post(
+            f'/reports/wallboards/{self.board.pk}/widgets/reorder/',
+            data=_json.dumps({'order': [self.w1.pk, other_widget.pk]}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('do not belong', resp.json()['error'])
+
+    def test_reorder_rejects_get(self):
+        from django.test import Client
+        c = Client()
+        self._login(c)
+        resp = c.get(f'/reports/wallboards/{self.board.pk}/widgets/reorder/')
+        self.assertEqual(resp.status_code, 405)
+
+    def test_reorder_blocks_cross_org_wallboard_with_404(self):
+        import json as _json
+        from django.test import Client
+        from reports.models import Wallboard
+        foreign_board = Wallboard.objects.create(organization=self.other_org, name='ForeignNOC')
+        c = Client()
+        self._login(c)
+        resp = c.post(
+            f'/reports/wallboards/{foreign_board.pk}/widgets/reorder/',
+            data=_json.dumps({'order': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 404)

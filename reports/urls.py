@@ -90,5 +90,8 @@ urlpatterns = [
     path('wallboards/<int:pk>/edit/', views.wallboard_form, name='wallboard_edit'),
     path('wallboards/<int:pk>/rotate/', views.wallboard_rotate,
          name='wallboard_rotate'),
+    # v3.17.215 — drag-to-reorder. POST { order: [pk1, pk2, ...] } as JSON.
+    path('wallboards/<int:pk>/widgets/reorder/',
+         views.wallboard_widget_reorder, name='wallboard_widget_reorder'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]

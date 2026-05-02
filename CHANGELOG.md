@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.215] - 2026-05-02
+
+### Added — Drag-to-reorder wallboard widgets
+- **Wallboard widget order is no longer admin-only.** v3.17.211 created the `WallboardWidget.order` field but the only way to change it was to edit the row in Django admin. The wallboard edit page now shows the widget list with drag handles; drag a row, drop it, the new order persists automatically.
+- **New endpoint:** `POST /reports/wallboards/<pk>/widgets/reorder/` accepts `{"order": [<widget_pk>, ...]}` (JSON) or form-encoded `order=<pk>&order=<pk>`. Validates every pk belongs to the wallboard (rejects cross-board contamination with HTTP 400) and tenant-scopes the wallboard pk (cross-org wallboards return 404). Updates `WallboardWidget.order` to 10/20/30/… in the supplied sequence so manually-edited values stay legible.
+- **UI:** SortableJS v1.15.2 from CDN handles the drag interaction, gated on `widgets.count > 1` so single-widget wallboards don't pull in 17 KB of JS unnecessarily. Drag handle = `fa-grip-vertical` icon on each row. Status indicator in the card header shows "saving…" / "saved" / "error — refresh page" so the user gets immediate feedback. Footer hint: "Drag rows to reorder. Saved automatically."
+- **Permission gating:** `@require_perm('reports_manage_dashboards')` — same gate as `wallboard_form`, so anyone who can edit a wallboard can reorder its widgets.
+
+### Tests
+- 4 new tests in `WallboardWidgetReorderTests`:
+  - `test_reorder_persists_new_order` — posts a reversed order, confirms the `order` field is rewritten 10/20/30 in the new sequence.
+  - `test_reorder_rejects_widget_from_different_wallboard` — supplies a widget pk from a sibling board, expects HTTP 400 with "do not belong" in the error.
+  - `test_reorder_rejects_get` — GET → HTTP 405.
+  - `test_reorder_blocks_cross_org_wallboard_with_404` — POST to a wallboard the user can't see returns 404 (tenant ACL).
+- All 19 existing wallboard tests still passing (model + rotation + widget-inherit + view ACL + rotate-view + list-view + reorder).
+
 ## [3.17.214] - 2026-05-02
 
 ### Added — Welcome email when an internal user is added to an org

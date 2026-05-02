@@ -90,20 +90,78 @@
     {% if wallboard %}
     <div class="col-lg-4">
         <div class="card">
-            <div class="card-header"><i class="fas fa-list me-2"></i>Widgets ({{ wallboard.widgets.count }})</div>
-            <div class="card-body small">
-                {% for w in wallboard.widgets.all %}
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span><code>{{ w.data_source }}</code> — {{ w.title|truncatechars:40 }}</span>
-                    <span class="text-muted small">{{ w.widget_type }}</span>
-                </div>
-                {% empty %}
-                <em class="text-muted">No widgets yet. Add them via Django admin → Reports → Wallboard widgets.</em>
-                {% endfor %}
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-list me-2"></i>Widgets ({{ wallboard.widgets.count }})</span>
+                <span class="text-muted small" id="wb-reorder-status"></span>
             </div>
+            <ul id="wb-widget-list" class="list-group list-group-flush small"
+                data-reorder-url="{% url 'reports:wallboard_widget_reorder' wallboard.pk %}">
+                {% for w in wallboard.widgets.all %}
+                <li class="list-group-item d-flex justify-content-between align-items-center"
+                    data-widget-id="{{ w.pk }}" style="cursor: grab;">
+                    <span>
+                        <i class="fas fa-grip-vertical text-muted me-2"></i>
+                        <code>{{ w.data_source }}</code> — {{ w.title|truncatechars:40 }}
+                    </span>
+                    <span class="text-muted small">{{ w.widget_type }}</span>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-muted">
+                    <em>No widgets yet. Add them via Django admin → Reports → Wallboard widgets.</em>
+                </li>
+                {% endfor %}
+            </ul>
+            {% if wallboard.widgets.count > 1 %}
+            <div class="card-footer small text-muted">
+                <i class="fas fa-info-circle me-1"></i>Drag rows to reorder. Saved automatically.
+            </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+{% if wallboard and wallboard.widgets.count > 1 %}
+{# v3.17.215: SortableJS-driven drag-to-reorder for wallboard widgets.
+   Posts the new order to wallboard_widget_reorder; server persists.
+   CDN load is idempotent — fine to include even on pages that don't
+   need it, but we gate on widgets.count > 1 to avoid pulling 17 KB
+   unnecessarily. #}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+(function() {
+    var list = document.getElementById('wb-widget-list');
+    var status = document.getElementById('wb-reorder-status');
+    if (!list || typeof Sortable === 'undefined') return;
+    var url = list.dataset.reorderUrl;
+    var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    Sortable.create(list, {
+        animation: 150,
+        handle: '.fa-grip-vertical',
+        onEnd: function() {
+            var ids = Array.from(list.querySelectorAll('[data-widget-id]'))
+                           .map(function(el) { return parseInt(el.dataset.widgetId, 10); });
+            if (status) status.textContent = 'saving…';
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({order: ids}),
+            }).then(function(r) {
+                if (status) status.textContent = r.ok ? 'saved' : 'error — refresh page';
+                setTimeout(function() { if (status) status.textContent = ''; }, 2000);
+            }).catch(function() {
+                if (status) status.textContent = 'network error — refresh page';
+            });
+        },
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

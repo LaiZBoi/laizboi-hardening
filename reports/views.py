@@ -2065,3 +2065,55 @@ def wallboard_form(request, pk=None):
         'wallboard': instance,
         'organizations': orgs,
     })
+
+
+@login_required
+@require_perm('reports_manage_dashboards')
+def wallboard_widget_reorder(request, pk):
+    """
+    v3.17.215: persist a new widget order for a wallboard.
+
+    Accepts POST with body `{"order": [<widget_pk>, <widget_pk>, ...]}`
+    (JSON) or form-encoded `order=<pk>&order=<pk>&...`. Updates
+    `WallboardWidget.order` to match the supplied sequence (10, 20, 30,
+    … so manually-edited order values stay legible). Returns JSON
+    `{ok: True, count: N}`.
+
+    Tenant-scoped: cross-org wallboard pks 404. Rejects non-POST.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    board = get_object_or_404(Wallboard, pk=pk)
+    if not _user_can_see_wallboards(request.user, board.organization):
+        from django.http import Http404
+        raise Http404('Wallboard not found')
+
+    # Accept either JSON body or form-encoded list.
+    ids = []
+    ctype = (request.META.get('CONTENT_TYPE') or '').lower()
+    if 'application/json' in ctype:
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except (ValueError, UnicodeDecodeError):
+            return JsonResponse({'error': 'invalid JSON'}, status=400)
+        ids = payload.get('order') or []
+    else:
+        ids = request.POST.getlist('order')
+
+    try:
+        ids = [int(x) for x in ids]
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'order must be a list of widget pks'}, status=400)
+
+    valid_ids = set(board.widgets.values_list('pk', flat=True))
+    if not set(ids).issubset(valid_ids):
+        return JsonResponse(
+            {'error': 'one or more widget pks do not belong to this wallboard'},
+            status=400,
+        )
+
+    rank = 10
+    for wid in ids:
+        WallboardWidget.objects.filter(pk=wid, wallboard=board).update(order=rank)
+        rank += 10
+    return JsonResponse({'ok': True, 'count': len(ids)})
