@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.206] - 2026-05-02
+
+### Documentation — Phase 7 Wave 2 closure
+- **Wave 2 of the Phase 7 polish-backlog test sweep is closed.** Every one of the 16 originally-untested apps from the audit punch-list now has baseline coverage. Wave 2 spanned v3.17.192 → v3.17.205 (14 releases, 11 with new test files plus the psa-tests shard split + 2 doc-only roadmap-update releases).
+- **Roadmap updated:**
+  - Wave 2 section in Phase 7 polish-backlog now lists all 11 baseline-coverage releases (api/, audit/, assets/, monitoring/, processes/, files/, scheduling/, locations/, docs/, inventory/, vehicles/) with one-line summaries.
+  - "Wave 2 closed (v3.17.192 → v3.17.205)" marker added below the list.
+  - Living-plan header at top of ROADMAP.md updated: "Phase 7 in progress (continuous track; Wave 1 closed at v3.17.187, Wave 2 closed at v3.17.205 — every previously-untested app now has baseline coverage). Phase 11 in progress (11.1 shipped)."
+- **README badge bumped** to v3.17.206.
+- **Final bug-catch ratio for Wave 2: 3 of 11 baseline efforts surfaced real production bugs.** All caught bugs were stale-attribute / wrong-kwarg / `hasattr`-vs-None patterns — the same family the next test pass should target first.
+- **Wave 2 totals:** ~280 new tests across 11 modules in 14 commits. Combined with the v3.17.192 psa-tests shard split, every shard now runs in well under the 540 s CI ceiling (max 147 s for the largest psa shard; most app suites under 7 s).
+
 ## [3.17.205] - 2026-05-02
 
 ### Tests

@@ -1,6 +1,6 @@
 # Client St0r — Roadmap
 
-> Living plan. Phases 1–6 + 9 + 10 + 31 (Vault Access Rules) complete. Phase 7 in progress (continuous track; Wave 1 closed at v3.17.187). Update as phases complete.
+> Living plan. Phases 1–6 + 9 + 10 + 31 (Vault Access Rules) complete. Phase 7 in progress (continuous track; Wave 1 closed at v3.17.187, Wave 2 closed at v3.17.205 — every previously-untested app now has baseline coverage). Phase 11 in progress (11.1 shipped). Update as phases complete.
 
 ## Phasing principle
 
@@ -118,6 +118,17 @@ Not a single phase — runs alongside 1-6.
   - **`audit/` baseline (30 tests across 7 classes)** — caught `AuditLoggingMiddleware._is_update()` crashing on POST to unresolved URLs (`hasattr(req, 'resolver_match')` returns True for None values; `None.kwargs` then raised `AttributeError`). Fixed in same release *(shipped v3.17.195)*
   - `assets/` baseline (16 tests across 6 classes) — model behavior, OrganizationManager filtering, view tenant-isolation, EquipmentModel back-reference. No production bugs surfaced *(shipped v3.17.196)*
   - `monitoring/` baseline (22 tests across 5 classes) — WebsiteMonitor + Expiration property logic, IPAM `(subnet, ip_address)` unique-together dedupe contract, `for_organization()` filtering. No production bugs surfaced *(shipped v3.17.197)*
+  - `processes/` baseline (19 tests across 4 classes) — workflow engine slug auto-gen, ProcessExecution lifecycle, completion-percentage math (incl. zero-stages safety), `(execution, stage)` unique-together. No production bugs surfaced *(shipped v3.17.199)*
+  - `files/` baseline (9 tests across 2 classes) — `attachment_upload_path()` enforces per-org / per-entity directory structure with UUID filenames (filesystem tenant-isolation contract). No production bugs surfaced *(shipped v3.17.200)*
+  - `scheduling/` baseline (20 tests across 5 classes) — recurrence math for every cadence, `check_completion` any-of vs all-of sign-off, `spawn_next_occurrence` clones assignments + tags. No production bugs surfaced *(shipped v3.17.201)*
+  - `locations/` baseline (20 tests across 3 classes) — HQ-uniqueness invariant, shared-location ACL, `full_address` formatting, WAN bandwidth display. No production bugs surfaced *(shipped v3.17.202)*
+  - `docs/` baseline (13 tests across 5 classes) — Document slug auto-gen, version-snapshot lifecycle (no row on first save, increments on edit), Diagram slug, `is_global` cross-tenant KB. No production bugs surfaced *(shipped v3.17.203)*
+  - `inventory/` baseline (15 tests across 5 classes) — InventoryItem QR-code auto-gen, low-stock boundary, total_value math, transaction signed-quantity formatting. No production bugs surfaced *(shipped v3.17.204)*
+  - `vehicles/` baseline (18 tests across 3 classes) — ServiceVehicle expiry warnings, `has_location` flag, `update_location()` setter, fleet inventory low-stock + needs-restock + total-value. No production bugs surfaced *(shipped v3.17.205)*
+
+  ➡ **Wave 2 closed (v3.17.192 → v3.17.205)** — every one of the 16 originally-untested apps now has baseline coverage. **Final ratio: 3 of 11 baseline efforts surfaced real production bugs that had been latent for months** (api/, audit/, the v3.17.171 tenant-isolation rebuild before the wave formally started). All bugs caught were stale-attribute / wrong-kwarg / hasattr-vs-None patterns — the same family the next wave should look for first.
+
+  Wave 2 totals: ~280 new tests across 11 modules in 14 commits. Combined with the v3.17.192 psa-tests shard split, the project's test runtime now fits comfortably under any reasonable CI ceiling: each shard ≤ 147s, smaller apps ≤ 7s.
 
 ## Phase 9 — Security alert ingestion: EDR / AV / Firewall on the dashboard **(M)** [shipped — v3.17.168]
 
