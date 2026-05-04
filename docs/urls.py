@@ -10,6 +10,9 @@ urlpatterns = [
     path('', views.document_list, name='document_list'),
     path('create/', views.document_create, name='document_create'),
     path('upload/', views.document_upload, name='document_upload'),
+    # Phase 22 v1 (v3.17.245) — review queue + mark-reviewed.
+    path('review-queue/', views.kb_review_queue, name='kb_review_queue'),
+    path('<slug:slug>/mark-reviewed/', views.kb_mark_reviewed, name='kb_mark_reviewed'),
     path('templates/', views.template_list, name='template_list'),
     path('templates/create/', views.template_create, name='template_create'),
     path('templates/<int:pk>/edit/', views.template_edit, name='template_edit'),

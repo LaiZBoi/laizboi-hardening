@@ -5,6 +5,35 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.245] - 2026-05-04
+
+### Added — Phase 22 v1 KB Review Reminders + Article Ownership
+First slice of Phase 22 (Knowledge Base & SOP Management) — closes the gap where articles drift out of date with no one accountable.
+
+- **5 new fields on `Document`** (migration `docs.0015`):
+  - `owner` FK — who keeps the article current. Defaults to `created_by` on first save.
+  - `last_reviewed_at` — timestamp the owner last confirmed accuracy.
+  - `review_interval_days` (default 90) — re-flag this many days after last review. 0 = never.
+  - `requires_approval` + `is_draft` — wired up in the model now; full editorial approval queue is v2.
+  - `published_at` — first-publish timestamp (auto-stamps when `is_published=True` and `is_draft=False`).
+- **`Document.is_review_overdue` + `review_status` properties** — `current` / `due_soon` (within 7 days) / `overdue` / `no_review`. Properties handle the `last_reviewed_at` → `published_at` → `created_at` fallback chain.
+- **`Document.mark_reviewed(user=)`** stamps `last_reviewed_at` + `last_modified_by`.
+- **New view `/docs/review-queue/`** lists overdue + due-soon articles for the requesting user (or all articles when staff/superuser flips to `?scope=all`). Inline "Mark reviewed" buttons.
+- **New view `POST /docs/<slug>/mark-reviewed/`** — owner or staff only.
+- **New management command `kb_review_reminders`** — emails one digest per owner listing every overdue article they own. Supports `--dry-run`. Cron-friendly.
+
+### Tests
+- 8 new tests across `KBReviewQueueTests` (model + view) and `KBReviewReminderCommandTests` (command):
+  - `review_status` classifies all four states correctly.
+  - `is_review_overdue` matches the status enum.
+  - `mark_reviewed` resets the clock so the article moves out of overdue.
+  - Review queue lists overdue + due-soon for the requesting user.
+  - `mark-reviewed` view works for owner; blocked for non-owner non-staff.
+  - Command sends one digest per owner with all stale article titles in the body; respects `--dry-run`.
+
+### Roadmap
+- Phase 22 sub-bullets "Article ownership" and "Review reminders" annotated `*(shipped v3.17.245)*`. Phase 22 marked `[in progress]` (versioning already shipped via DocumentVersion; approval queue + KB analytics + linked SOP automation are v2).
+
 ## [3.17.244] - 2026-05-04
 
 ### Security — Settings access tightened to superuser-only

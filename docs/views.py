@@ -1444,3 +1444,58 @@ def api_get_template(request, template_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+# ---------------------------------------------------------------------------
+# Phase 22 v1 (v3.17.245) — KB review queue + mark-reviewed
+# ---------------------------------------------------------------------------
+
+@login_required
+def kb_review_queue(request):
+    """
+    List articles whose review is overdue or coming due, scoped to the
+    requesting user's owned articles by default. Staff/superuser can
+    flip a `?scope=all` toggle to see everyone's overdue articles.
+    """
+    from django.db.models import Q
+    is_staff = getattr(request, 'is_staff_user', False) or request.user.is_superuser
+    scope = request.GET.get('scope') or ('all' if is_staff else 'mine')
+
+    qs = Document.objects.filter(
+        is_archived=False, is_published=True, review_interval_days__gt=0,
+    ).select_related('owner', 'organization')
+
+    if scope == 'mine' or not is_staff:
+        qs = qs.filter(owner=request.user)
+        scope = 'mine'  # force scope label when non-staff
+
+    overdue = []
+    due_soon = []
+    for d in qs:
+        status = d.review_status
+        if status == 'overdue':
+            overdue.append(d)
+        elif status == 'due_soon':
+            due_soon.append(d)
+
+    return render(request, 'docs/kb_review_queue.html', {
+        'scope': scope,
+        'is_staff': is_staff,
+        'overdue': overdue,
+        'due_soon': due_soon,
+    })
+
+
+@login_required
+def kb_mark_reviewed(request, slug):
+    """POST: mark this article reviewed (resets the review timer)."""
+    if request.method != 'POST':
+        return redirect('docs:document_detail', slug=slug)
+    article = get_object_or_404(Document, slug=slug)
+    is_staff = getattr(request, 'is_staff_user', False) or request.user.is_superuser
+    if not is_staff and article.owner_id != request.user.id:
+        messages.error(request, 'Only the article owner or staff can mark it reviewed.')
+        return redirect('docs:document_detail', slug=slug)
+    article.mark_reviewed(user=request.user)
+    messages.success(request, f'Marked "{article.title}" as reviewed.')
+    return redirect('docs:document_detail', slug=slug)

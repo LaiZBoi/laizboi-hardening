@@ -104,6 +104,40 @@ class Document(BaseModel):
         help_text='Preview image for template (300x200)'
     )
 
+    # Phase 22 v1 (v3.17.245) — Knowledge Base & SOP Management.
+    # Owner: who is responsible for keeping this article current.
+    # Defaults to created_by on first save (see save() override).
+    owner = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='documents_owned',
+        help_text='Person responsible for keeping this article current. '
+                  'Receives review reminders.',
+    )
+    last_reviewed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the owner last marked this article reviewed. '
+                  'Drives the review reminder cron.',
+    )
+    review_interval_days = models.PositiveIntegerField(
+        default=90,
+        help_text='Send a review reminder this many days after the last '
+                  'review. 0 = never remind.',
+    )
+    requires_approval = models.BooleanField(
+        default=False,
+        help_text='When true, edits move the article into a draft state '
+                  'until an approver publishes it.',
+    )
+    is_draft = models.BooleanField(
+        default=False,
+        help_text='Pending approval — hidden from the regular KB list and '
+                  'the customer portal until an approver publishes.',
+    )
+    published_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the article was first published.',
+    )
+
     # Metadata
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='documents_created')
     last_modified_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='documents_modified')
@@ -212,7 +246,59 @@ class Document(BaseModel):
         # Create version on save if document already exists
         if self.pk:
             self._create_version()
+        # v3.17.245 — default the owner to created_by on first save.
+        if not self.owner_id and self.created_by_id:
+            self.owner_id = self.created_by_id
+        # v3.17.245 — stamp published_at on the first transition out of draft.
+        if not self.is_draft and self.is_published and not self.published_at:
+            from django.utils import timezone as _tz
+            self.published_at = _tz.now()
         super().save(*args, **kwargs)
+
+    @property
+    def is_review_overdue(self) -> bool:
+        """
+        v3.17.245: True when the article is past its review window.
+        Articles without a `last_reviewed_at` use `published_at` (or
+        `created_at` as a final fallback) as the start of the clock.
+        Articles with `review_interval_days=0` are never overdue.
+        """
+        from django.utils import timezone as _tz
+        from datetime import timedelta as _td
+        if not self.review_interval_days:
+            return False
+        anchor = self.last_reviewed_at or self.published_at or self.created_at
+        if not anchor:
+            return False
+        due = anchor + _td(days=int(self.review_interval_days))
+        return _tz.now() >= due
+
+    @property
+    def review_status(self) -> str:
+        """`current` / `due_soon` (within 7 days of due) / `overdue` / `no_review`."""
+        from django.utils import timezone as _tz
+        from datetime import timedelta as _td
+        if not self.review_interval_days:
+            return 'no_review'
+        anchor = self.last_reviewed_at or self.published_at or self.created_at
+        if not anchor:
+            return 'no_review'
+        due = anchor + _td(days=int(self.review_interval_days))
+        now = _tz.now()
+        if now >= due:
+            return 'overdue'
+        if (due - now) <= _td(days=7):
+            return 'due_soon'
+        return 'current'
+
+    def mark_reviewed(self, *, user=None):
+        """v3.17.245: stamp last_reviewed_at + last_modified_by."""
+        from django.utils import timezone as _tz
+        self.last_reviewed_at = _tz.now()
+        if user is not None:
+            self.last_modified_by = user
+        self.save(update_fields=['last_reviewed_at', 'last_modified_by',
+                                  'updated_at'])
 
     def _create_version(self):
         """

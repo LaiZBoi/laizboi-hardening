@@ -466,20 +466,20 @@ Planned capabilities:
 
 **Goal:** Improve field technician workflow efficiency and mobility.
 
-## Phase 22 — Knowledge Base & SOP Management **(M)**
+## Phase 22 — Knowledge Base & SOP Management **(M)** [in progress]
 
 **Roadmap item:** Knowledge Base & Operational Documentation Expansion. Extends Phase v3.17.128 (KB tree) + v3.17.134 (KB perms).
 
 Planned capabilities:
-- Knowledge base versioning (history of edits, rollback)
-- Article approvals (review-before-publish gate)
-- Article ownership
+- Knowledge base versioning (history of edits, rollback) *(shipped earlier — `DocumentVersion`)*
+- Article approvals (review-before-publish gate) *(model fields shipped v3.17.245 — `requires_approval`, `is_draft`; editorial queue UI is v2)*
+- Article ownership *(shipped v3.17.245 — `Document.owner` FK defaults to `created_by`)*
 - SOP workflows (links the KB to step-by-step Process executions)
-- Review reminders (article hasn't been reviewed in 90 days → email owner)
+- Review reminders (article hasn't been reviewed in 90 days → email owner) *(shipped v3.17.245 — `kb_review_reminders` management command + `Document.review_interval_days` / `last_reviewed_at` / `is_review_overdue` + `/docs/review-queue/` view + `mark-reviewed` endpoint)*
 - Internal / external KB separation *(partial — `is_client_visible` shipped)*
-- KB analytics (most-viewed, least-viewed, dead links)
+- KB analytics (most-viewed, least-viewed, dead links) *(partial — `Document.portal_view_count` shipped v3.17.234)*
 - Public knowledge publishing (selected articles → public URL)
-- Documentation lifecycle management (draft → published → archived)
+- Documentation lifecycle management (draft → published → archived) *(model fields shipped v3.17.245 — `is_draft`, `published_at`; full pipeline is v2)*
 - Linked SOP automation (KB article triggers a workflow run)
 
 **Goal:** Improve operational knowledge management and documentation governance.

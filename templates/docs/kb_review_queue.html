@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}KB Review Queue{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'docs:document_list' %}">Knowledge Base</a></li>
+        <li class="breadcrumb-item active">Review queue</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">
+        <i class="fas fa-clock-rotate-left me-2"></i>KB Review Queue
+        <small class="text-muted fs-6">— {% if scope == 'mine' %}my articles{% else %}all articles{% endif %}</small>
+    </h2>
+    {% if is_staff %}
+    <div class="btn-group btn-group-sm" role="group">
+        <a href="?scope=mine" class="btn btn-{% if scope == 'mine' %}primary{% else %}outline-primary{% endif %}">My articles</a>
+        <a href="?scope=all" class="btn btn-{% if scope == 'all' %}primary{% else %}outline-primary{% endif %}">All articles</a>
+    </div>
+    {% endif %}
+</div>
+
+<p class="text-muted small">
+    Articles with a review interval ≥ 1 day get re-flagged here once the interval elapses since their last review (or publish, if never reviewed).
+    Mark an article reviewed from its detail page after you've confirmed it's still accurate.
+</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card border-danger">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Overdue</div>
+                <div class="display-6 fw-bold text-danger">{{ overdue|length }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Due soon (≤ 7 days)</div>
+                <div class="display-6 fw-bold text-warning">{{ due_soon|length }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mt-4">Overdue</h5>
+{% if overdue %}
+<div class="card mb-3">
+    <table class="table table-hover small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Title</th>
+                <th>Owner</th>
+                <th>Last reviewed</th>
+                <th>Interval (days)</th>
+                <th class="text-end">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for d in overdue %}
+            <tr>
+                <td><a href="{% url 'docs:document_detail' d.slug %}"><strong>{{ d.title }}</strong></a></td>
+                <td>{{ d.owner.username|default:'—' }}</td>
+                <td>{{ d.last_reviewed_at|date:'Y-m-d'|default:'never' }}</td>
+                <td>{{ d.review_interval_days }}</td>
+                <td class="text-end">
+                    <form method="post" action="{% url 'docs:kb_mark_reviewed' d.slug %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-success">
+                            <i class="fas fa-check me-1"></i>Mark reviewed
+                        </button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-success small"><i class="fas fa-check-circle me-1"></i>No overdue articles.</div>
+{% endif %}
+
+<h5 class="mt-4">Due soon</h5>
+{% if due_soon %}
+<div class="card">
+    <table class="table table-hover small mb-0">
+        <thead class="table-light">
+            <tr><th>Title</th><th>Owner</th><th>Last reviewed</th><th>Interval (days)</th></tr>
+        </thead>
+        <tbody>
+        {% for d in due_soon %}
+            <tr>
+                <td><a href="{% url 'docs:document_detail' d.slug %}">{{ d.title }}</a></td>
+                <td>{{ d.owner.username|default:'—' }}</td>
+                <td>{{ d.last_reviewed_at|date:'Y-m-d'|default:'never' }}</td>
+                <td>{{ d.review_interval_days }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted small">Nothing due in the next 7 days.</p>
+{% endif %}
+
+{% endblock %}
