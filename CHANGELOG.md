@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.262] - 2026-05-04
+
+### Added — Phase 13 v5 Vendor Cost History
+Closes the "Vendor cost history (price-at-time-of-PO trend)" sub-bullet of Phase 13. Surfaces price drift on repeating PO line items so a buyer can see "this Cisco SFP cost $40 in March, $52 in October."
+
+- **New report at `/reports/vendor-cost-history/`** — aggregates `PurchaseOrderLineItem` rows over the last 730 days, grouped by `(vendor_name, sku, description)`. Each row shows: PO count, total quantity, min / avg / max / last unit price, and the date last seen. Last-price coloring (red when above avg, green when below) flags drift.
+- **Vendor filter** — optional `?vendor=X` narrows to one vendor.
+- **CSV export** — `?format=csv` returns the same rows.
+- **Excludes draft / cancelled / void POs** — matches the existing procurement summary scope so quotes-in-progress don't pollute the trend.
+- **Staff-only** — same gate as `procurement_summary` (procurement is an MSP-internal ops view).
+- **Reports home** updated with a new tile linking to the page.
+
+### Tests
+- 5 tests in `reports.tests.VendorCostHistoryTests` covering aggregation correctness (last_price = most-recent of two same-SKU POs), draft exclusion, vendor filter, CSV export, and the staff/non-staff ACL.
+
+### Roadmap
+Phase 13 sub-bullet "Vendor cost history (price-at-time-of-PO trend)" annotated `*(shipped v3.17.262)*`.
+
 ## [3.17.261] - 2026-05-04
 
 ### Added — Phase 13 v4 RMA Tracking

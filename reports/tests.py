@@ -1673,6 +1673,124 @@ class ProcurementSummaryTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class VendorCostHistoryTests(TestCase):
+    """Phase 13 v5 (v3.17.262) — per-line cost history aggregation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import PurchaseOrder, PurchaseOrderLineItem
+        from decimal import Decimal as _D
+        cls.org = Organization.objects.create(name='VchCo', slug='vch-co')
+        cls.staff = User.objects.create_user('vch-staff', 'vs@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('vch-mem', 'vm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        # Two POs from same vendor with same SKU at different prices
+        # (price drift to detect).
+        po_a = PurchaseOrder.objects.create(
+            organization=cls.org, po_number='PO-V-00001',
+            vendor_name='Cisco-Acme', title='Switches Q1',
+            status='sent', total=_D('400'),
+        )
+        PurchaseOrderLineItem.objects.create(
+            po=po_a, description='SFP-10G LR', sku='SFP-10G-LR',
+            quantity=10, unit_price=_D('40.00'),
+        )
+        po_b = PurchaseOrder.objects.create(
+            organization=cls.org, po_number='PO-V-00002',
+            vendor_name='Cisco-Acme', title='Switches Q3',
+            status='sent', total=_D('520'),
+        )
+        PurchaseOrderLineItem.objects.create(
+            po=po_b, description='SFP-10G LR', sku='SFP-10G-LR',
+            quantity=10, unit_price=_D('52.00'),
+        )
+
+        # Different vendor + SKU
+        po_c = PurchaseOrder.objects.create(
+            organization=cls.org, po_number='PO-V-00003',
+            vendor_name='Other-Vendor', title='Cables',
+            status='sent', total=_D('60'),
+        )
+        PurchaseOrderLineItem.objects.create(
+            po=po_c, description='Cat6 patch 3ft', sku='CAT6-3',
+            quantity=20, unit_price=_D('3.00'),
+        )
+
+        # Draft PO — must be excluded
+        po_draft = PurchaseOrder.objects.create(
+            organization=cls.org, po_number='PO-V-DRAFT',
+            vendor_name='Draft-Vendor', title='Draft',
+            status='draft', total=_D('999'),
+        )
+        PurchaseOrderLineItem.objects.create(
+            po=po_draft, description='SHOULD NOT APPEAR', sku='X',
+            quantity=1, unit_price=_D('999'),
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_aggregated_cost_history(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/vendor-cost-history/')
+        self.assertEqual(r.status_code, 200)
+        rows = {(row['vendor'], row['sku']): row for row in r.context['rows']}
+        sfp = rows[('Cisco-Acme', 'SFP-10G-LR')]
+        self.assertEqual(sfp['po_count'], 2)
+        self.assertEqual(sfp['min_price'], 40.0)
+        self.assertEqual(sfp['max_price'], 52.0)
+        self.assertEqual(sfp['last_price'], 52.0)  # most recent
+
+    def test_draft_lines_excluded(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/vendor-cost-history/')
+        body = r.content.decode('utf-8')
+        self.assertNotIn('SHOULD NOT APPEAR', body)
+
+    def test_vendor_filter_narrows_results(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/vendor-cost-history/?vendor=Cisco-Acme')
+        self.assertEqual(r.status_code, 200)
+        skus = {row['sku'] for row in r.context['rows']}
+        self.assertIn('SFP-10G-LR', skus)
+        self.assertNotIn('CAT6-3', skus)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/vendor-cost-history/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('SFP-10G-LR', body)
+        self.assertIn('CAT6-3', body)
+
+    def test_non_staff_member_blocked_with_404(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/vendor-cost-history/')
+        self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class TicketAgingReportTests(TestCase):
     """Phase 19 v1 (v3.17.257) — ticket aging analytics."""
 

@@ -302,7 +302,7 @@ Planned capabilities:
 - Asset lifecycle scoring (composite age × usage × warranty)
 - Procurement forecasting from historical PR/PO data
 - Recurring purchasing templates (e.g. "monthly toner refill")
-- Vendor cost history (price-at-time-of-PO trend)
+- Vendor cost history (price-at-time-of-PO trend) *(shipped v3.17.262 — `/reports/vendor-cost-history/` aggregates POLine items over last 730 days per `(vendor, sku, description)` with min/avg/max/last unit price; CSV export; staff-only)*
 - Procurement reporting *(shipped v3.17.258 — `/reports/procurement-summary/` per-vendor + per-month spend over last 365 days; CSV export; staff-only)*
 
 **Goal:** Improve operational procurement visibility and hardware lifecycle management.

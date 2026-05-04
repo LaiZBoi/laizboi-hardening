@@ -117,6 +117,9 @@ urlpatterns = [
     # v3.17.258 — Phase 13 v3 procurement summary report.
     path('procurement-summary/',
          views.procurement_summary, name='procurement_summary'),
+    # v3.17.262 — Phase 13 v5 vendor cost history report.
+    path('vendor-cost-history/',
+         views.vendor_cost_history, name='vendor_cost_history'),
     # Phase 26 v1 (v3.17.246) — Saved Queries / Custom Report Writer.
     path('saved-queries/', views.saved_query_list, name='saved_query_list'),
     path('saved-queries/new/', views.saved_query_form, name='saved_query_create'),

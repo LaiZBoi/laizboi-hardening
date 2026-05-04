@@ -2966,3 +2966,119 @@ def procurement_summary(request):
         'monthly_rows': monthly_rows,
         'summary': summary,
     })
+
+
+@login_required
+def vendor_cost_history(request):
+    """
+    Phase 13 v5 (v3.17.262): vendor cost history. Aggregates
+    PurchaseOrderLineItem rows per (vendor_name, sku, description) over
+    the last 730 days so a buyer can see price-at-time-of-PO drift —
+    "this Cisco SFP cost $40 in March, $52 in October."
+
+    Tenant ACL: staff/superuser only — same gate as procurement_summary.
+    Optional ?vendor= filter narrows to one vendor; ?format=csv exports.
+    """
+    from psa.models import PurchaseOrderLineItem
+    from datetime import date as _date, timedelta as _td
+    from django.db.models import Avg, Count, Max, Min, Sum
+    from collections import defaultdict
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('Procurement reports are staff-only')
+
+    cutoff = _date.today() - _td(days=730)
+    qs = (PurchaseOrderLineItem.objects
+          .filter(po__created_at__date__gte=cutoff)
+          .exclude(po__status__in=['draft', 'cancelled', 'void'])
+          .select_related('po'))
+
+    vendor_filter = (request.GET.get('vendor') or '').strip()
+    if vendor_filter:
+        qs = qs.filter(po__vendor_name__iexact=vendor_filter)
+
+    # Per (vendor_name, sku-or-desc) aggregates. Use sku when present,
+    # else fall back to description so cross-PO matching still works
+    # for vendors that don't supply SKUs.
+    grouped = defaultdict(lambda: {
+        'po_count': 0,
+        'total_qty': 0.0,
+        'min_price': None,
+        'max_price': None,
+        'sum_amount': 0.0,
+        'last_price': None,
+        'last_seen': None,
+        'samples': 0,
+    })
+    for li in qs.values(
+        'po__vendor_name', 'po__created_at',
+        'sku', 'description', 'unit_price', 'quantity',
+    ):
+        vendor = li['po__vendor_name'] or '—'
+        sku = li['sku'] or ''
+        desc = li['description'] or ''
+        key = (vendor, sku, desc)
+        b = grouped[key]
+        price = float(li['unit_price'] or 0)
+        qty = float(li['quantity'] or 0)
+        b['po_count'] += 1
+        b['samples'] += 1
+        b['total_qty'] += qty
+        b['sum_amount'] += price * qty
+        b['min_price'] = price if b['min_price'] is None else min(b['min_price'], price)
+        b['max_price'] = price if b['max_price'] is None else max(b['max_price'], price)
+        seen = li['po__created_at']
+        if b['last_seen'] is None or seen > b['last_seen']:
+            b['last_seen'] = seen
+            b['last_price'] = price
+
+    # Flatten + sort by total_amount desc.
+    rows = []
+    for (vendor, sku, desc), b in grouped.items():
+        avg_price = (b['sum_amount'] / b['total_qty']) if b['total_qty'] else 0.0
+        spread = ((b['max_price'] or 0) - (b['min_price'] or 0))
+        rows.append({
+            'vendor': vendor, 'sku': sku, 'description': desc,
+            'po_count': b['po_count'],
+            'total_qty': b['total_qty'],
+            'min_price': b['min_price'] or 0,
+            'max_price': b['max_price'] or 0,
+            'avg_price': avg_price,
+            'last_price': b['last_price'] or 0,
+            'last_seen': b['last_seen'],
+            'spread': spread,
+        })
+    rows.sort(key=lambda r: -float(r['po_count']))
+
+    vendors = sorted({(li.get('po__vendor_name') or '') for li
+                      in qs.values('po__vendor_name').distinct()
+                      if li.get('po__vendor_name')})
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="vendor-cost-history.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Vendor', 'SKU', 'Description', 'PO count', 'Total qty',
+                    'Min price', 'Max price', 'Avg price', 'Last price', 'Last seen'])
+        for r in rows:
+            w.writerow([
+                r['vendor'], r['sku'], r['description'],
+                r['po_count'], r['total_qty'],
+                r['min_price'], r['max_price'], r['avg_price'],
+                r['last_price'],
+                r['last_seen'].isoformat() if r['last_seen'] else '',
+            ])
+        return resp
+
+    return render(request, 'reports/vendor_cost_history.html', {
+        'rows': rows,
+        'vendor_filter': vendor_filter,
+        'vendors': vendors,
+        'window_days': 730,
+        'total_lines': qs.count(),
+    })
