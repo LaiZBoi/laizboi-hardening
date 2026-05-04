@@ -3082,3 +3082,77 @@ def vendor_cost_history(request):
         'window_days': 730,
         'total_lines': qs.count(),
     })
+
+
+@login_required
+def asset_lifecycle_report(request):
+    """
+    Phase 13 v6 (v3.17.263): asset lifecycle scoring. Computes a
+    composite 0-100 replacement-priority score per asset (age × warranty
+    × firmware) and lists top-scoring rows so a buyer can see what to
+    refresh first.
+
+    Tenant-scoped — `Asset.objects.for_organization(org)` for the active
+    org; superuser/staff in global view sees everything.
+    """
+    from assets.models import Asset
+    from core.middleware import get_request_organization
+
+    threshold = int(request.GET.get('threshold') or 50)
+
+    org = get_request_organization(request)
+    if org is None:
+        if request.user.is_superuser or getattr(request, 'is_staff_user', False):
+            qs = Asset.objects.all()
+        else:
+            from django.http import Http404
+            raise Http404('Pick an organization')
+    else:
+        qs = Asset.objects.for_organization(org)
+
+    # Limit candidate set to assets that COULD plausibly score — must
+    # have at least one of purchase_date / warranty_expiry / firmware
+    # mismatch. Skips fresh imports with empty lifecycle data.
+    from django.db.models import Q
+    qs = qs.filter(
+        Q(purchase_date__isnull=False)
+        | Q(warranty_expiry__isnull=False)
+        | (Q(firmware_version__gt='') & Q(firmware_latest__gt=''))
+    ).select_related('organization')[:5000]
+
+    rows = []
+    for a in qs:
+        score = a.lifecycle_score()
+        if score['total'] < threshold:
+            continue
+        rows.append({
+            'asset': a,
+            'score': score,
+            'org_name': a.organization.name if a.organization else '',
+        })
+    rows.sort(key=lambda r: -r['score']['total'])
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="asset-lifecycle.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Asset', 'Type', 'Org', 'Total', 'Age', 'Warranty', 'Firmware',
+                    'Purchase date', 'Warranty expiry'])
+        for r in rows:
+            a = r['asset']
+            s = r['score']
+            w.writerow([
+                a.name, a.asset_type, r['org_name'],
+                s['total'], s['age'], s['warranty'], s['firmware'],
+                a.purchase_date.isoformat() if a.purchase_date else '',
+                a.warranty_expiry.isoformat() if a.warranty_expiry else '',
+            ])
+        return resp
+
+    return render(request, 'reports/asset_lifecycle.html', {
+        'rows': rows[:500],
+        'threshold': threshold,
+        'total_count': len(rows),
+    })

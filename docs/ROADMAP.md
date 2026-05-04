@@ -299,7 +299,7 @@ Planned capabilities:
 - Purchase receiving workflows *(shipped — Phase 4.2)*
 - Margin analytics on resold hardware
 - RMA tracking (return / replace lifecycle) *(shipped v3.17.261 — `RMAReturn` model with explicit state machine: open → sent → received_by_vendor → replaced/refunded/closed; views at `/assets/rma/`; tenant-scoped)*
-- Asset lifecycle scoring (composite age × usage × warranty)
+- Asset lifecycle scoring (composite age × usage × warranty) *(shipped v3.17.263 — `Asset.lifecycle_score()` returns 0-100 breakdown {age, warranty, firmware}; report at `/reports/asset-lifecycle/` with `?threshold=` filter and CSV export)*
 - Procurement forecasting from historical PR/PO data
 - Recurring purchasing templates (e.g. "monthly toner refill")
 - Vendor cost history (price-at-time-of-PO trend) *(shipped v3.17.262 — `/reports/vendor-cost-history/` aggregates POLine items over last 730 days per `(vendor, sku, description)` with min/avg/max/last unit price; CSV export; staff-only)*

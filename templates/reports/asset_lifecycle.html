@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Asset Lifecycle Scoring — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Asset Lifecycle Scoring</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-recycle me-2"></i>Asset Lifecycle Scoring</h2>
+    <a href="?threshold={{ threshold }}&format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted">Composite 0-100 replacement-priority score per asset: age × warranty × firmware. Higher = stronger refresh candidate. {{ total_count }} asset{{ total_count|pluralize }} match the threshold.</p>
+
+<form method="get" class="row g-2 mb-3 align-items-end">
+    <div class="col-md-3">
+        <label class="form-label small mb-1">Score threshold ≥</label>
+        <input type="number" name="threshold" value="{{ threshold }}" min="0" max="100" class="form-control form-control-sm">
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-sm btn-outline-secondary w-100">Filter</button>
+    </div>
+    <div class="col-md-7 small text-muted">Score components: age (0-50) + warranty (0-30) + firmware (0-20).</div>
+</form>
+
+{% if rows %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover small mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Asset</th>
+                    <th>Type</th>
+                    <th>Org</th>
+                    <th class="text-end">Total</th>
+                    <th class="text-end">Age</th>
+                    <th class="text-end">Warranty</th>
+                    <th class="text-end">Firmware</th>
+                    <th>Purchase</th>
+                    <th>Warranty expiry</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td><a href="{% url 'assets:asset_detail' r.asset.pk %}">{{ r.asset.name }}</a></td>
+                    <td>{{ r.asset.get_asset_type_display }}</td>
+                    <td>{{ r.org_name }}</td>
+                    <td class="text-end">
+                        {% if r.score.total >= 80 %}<span class="badge text-bg-danger">{{ r.score.total }}</span>
+                        {% elif r.score.total >= 60 %}<span class="badge text-bg-warning">{{ r.score.total }}</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ r.score.total }}</span>{% endif %}
+                    </td>
+                    <td class="text-end">{{ r.score.age }}</td>
+                    <td class="text-end">{{ r.score.warranty }}</td>
+                    <td class="text-end">{{ r.score.firmware }}</td>
+                    <td>{{ r.asset.purchase_date|date:'Y-m-d'|default:'—' }}</td>
+                    <td>{{ r.asset.warranty_expiry|date:'Y-m-d'|default:'—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% if total_count > rows|length %}
+<p class="text-muted small mt-2">Showing first {{ rows|length }} of {{ total_count }}. Export CSV for the full list.</p>
+{% endif %}
+{% else %}
+<div class="alert alert-info small"><i class="fas fa-info-circle me-1"></i>No assets meet the threshold. Lower it to see more, or set purchase_date / warranty_expiry on assets to make them score.</div>
+{% endif %}
+{% endblock %}

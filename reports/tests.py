@@ -1790,6 +1790,156 @@ class VendorCostHistoryTests(TestCase):
         self.assertEqual(r.status_code, 404)
 
 
+class AssetLifecycleScoringModelTests(TestCase):
+    """Phase 13 v6 (v3.17.263) — `Asset.lifecycle_score()`."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Organization
+        cls.org = Organization.objects.create(name='LifeCo', slug='life-co')
+
+    def _make(self, **kwargs):
+        from assets.models import Asset
+        return Asset.objects.create(
+            organization=self.org, name=kwargs.pop('name', 'A'),
+            asset_type=kwargs.pop('asset_type', 'server'), **kwargs,
+        )
+
+    def test_blank_asset_scores_zero(self):
+        a = self._make()
+        s = a.lifecycle_score()
+        self.assertEqual(s['total'], 0)
+        self.assertEqual(s['age'], 0)
+        self.assertEqual(s['warranty'], 0)
+        self.assertEqual(s['firmware'], 0)
+
+    def test_old_asset_with_expired_warranty_scores_high(self):
+        from datetime import date, timedelta
+        a = self._make(
+            purchase_date=date.today() - timedelta(days=365 * 6),
+            lifespan_years=5,
+            warranty_expiry=date.today() - timedelta(days=30),
+        )
+        s = a.lifecycle_score()
+        # Age >= 100% → 50; warranty expired → 30; firmware → 0
+        self.assertEqual(s['age'], 50)
+        self.assertEqual(s['warranty'], 30)
+        self.assertEqual(s['firmware'], 0)
+        self.assertEqual(s['total'], 80)
+
+    def test_warranty_expiring_within_90d_gets_20(self):
+        from datetime import date, timedelta
+        a = self._make(warranty_expiry=date.today() + timedelta(days=60))
+        s = a.lifecycle_score()
+        self.assertEqual(s['warranty'], 20)
+
+    def test_warranty_expiring_within_year_gets_10(self):
+        from datetime import date, timedelta
+        a = self._make(warranty_expiry=date.today() + timedelta(days=200))
+        s = a.lifecycle_score()
+        self.assertEqual(s['warranty'], 10)
+
+    def test_firmware_mismatch_adds_20(self):
+        a = self._make(firmware_version='1.0', firmware_latest='2.0')
+        s = a.lifecycle_score()
+        self.assertEqual(s['firmware'], 20)
+
+    def test_age_capped_at_50(self):
+        from datetime import date, timedelta
+        # 10 years on a 2-year asset still caps at 50
+        a = self._make(
+            purchase_date=date.today() - timedelta(days=365 * 10),
+            lifespan_years=2,
+        )
+        s = a.lifecycle_score()
+        self.assertEqual(s['age'], 50)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class AssetLifecycleReportTests(TestCase):
+    """Phase 13 v6 (v3.17.263) — /reports/asset-lifecycle/ view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from assets.models import Asset
+        from datetime import date, timedelta
+
+        cls.org = Organization.objects.create(name='LifeViewCo', slug='lifeview-co')
+        cls.user = User.objects.create_user('life-mem', 'lm@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        # High score: 6yr-old / 5yr lifespan + warranty expired = 80
+        cls.high = Asset.objects.create(
+            organization=cls.org, name='OldServer', asset_type='server',
+            purchase_date=date.today() - timedelta(days=365 * 6),
+            lifespan_years=5,
+            warranty_expiry=date.today() - timedelta(days=30),
+        )
+        # Low score: brand new, 5yr lifespan, fresh warranty
+        cls.low = Asset.objects.create(
+            organization=cls.org, name='NewLaptop', asset_type='laptop',
+            purchase_date=date.today() - timedelta(days=30),
+            lifespan_years=5,
+            warranty_expiry=date.today() + timedelta(days=365 * 3),
+        )
+        # No data: should be filtered out at the qs.filter() step
+        cls.empty = Asset.objects.create(
+            organization=cls.org, name='Mystery', asset_type='other',
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_default_threshold_50_shows_only_high(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.get('/reports/asset-lifecycle/')
+        self.assertEqual(r.status_code, 200)
+        body = r.content.decode('utf-8')
+        self.assertIn('OldServer', body)
+        self.assertNotIn('NewLaptop', body)
+        self.assertNotIn('Mystery', body)
+
+    def test_low_threshold_includes_low_scoring(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.get('/reports/asset-lifecycle/?threshold=0')
+        self.assertEqual(r.status_code, 200)
+        body = r.content.decode('utf-8')
+        self.assertIn('OldServer', body)
+        self.assertIn('NewLaptop', body)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.get('/reports/asset-lifecycle/?threshold=0&format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('OldServer', body)
+        self.assertIn('NewLaptop', body)
+
+    def test_no_org_no_staff_returns_404(self):
+        from django.contrib.auth.models import User
+        from django.test import Client
+        u = User.objects.create_user('lonely', 'lo@x.com', 'pw')
+        c = Client()
+        self._login(c, u)  # no org pinned
+        r = c.get('/reports/asset-lifecycle/')
+        self.assertEqual(r.status_code, 404)
+
+
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class TicketAgingReportTests(TestCase):
     """Phase 19 v1 (v3.17.257) — ticket aging analytics."""

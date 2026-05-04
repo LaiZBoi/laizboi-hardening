@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.263] - 2026-05-04
+
+### Added — Phase 13 v6 Asset Lifecycle Scoring
+Closes the "Asset lifecycle scoring (composite age × usage × warranty)" sub-bullet of Phase 13. Adds a per-asset composite 0-100 replacement-priority score plus a report listing top-scoring refresh candidates.
+
+- **New `Asset.lifecycle_score()` method** returning a breakdown dict `{age, warranty, firmware, total}`:
+  - **Age (0-50)** = `min(1, age_years / lifespan_years) * 50`. Caps at 50 even if asset is 5× over its lifespan.
+  - **Warranty (0-30)** = 30 if expired, 20 if expiring within 90d, 10 if within 365d, 0 otherwise.
+  - **Firmware (0-20)** = 20 if `firmware_version != firmware_latest`.
+  - Assets with no lifecycle data (no purchase_date / warranty / firmware diff) score 0.
+- **New report at `/reports/asset-lifecycle/`** — tenant-scoped via `Asset.objects.for_organization()`, `?threshold=` query param (default 50), CSV export, top 500 in HTML.
+- **Color-coded score badges** in the table — danger ≥80, warning ≥60, secondary below.
+- **Reports home** updated with a new tile.
+
+### Tests
+- 6 model tests covering blank/old/expired-warranty/firmware-mismatch/age-cap/warranty-window math.
+- 4 view tests covering default-threshold filtering, low-threshold inclusion, CSV export, and the 404 when no org is pinned.
+
+### Roadmap
+Phase 13 sub-bullet "Asset lifecycle scoring (composite age × usage × warranty)" annotated `*(shipped v3.17.263)*`.
+
 ## [3.17.262] - 2026-05-04
 
 ### Added — Phase 13 v5 Vendor Cost History

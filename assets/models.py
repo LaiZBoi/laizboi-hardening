@@ -366,6 +366,51 @@ class Asset(BaseModel):
         delta = self.warranty_expiry - date.today()
         return delta.days
 
+    def lifecycle_score(self):
+        """Phase 13 v6 (v3.17.263): composite 0-100 replacement-priority
+        score. Higher score = stronger candidate for refresh.
+
+        Components (weights chosen to keep total in [0, 100]):
+          - Age fraction of lifespan_years        (0-50)
+          - Warranty status                       (0-30)
+          - Firmware-update available             (0-20)
+
+        Assets without enough data to score one component just get 0
+        for that component, so a freshly-imported asset with no
+        purchase_date / warranty / firmware fields scores 0 — accurate.
+        Returns a dict so the caller (report / API) can show the
+        breakdown, not just the total.
+        """
+        from datetime import date as _d
+        breakdown = {'age': 0, 'warranty': 0, 'firmware': 0}
+
+        # Age component — 0 at 0% of lifespan, 50 at 100% (or beyond)
+        age_years = self.get_age_years()
+        if age_years is not None and self.lifespan_years:
+            frac = min(1.0, age_years / float(self.lifespan_years))
+            breakdown['age'] = int(round(frac * 50))
+
+        # Warranty component
+        # - already expired:        +30
+        # - expiring within 90d:    +20
+        # - expiring within 365d:   +10
+        # - fresh:                  0
+        days = self.warranty_days_remaining()
+        if days is not None:
+            if days < 0:
+                breakdown['warranty'] = 30
+            elif days <= 90:
+                breakdown['warranty'] = 20
+            elif days <= 365:
+                breakdown['warranty'] = 10
+
+        # Firmware component
+        if self.has_firmware_update():
+            breakdown['firmware'] = 20
+
+        breakdown['total'] = sum(breakdown.values())
+        return breakdown
+
     def is_warranty_expired(self):
         """True if warranty_expiry is set and in the past."""
         days = self.warranty_days_remaining()
