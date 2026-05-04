@@ -428,6 +428,9 @@ class SavedQuery(models.Model):
         ('psa.Ticket', 'PSA Tickets'),
         ('assets.Asset', 'Assets'),
         ('vault.Password', 'Vault Passwords'),
+        # Phase 26 v2 (v3.17.251)
+        ('psa.Invoice', 'Invoices'),
+        ('psa.TicketTimeEntry', 'Time Entries'),
     ]
 
     name = models.CharField(max_length=200)

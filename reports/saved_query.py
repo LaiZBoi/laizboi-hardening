@@ -77,6 +77,47 @@ MODEL_CONFIG = {
         ],
         'default_sort': 'title',
     },
+    # Phase 26 v2 (v3.17.251): expand to invoicing + time entries.
+    'psa.Invoice': {
+        'label': 'Invoices',
+        'filterable_fields': {
+            'invoice_number': 'str',
+            'title': 'str',
+            'status': 'str',
+            'client_org__name': 'str',
+            'organization__name': 'str',
+            'invoice_date': 'date',
+            'due_date': 'date',
+            'requires_approval': 'bool',
+        },
+        'columns': [
+            'invoice_number', 'client_org__name', 'title', 'status',
+            'invoice_date', 'due_date', 'subtotal', 'total', 'amount_paid',
+        ],
+        'default_sort': '-invoice_date',
+    },
+    'psa.TicketTimeEntry': {
+        'label': 'Time Entries',
+        'filterable_fields': {
+            'user__username': 'str',
+            'ticket__ticket_number': 'str',
+            'ticket__organization__name': 'str',
+            'is_billable': 'bool',
+            'started_at': 'date',
+            'ended_at': 'date',
+            'notes': 'str',
+        },
+        'columns': [
+            'started_at', 'user__username', 'ticket__ticket_number',
+            'ticket__organization__name', 'duration_minutes',
+            'is_billable', 'notes',
+        ],
+        'default_sort': '-started_at',
+        # Tenant scope: `TicketTimeEntry` has no direct organization FK;
+        # scope via the parent ticket. Default for other targets is the
+        # plain `organization` field.
+        'org_filter': 'ticket__organization',
+    },
 }
 
 OPERATORS_BY_TYPE = {
@@ -152,16 +193,19 @@ def build_filter(target_model, filters):
 def execute(saved_query, *, organization=None):
     """
     Run a `SavedQuery` and return (model, queryset). Tenant scope:
-    if `organization` is provided AND the model has an `organization`
-    FK, scope to that org. Otherwise the queryset is global.
+    if `organization` is provided, scope using the model's `org_filter`
+    config (defaults to `organization`). Some models — TicketTimeEntry —
+    scope through a relation (`ticket__organization`) instead.
     """
     model = get_model(saved_query.target_model)
     if model is None:
         return None, model.objects.none() if model else []
     qs = model.objects.all()
     if organization is not None:
+        cfg = MODEL_CONFIG.get(saved_query.target_model, {})
+        org_field = cfg.get('org_filter', 'organization')
         try:
-            qs = qs.filter(organization=organization)
+            qs = qs.filter(**{org_field: organization})
         except Exception:
             pass
     qs = qs.filter(build_filter(saved_query.target_model, saved_query.filters or []))

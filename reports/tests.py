@@ -1774,6 +1774,64 @@ class SavedQueryTests(TestCase):
         # Still exists.
         self.assertTrue(SavedQuery.objects.filter(pk=sq.pk).exists())
 
+    # --- Phase 26 v2 (v3.17.251) — Invoice + TimeEntry targets ----------
+
+    def test_invoice_target_filters_by_status(self):
+        from reports.models import SavedQuery
+        from reports.saved_query import execute
+        from psa.models import Invoice
+        from datetime import date as _date
+        Invoice.objects.create(
+            organization=self.org, client_org=self.org, title='Paid one',
+            invoice_date=_date.today(), status='paid',
+        )
+        Invoice.objects.create(
+            organization=self.org, client_org=self.org, title='Sent one',
+            invoice_date=_date.today(), status='sent',
+        )
+        sq = SavedQuery.objects.create(
+            owner=self.user, name='Paid invoices', target_model='psa.Invoice',
+            filters=[{'field': 'status', 'op': 'equals', 'value': 'paid'}],
+        )
+        _model, qs = execute(sq)
+        titles = list(qs.values_list('title', flat=True))
+        self.assertIn('Paid one', titles)
+        self.assertNotIn('Sent one', titles)
+
+    def test_time_entry_target_scopes_via_ticket_org(self):
+        from reports.models import SavedQuery
+        from reports.saved_query import execute
+        from psa.models import TicketTimeEntry, Ticket
+        from datetime import datetime, timedelta as _td
+        from django.utils import timezone as _tz
+        # Build an outsider ticket + entry
+        outsider_ticket = Ticket.objects.create(
+            organization=self.outsider, subject='out',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        TicketTimeEntry.objects.create(
+            ticket=outsider_ticket, user=self.user,
+            started_at=_tz.now() - _td(hours=1),
+            ended_at=_tz.now(),
+            duration_minutes=60, notes='outsider work',
+        )
+        # Build an org-A entry
+        TicketTimeEntry.objects.create(
+            ticket=self.urgent, user=self.user,
+            started_at=_tz.now() - _td(hours=1),
+            ended_at=_tz.now(),
+            duration_minutes=30, notes='org-a work',
+        )
+        sq = SavedQuery.objects.create(
+            owner=self.user, organization=self.org,
+            name='My time', target_model='psa.TicketTimeEntry',
+        )
+        _model, qs = execute(sq, organization=self.org)
+        notes_seen = list(qs.values_list('notes', flat=True))
+        self.assertIn('org-a work', notes_seen)
+        self.assertNotIn('outsider work', notes_seen)
+
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class WallboardGlobalScopeTests(TestCase):

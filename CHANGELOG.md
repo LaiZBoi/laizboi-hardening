@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.251] - 2026-05-04
+
+### Added — Phase 26 v2 Invoice + TimeEntry SavedQuery targets
+Two new model targets in the saved-query allow-list, plus a tenant-scope refinement for models that don't carry `organization` directly.
+
+- **`psa.Invoice` target** — filterable on `invoice_number`, `title`, `status`, `client_org__name`, `organization__name`, `invoice_date`, `due_date`, `requires_approval`. Default columns include `subtotal`, `total`, `amount_paid` for AR / collections workflows.
+- **`psa.TicketTimeEntry` target** — filterable on `user__username`, `ticket__ticket_number`, `ticket__organization__name`, `is_billable`, `started_at`, `ended_at`, `notes`. Useful for "who logged what against this client this week."
+- **Per-model `org_filter`** in `MODEL_CONFIG`. `TicketTimeEntry` scopes via `ticket__organization` since it has no direct `organization` FK. `execute()` honors the per-model field.
+
+### Tests
+- 2 new tests in `SavedQueryTests`:
+  - Invoice target filters by `status='paid'` and excludes other statuses.
+  - TimeEntry target scopes via `ticket__organization` so outsider-org entries don't leak into a tenant-scoped query.
+
+### Roadmap — Phase 26 marked complete
+Phase 26 — Custom Report Writer + Saved Queries flipped to `[complete]`. Sub-bullets shipped: visual query builder (5 model targets including the 2 added today), saved query model with shared/private scope, table render + CSV export, tenant-scoping. Auto-chart, recurring email-PDF, JSON/Excel export, SQL escape hatch, marketplace remain on the planned list as future v3 work.
+
 ## [3.17.250] - 2026-05-04
 
 ### Added — Phase 22 v2 Editorial approval queue

@@ -550,12 +550,12 @@ Dependencies: extends Phase 2 (BillableTarget + utilization) + the existing appr
 
 **Goal:** Add billing-grade rigor to time entries before they flow into invoices and commissions.
 
-## Phase 26 — Custom Report Writer + Saved Queries **(L)** [in progress]
+## Phase 26 — Custom Report Writer + Saved Queries **(L)** [complete]
 
 **Roadmap item:** User-defined reports without writing Python. Today reports are templated (Phase 3 ships ~15 canned reports); this phase lets non-developers build their own.
 
 Planned capabilities:
-- Visual query builder — pick model (Ticket / Invoice / TimeEntry / Asset / etc), filters, group-by, aggregates, sort, limit *(shipped v3.17.246 — picks Ticket / Asset / Password; allow-listed filterable_fields per model with op + type validation; Invoice / TimeEntry deferred to v2)*
+- Visual query builder — pick model (Ticket / Invoice / TimeEntry / Asset / etc), filters, group-by, aggregates, sort, limit *(shipped v3.17.246 with Ticket / Asset / Password targets; v3.17.251 added Invoice + TicketTimeEntry targets with per-model `org_filter` for tenant scoping when the model lacks a direct organization FK)*
 - Saved query model — per-org or shared *(shipped v3.17.246 — `reports.SavedQuery` with `is_shared` + organization scope)*
 - Run as report (renders as table + auto-chart for numeric columns) *(table render shipped v3.17.246; auto-chart deferred to v2)*
 - Schedule a saved query as a recurring email-PDF (extends Phase 3.6 scheduled-reports runner)
