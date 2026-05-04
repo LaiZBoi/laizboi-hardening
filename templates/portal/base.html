@@ -45,7 +45,9 @@
                 <a href="{% url 'portal:ticket_list' %}" class="btn btn-link">My Tickets</a>
                 <a href="{% url 'portal:kb_list' %}" class="btn btn-link"><i class="fas fa-book"></i> Knowledge Base</a>
                 <a href="{% url 'portal:vault_list' %}" class="btn btn-link"><i class="fas fa-key"></i> Credentials</a>
+                {% if psa_portal_customer_approvals_enabled %}
                 <a href="{% url 'portal:approvals_list' %}" class="btn btn-link" title="Approvals waiting on you"><i class="fas fa-circle-check"></i> Approvals</a>
+                {% endif %}
                 <a href="{% url 'portal:preferences' %}" class="btn btn-link" title="Notification preferences"><i class="fas fa-cog"></i></a>
                 <a href="{% url 'portal:ticket_create' %}" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> New Ticket</a>
                 <form method="post" action="{% url 'logout' %}" style="display:inline; margin:0;">

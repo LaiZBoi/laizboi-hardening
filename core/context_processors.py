@@ -23,6 +23,12 @@ def organization_context(request):
             'scheduling_enabled': settings.scheduling_enabled,
             'psa_enabled': settings.psa_enabled,
             'crm_enabled': settings.crm_enabled,
+            # Phase 12 portal feature toggles (v3.17.243).
+            'psa_portal_announcements_enabled': getattr(settings, 'psa_portal_announcements_enabled', False),
+            'psa_portal_voting_enabled': getattr(settings, 'psa_portal_voting_enabled', False),
+            'psa_portal_escalation_enabled': getattr(settings, 'psa_portal_escalation_enabled', False),
+            'psa_portal_customer_approvals_enabled': getattr(settings, 'psa_portal_customer_approvals_enabled', False),
+            'psa_csat_enabled': getattr(settings, 'psa_csat_enabled', False),
         }
         system_settings = settings
     except Exception:

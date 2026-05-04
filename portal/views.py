@@ -68,11 +68,24 @@ def portal_required(view_func):
     return wrapped
 
 
+def _portal_feature_enabled(name) -> bool:
+    """v3.17.243: lookup a Phase 12 portal feature flag on SystemSetting."""
+    try:
+        from core.models import SystemSetting
+        return bool(getattr(SystemSetting.get_settings(), name, False))
+    except Exception:
+        return False
+
+
 def _active_announcements(request, organization):
     """v3.17.232: announcements visible to the requester for this org.
     Filters out session-dismissed IDs so each portal user only sees
     each dismissable banner once (until they clear their session).
+    Returns an empty list when `psa_portal_announcements_enabled` is off
+    (v3.17.243 feature toggle).
     """
+    if not _portal_feature_enabled('psa_portal_announcements_enabled'):
+        return []
     from .models import PortalAnnouncement
     dismissed = set(request.session.get('portal_dismissed_announcements') or [])
     return [
@@ -109,6 +122,8 @@ def announcement_dismiss(request, pk):
     the session. Only works on `is_dismissable=True` announcements; the
     flag is enforced server-side in case the client lies.
     """
+    if not _portal_feature_enabled('psa_portal_announcements_enabled'):
+        raise Http404('Announcements are not enabled')
     from .models import PortalAnnouncement
     m = request.portal_membership
     try:
@@ -150,8 +165,11 @@ def ticket_detail(request, ticket_number):
         else:
             threads.append(c)
     attachments = ticket.attachments.filter(is_internal=False)
-    vote_count = TicketVote.objects.filter(ticket=ticket).count()
-    user_voted = TicketVote.objects.filter(ticket=ticket, user=request.user).exists()
+    voting_enabled = _portal_feature_enabled('psa_portal_voting_enabled')
+    vote_count = TicketVote.objects.filter(ticket=ticket).count() if voting_enabled else 0
+    user_voted = (TicketVote.objects.filter(ticket=ticket, user=request.user).exists()
+                  if voting_enabled else False)
+    escalation_enabled = _portal_feature_enabled('psa_portal_escalation_enabled')
     return render(request, 'portal/ticket_detail.html', {
         'ticket': ticket,
         'threads': threads,
@@ -159,6 +177,8 @@ def ticket_detail(request, ticket_number):
         'organization': m.organization,
         'vote_count': vote_count,
         'user_voted': user_voted,
+        'voting_enabled': voting_enabled,
+        'escalation_enabled': escalation_enabled,
     })
 
 
@@ -171,6 +191,8 @@ def ticket_escalate(request, ticket_number):
     timeline shows the escalation in order.
     Idempotent — a second post just updates the reason.
     """
+    if not _portal_feature_enabled('psa_portal_escalation_enabled'):
+        raise Http404('Customer escalation is not enabled')
     m = request.portal_membership
     ticket = get_object_or_404(
         Ticket.objects.filter(organization=m.organization, client_can_view=True),
@@ -204,6 +226,8 @@ def ticket_escalate(request, ticket_number):
 @require_http_methods(['POST'])
 def ticket_vote(request, ticket_number):
     """v3.17.235: toggle a portal user's "I care about this too" vote."""
+    if not _portal_feature_enabled('psa_portal_voting_enabled'):
+        raise Http404('Ticket voting is not enabled')
     from psa.models import TicketVote
     m = request.portal_membership
     ticket = get_object_or_404(
@@ -664,6 +688,8 @@ def approvals_list(request):
     portal user's org. Shows kind, requested_at, related_ticket, and
     accept/reject buttons.
     """
+    if not _portal_feature_enabled('psa_portal_customer_approvals_enabled'):
+        raise Http404('Customer approvals are not enabled')
     from psa.models import PSAApproval
     m = request.portal_membership
     pending = (PSAApproval.objects
@@ -689,6 +715,8 @@ def approvals_list(request):
 @require_http_methods(['POST'])
 def approval_decide(request, pk):
     """v3.17.239: portal user approves/denies a client-side approval."""
+    if not _portal_feature_enabled('psa_portal_customer_approvals_enabled'):
+        raise Http404('Customer approvals are not enabled')
     from psa.models import PSAApproval
     m = request.portal_membership
     approval = get_object_or_404(

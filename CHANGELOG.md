@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.243] - 2026-05-04
+
+### Added — Phase 12 feature toggles
+Audited the four major Phase 12 features that shipped without a global on/off switch and added one apiece. Every toggle defaults `False` so existing installs don't suddenly expose new portal endpoints to their customers without an admin's explicit opt-in.
+
+- **`psa_portal_announcements_enabled`** (migration `core.0054`) — gates `_active_announcements()` (returns `[]` when off) and `POST /portal/announcement/<pk>/dismiss/` (404 when off). Nav link / banner section disappear from the portal home.
+- **`psa_portal_voting_enabled`** — gates `POST /portal/t/<n>/vote/` (404 when off) and the "I'm affected" thumbs-up button on portal ticket detail.
+- **`psa_portal_escalation_enabled`** — gates `POST /portal/t/<n>/escalate/` (404 when off) and the `<details>` escalation form on ticket detail.
+- **`psa_portal_customer_approvals_enabled`** — gates `/portal/approvals/` and `POST /portal/approvals/<pk>/decide/` (404 when off). The "Approvals" link in the portal nav also hides when off.
+
+### How it's wired
+- Single `_portal_feature_enabled(name)` helper in `portal/views.py` reads `SystemSetting.get_settings()`. Used by every gated view.
+- `core.context_processors.organization_context` now exposes the five Phase 12 flags (the four new ones + `psa_csat_enabled`) into the template context, so templates can hide UI cleanly without a custom tag.
+- `ticket_detail` view passes `voting_enabled` + `escalation_enabled` per-render so the template doesn't have to re-check the SystemSetting.
+
+### Tests
+- 13 new tests in `Phase12FeatureToggleTests` covering each toggle: feature hidden in HTML when off, endpoint 404s when off, feature works when on.
+- 4 existing test classes updated to flip the relevant toggle on in their `setUpTestData` so they keep passing.
+- All 48 portal tests pass.
+
 ## [3.17.242] - 2026-05-02
 
 ### Added — Phase 25 Mature Timesheet Approval Workflows

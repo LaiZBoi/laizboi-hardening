@@ -26,6 +26,8 @@ class PortalAnnouncementTests(TestCase):
 
         s = SystemSetting.get_settings()
         s.psa_enabled = True
+        # v3.17.243: this test predates the toggle; flip it on.
+        s.psa_portal_announcements_enabled = True
         s.save()
         cls.org = Organization.objects.create(name='PortalCo', slug='portal-co')
         cls.other_org = Organization.objects.create(name='OtherCo', slug='portal-other')
@@ -259,6 +261,7 @@ class PortalTicketEscalateTests(TestCase):
         call_command('psa_seed_defaults', verbosity=0)
         s = SystemSetting.get_settings()
         s.psa_enabled = True
+        s.psa_portal_escalation_enabled = True
         s.save()
         cls.org = Organization.objects.create(name='EscCo', slug='esc-co')
         ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
@@ -336,6 +339,7 @@ class PortalTicketVoteTests(TestCase):
         call_command('psa_seed_defaults', verbosity=0)
         s = SystemSetting.get_settings()
         s.psa_enabled = True
+        s.psa_portal_voting_enabled = True
         s.save()
         cls.org = Organization.objects.create(name='VoteCo', slug='vote-co')
         ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
@@ -550,6 +554,163 @@ class PortalPreferencesTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class Phase12FeatureToggleTests(TestCase):
+    """v3.17.243: SystemSetting toggles gate the Phase 12 portal features."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from psa.models import (
+            ClientPSASettings, PSAApproval, Queue, Ticket,
+            TicketPriority, TicketStatus, TicketType,
+        )
+        from portal.models import PortalAnnouncement
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        # All Phase 12 toggles default off.
+        s.psa_portal_announcements_enabled = False
+        s.psa_portal_voting_enabled = False
+        s.psa_portal_escalation_enabled = False
+        s.psa_portal_customer_approvals_enabled = False
+        s.save()
+
+        cls.org = Organization.objects.create(name='ToggleCo', slug='toggle-co')
+        ClientPSASettings.objects.create(organization=cls.org, portal_enabled=True)
+        cls.user = User.objects.create_user('toggle-user', 'tu@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.READONLY, is_active=True)
+        cls.ann = PortalAnnouncement.objects.create(
+            organization=cls.org, title='Maintenance window', severity='info',
+        )
+        cls.ticket = Ticket.objects.create(
+            organization=cls.org, subject='Toggle test',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+            client_can_view=True,
+        )
+        cls.approval = PSAApproval.objects.create(
+            organization=cls.org, kind='quote',
+            object_type='psa.Quote', object_id=1,
+            object_repr='Quote XYZ',
+            is_client_approval=True,
+        )
+
+    def _login(self, c):
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s.save()
+
+    def _set_toggle(self, name, value):
+        from core.models import SystemSetting
+        s = SystemSetting.get_settings()
+        setattr(s, name, value)
+        s.save()
+
+    # --- Announcements ---------------------------------------------------
+
+    def test_announcements_hidden_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/')
+        self.assertNotContains(r, 'Maintenance window')
+
+    def test_announcements_visible_when_toggle_on(self):
+        self._set_toggle('psa_portal_announcements_enabled', True)
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/')
+        self.assertContains(r, 'Maintenance window')
+
+    def test_announcement_dismiss_404_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/announcement/{self.ann.pk}/dismiss/')
+        self.assertEqual(r.status_code, 404)
+
+    # --- Voting ----------------------------------------------------------
+
+    def test_vote_endpoint_404_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/vote/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_vote_button_hidden_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.get(f'/portal/t/{self.ticket.ticket_number}/')
+        body = r.content.decode('utf-8')
+        self.assertNotIn("I'm affected", body)
+        self.assertNotIn('btn-outline-warning', body)
+
+    def test_vote_endpoint_works_when_toggle_on(self):
+        self._set_toggle('psa_portal_voting_enabled', True)
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/vote/')
+        self.assertIn(r.status_code, [200, 302])
+
+    # --- Escalation ------------------------------------------------------
+
+    def test_escalate_endpoint_404_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/escalate/',
+                   data={'reason': 'Production down'})
+        self.assertEqual(r.status_code, 404)
+
+    def test_escalate_form_hidden_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.get(f'/portal/t/{self.ticket.ticket_number}/')
+        self.assertNotContains(r, 'Escalate this ticket')
+
+    def test_escalate_endpoint_works_when_toggle_on(self):
+        self._set_toggle('psa_portal_escalation_enabled', True)
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/t/{self.ticket.ticket_number}/escalate/',
+                   data={'reason': 'Office offline since 9am, 50 users blocked'})
+        self.assertEqual(r.status_code, 302)
+
+    # --- Customer approvals ----------------------------------------------
+
+    def test_approvals_list_404_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/approvals/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_approvals_decide_404_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.post(f'/portal/approvals/{self.approval.pk}/decide/',
+                   data={'decision': 'approve'})
+        self.assertEqual(r.status_code, 404)
+
+    def test_approvals_link_hidden_in_nav_when_toggle_off(self):
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/')
+        # Nav entry only renders when the toggle is on.
+        self.assertNotContains(r, 'Approvals waiting on you')
+
+    def test_approvals_list_works_when_toggle_on(self):
+        self._set_toggle('psa_portal_customer_approvals_enabled', True)
+        c = Client()
+        self._login(c)
+        r = c.get('/portal/approvals/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Quote XYZ')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class PortalApprovalTests(TestCase):
     """v3.17.239: customer-side approval workflow."""
 
@@ -560,6 +721,7 @@ class PortalApprovalTests(TestCase):
         from psa.models import ClientPSASettings, PSAApproval
         s = SystemSetting.get_settings()
         s.psa_enabled = True
+        s.psa_portal_customer_approvals_enabled = True
         s.save()
         cls.org = Organization.objects.create(name='ApproveCo', slug='approve-co')
         cls.other_org = Organization.objects.create(name='OtherApproveCo', slug='other-approve')

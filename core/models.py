@@ -671,6 +671,29 @@ class SystemSetting(models.Model):
                   'a ticket is resolved/closed. Off by default — enable '
                   'after vetting your post-close email content.',
     )
+    # Phase 12 feature toggles (v3.17.243). All default off so existing
+    # installs don't suddenly expose new portal endpoints — admins flip
+    # them on after they've been deliberate about each.
+    psa_portal_announcements_enabled = models.BooleanField(
+        default=False,
+        help_text='Render portal announcements on the customer portal home '
+                  'and expose the dismiss endpoint.',
+    )
+    psa_portal_voting_enabled = models.BooleanField(
+        default=False,
+        help_text='Let portal users "I\'m affected too" vote on tickets they '
+                  'can see.',
+    )
+    psa_portal_escalation_enabled = models.BooleanField(
+        default=False,
+        help_text='Let portal users escalate one of their tickets directly '
+                  '(stamps escalated_at/by/reason + posts a public comment).',
+    )
+    psa_portal_customer_approvals_enabled = models.BooleanField(
+        default=False,
+        help_text='Show pending PSAApproval rows flagged is_client_approval '
+                  'to portal users + accept their decisions.',
+    )
 
     # Billing defaults — used by the quote and invoice forms when the
     # specific row doesn't override.
