@@ -1588,6 +1588,132 @@ class AgreementReconciliationTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class TicketAgingReportTests(TestCase):
+    """Phase 19 v1 (v3.17.257) — ticket aging analytics."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from psa.models import (
+            Queue, Ticket, TicketPriority, TicketStatus, TicketType,
+        )
+        from datetime import timedelta as _td
+        from django.utils import timezone as _tz
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='AgingCo', slug='aging-co')
+        cls.outsider = Organization.objects.create(name='Outsider', slug='aging-out')
+        cls.staff = User.objects.create_user('aging-staff', 'as@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('aging-mem', 'am@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        queue = Queue.objects.first()
+        priority = TicketPriority.objects.first()
+        ttype = TicketType.objects.first()
+        new = TicketStatus.objects.filter(slug='new').first()
+        terminal = TicketStatus.objects.filter(is_terminal=True).first()
+
+        def make(subject, age_hours, status=new, org=None):
+            t = Ticket.objects.create(
+                organization=org or cls.org, subject=subject,
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=status,
+            )
+            Ticket.objects.filter(pk=t.pk).update(
+                created_at=_tz.now() - _td(hours=age_hours),
+            )
+            return t
+
+        cls.fresh = make('fresh', 1)         # 0-24h bucket
+        cls.day2 = make('two days', 36)      # 24-72h
+        cls.weekish = make('5 days', 24*5)   # 3-7d
+        cls.aged = make('three weeks', 24*21)   # 7-30d
+        cls.ancient = make('ancient', 24*60)   # 30+d
+        # Terminal — should NOT count
+        make('done', 1, status=terminal)
+        # Cross-tenant — should NOT count for member
+        make('outsider', 1, org=cls.outsider)
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_buckets_count_correctly_for_staff(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/ticket-aging/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        # Staff sees both orgs; org's 5 + outsider's 1 = 6 fresh-bucket
+        # candidates BUT outsider lands in 0-24h too so total open = 6.
+        # Bucket shape: 0-24h = 2 (fresh + outsider), 24-72h = 1, 3-7d = 1, 7-30d = 1, 30+d = 1
+        totals = ctx['bucket_totals']
+        self.assertEqual(totals['0-24h'], 2)
+        self.assertEqual(totals['24-72h'], 1)
+        self.assertEqual(totals['3-7d'], 1)
+        self.assertEqual(totals['7-30d'], 1)
+        self.assertEqual(totals['30+d'], 1)
+        self.assertEqual(ctx['total_open'], 6)
+
+    def test_member_sees_only_their_org(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/ticket-aging/')
+        ctx = r.context
+        self.assertEqual(ctx['total_open'], 5)  # outsider excluded
+        self.assertEqual(ctx['bucket_totals']['0-24h'], 1)
+
+    def test_excludes_terminal_status(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/ticket-aging/')
+        body = r.content.decode('utf-8')
+        # 'done' ticket subject must not appear in aged_tickets
+        self.assertNotIn('done', body.lower().split('aged 7+')[1] if 'aged 7+' in body.lower() else '')
+
+    def test_aged_section_lists_7plus_day_tickets(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/ticket-aging/')
+        ctx = r.context
+        # aged_tickets should contain weekish (5d) is < 7d — actually no, weekish=5d.
+        # Only aged (21d) and ancient (60d) qualify as 7+ days.
+        aged_subjects = [t.subject for t in ctx['aged_tickets']]
+        self.assertIn('three weeks', aged_subjects)
+        self.assertIn('ancient', aged_subjects)
+        self.assertNotIn('5 days', aged_subjects)
+        self.assertNotIn('two days', aged_subjects)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/ticket-aging/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        # Header row contains all bucket labels
+        self.assertIn('0-24h', body)
+        self.assertIn('30+d', body)
+        # TOTAL row present
+        self.assertIn('TOTAL', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class AccountingReconciliationTests(TestCase):
     """Phase 27 v1 (v3.17.255) — accounting reconciliation report."""
 

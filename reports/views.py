@@ -2812,3 +2812,87 @@ def accounting_reconciliation(request):
         'duplicate_groups': duplicate_groups,
         'summary': summary,
     })
+
+
+@login_required
+def ticket_aging_report(request):
+    """
+    Phase 19 v1 (v3.17.257): ticket aging analytics. Bucket open
+    tickets by age (created_at) into 5 standard ranges, surface a
+    per-priority breakdown so dispatchers see where the queue is
+    aging out.
+
+    Buckets: 0-24h / 24-72h / 3-7d / 7-30d / 30+d.
+    Tenant ACL: superuser/staff sees all; org members see their orgs.
+    """
+    from psa.models import Ticket
+    from datetime import timedelta as _td
+    from django.utils import timezone as _tz
+
+    qs = Ticket.objects.filter(status__is_terminal=False).select_related(
+        'organization', 'priority', 'status', 'queue', 'assigned_to',
+    )
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        qs = qs.filter(organization_id__in=ids)
+
+    now = _tz.now()
+    buckets = [
+        ('0-24h', now - _td(hours=24), now),
+        ('24-72h', now - _td(hours=72), now - _td(hours=24)),
+        ('3-7d', now - _td(days=7), now - _td(hours=72)),
+        ('7-30d', now - _td(days=30), now - _td(days=7)),
+        ('30+d', None, now - _td(days=30)),
+    ]
+
+    rows = []
+    by_priority = {}  # priority code -> bucket -> count
+    bucket_totals = {b[0]: 0 for b in buckets}
+    total_open = 0
+    for label, ge, lt in buckets:
+        bucket_qs = qs.filter(created_at__lt=lt)
+        if ge is not None:
+            bucket_qs = bucket_qs.filter(created_at__gte=ge)
+        bucket_count = bucket_qs.count()
+        bucket_totals[label] = bucket_count
+        total_open += bucket_count
+
+        # Per-priority within this bucket. values_list avoids loading
+        # the full Ticket row + the select_related FK clash with .only().
+        for code in bucket_qs.values_list('priority__code', flat=True):
+            key = code or '—'
+            by_priority.setdefault(key, {b[0]: 0 for b in buckets})
+            by_priority[key][label] += 1
+
+        rows.append({
+            'bucket': label,
+            'count': bucket_count,
+            'pct': round(100 * bucket_count / max(qs.count(), 1), 1),
+        })
+
+    aged_tickets = qs.filter(created_at__lt=now - _td(days=7)).order_by('created_at')[:200]
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="ticket-aging.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Bucket'] + [b[0] for b in buckets])
+        for code in sorted(by_priority):
+            w.writerow([code] + [by_priority[code][b[0]] for b in buckets])
+        w.writerow(['TOTAL'] + [bucket_totals[b[0]] for b in buckets])
+        return resp
+
+    return render(request, 'reports/ticket_aging.html', {
+        'rows': rows,
+        'by_priority': sorted(by_priority.items()),
+        'bucket_labels': [b[0] for b in buckets],
+        'bucket_totals': bucket_totals,
+        'total_open': total_open,
+        'aged_tickets': aged_tickets,
+        'aged_count': aged_tickets.count() if hasattr(aged_tickets, 'count') else len(aged_tickets),
+    })

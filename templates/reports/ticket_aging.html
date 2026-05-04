@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load reports_extras %}
+{% block title %}Ticket Aging — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Ticket Aging</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-hourglass-half me-2"></i>Ticket Aging</h2>
+    <a href="?format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted">Open tickets bucketed by how long ago they were created. Surfaces queue drift before SLAs slip.</p>
+
+<div class="row g-3 mb-3">
+    {% for r in rows %}
+    <div class="col-md">
+        <div class="card {% if forloop.last %}border-danger{% elif forloop.counter > 3 %}border-warning{% else %}border-info{% endif %}">
+            <div class="card-body py-2 text-center">
+                <div class="text-muted small text-uppercase">{{ r.bucket }}</div>
+                <div class="fs-3 fw-bold">{{ r.count }}</div>
+                <div class="text-muted small">{{ r.pct }}%</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<h5 class="mt-4">By priority</h5>
+{% if by_priority %}
+<div class="card">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Priority</th>
+                {% for label in bucket_labels %}<th class="text-end">{{ label }}</th>{% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+        {% for code, by_bucket in by_priority %}
+            <tr>
+                <td><strong>{{ code }}</strong></td>
+                {% for label in bucket_labels %}<td class="text-end">{{ by_bucket|get_item:label }}</td>{% endfor %}
+            </tr>
+        {% endfor %}
+            <tr class="table-light">
+                <td><strong>Total</strong></td>
+                {% for label in bucket_labels %}<td class="text-end"><strong>{{ bucket_totals|get_item:label }}</strong></td>{% endfor %}
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-success small"><i class="fas fa-check-circle me-1"></i>No open tickets right now.</div>
+{% endif %}
+
+<h5 class="mt-4">Aged 7+ days</h5>
+{% if aged_tickets %}
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover small mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Ticket</th><th>Subject</th><th>Org</th>
+                    <th>Priority</th><th>Status</th><th>Assignee</th><th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for t in aged_tickets %}
+                <tr>
+                    <td><a href="{% url 'psa:ticket_detail' t.ticket_number %}">{{ t.ticket_number }}</a></td>
+                    <td>{{ t.subject|truncatechars:50 }}</td>
+                    <td>{{ t.organization.name }}</td>
+                    <td>{{ t.priority.code }}</td>
+                    <td>{{ t.status.name }}</td>
+                    <td>{{ t.assigned_to.username|default:'—' }}</td>
+                    <td>{{ t.created_at|date:'Y-m-d' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<p class="text-muted small">Nothing aged 7+ days. Queue is healthy.</p>
+{% endif %}
+
+{% endblock %}

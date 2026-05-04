@@ -5,6 +5,30 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.257] - 2026-05-04
+
+### Added — Phase 19 v1 Ticket Aging Analytics
+First slice of Phase 19's "ticket aging analytics" sub-bullet. Surfaces queue drift before SLAs slip.
+
+- **New view `/reports/ticket-aging/`** — open tickets bucketed by `created_at` age into 5 ranges: 0-24h / 24-72h / 3-7d / 7-30d / 30+d.
+- **Per-priority breakdown** — matrix table of priority code × bucket so dispatchers can see if P1s are aging or only P5s are stuck.
+- **Aged 7+ days table** — top 200 oldest open tickets with org / priority / status / assignee for triage.
+- **CSV export** at `?format=csv` — priority × bucket matrix with TOTAL row.
+- **Tenant ACL** — staff/superuser sees all; org members see only their orgs.
+- **Reports home page** gains a "Ticket Aging" tile.
+- **New `reports.templatetags.reports_extras.get_item`** filter — dictionary lookup by runtime key (used by the matrix template).
+
+### Tests
+- 5 tests in `TicketAgingReportTests`:
+  - Bucket counts for 5-bucket-spread fixture.
+  - Member-scope hides outsider org's open tickets.
+  - Terminal-status tickets excluded.
+  - Aged 7+ days table contains 21d/60d tickets, excludes 5d/2d.
+  - CSV export includes all bucket labels + TOTAL row.
+
+### Roadmap
+- Phase 19 sub-bullet "Ticket aging analytics" annotated `*(shipped v3.17.257)*`. Phase 19 is `[continuous]` — incremental shipping continues.
+
 ## [3.17.256] - 2026-05-04
 
 ### Added — Phase 20 v1 Idle-approval escalation cron
