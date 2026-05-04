@@ -1477,3 +1477,91 @@ class InvoiceAutoFlagTests(TestCase):
         inv.save()
         inv.refresh_from_db()
         self.assertFalse(inv.requires_approval)
+
+
+class CreditMemoTests(TestCase):
+    """Phase 27 v3 (v3.17.264): credit-memo workflow on Invoice."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='CreditCo', slug='credit-co')
+        self.client_org = Organization.objects.create(name='ClientCo', slug='client-co')
+        self.user = User.objects.create_user('cm-user', 'cm@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        Membership.objects.create(user=self.user, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+
+    def _make_invoice_with_lines(self):
+        from psa.models import Invoice, InvoiceLineItem
+        from datetime import date
+        from decimal import Decimal as _D
+        inv = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Source invoice', invoice_date=date.today(),
+            tax_rate=_D('0.10'),
+        )
+        InvoiceLineItem.objects.create(invoice=inv, description='Hours',
+                                       quantity=10, unit_price=_D('100.00'))
+        InvoiceLineItem.objects.create(invoice=inv, description='Travel',
+                                       quantity=1, unit_price=_D('50.00'))
+        inv.recompute_totals()
+        return inv
+
+    def test_full_credit_memo_negates_all_lines(self):
+        inv = self._make_invoice_with_lines()
+        memo = inv.create_credit_memo(user=self.user, reason='RMA refund')
+        self.assertTrue(memo.is_credit_memo)
+        self.assertEqual(memo.credits_invoice, inv)
+        self.assertTrue(memo.invoice_number.startswith('CN-'))
+        self.assertEqual(memo.line_items.count(), 2)
+        # Every line should have negative unit_price
+        for li in memo.line_items.all():
+            self.assertLess(li.unit_price, 0)
+        # Total should be negative (sum: -1050 minus credit 0 = -1050 + tax)
+        self.assertLess(memo.total, 0)
+
+    def test_partial_lump_sum_credit(self):
+        from decimal import Decimal as _D
+        inv = self._make_invoice_with_lines()
+        memo = inv.create_credit_memo(user=self.user, reason='Service credit',
+                                       amount=_D('25.00'))
+        self.assertEqual(memo.line_items.count(), 1)
+        li = memo.line_items.get()
+        self.assertEqual(li.unit_price, _D('-25.00'))
+        self.assertEqual(memo.subtotal, _D('-25.00'))
+
+    def test_cannot_credit_a_credit_memo(self):
+        inv = self._make_invoice_with_lines()
+        memo = inv.create_credit_memo(user=self.user, reason='first credit')
+        with self.assertRaises(ValueError):
+            memo.create_credit_memo(user=self.user, reason='nested')
+
+    def test_credit_memo_numbers_are_sequential(self):
+        inv = self._make_invoice_with_lines()
+        memo1 = inv.create_credit_memo(user=self.user, reason='one')
+        memo2 = inv.create_credit_memo(user=self.user, reason='two')
+        # CN-YYYY-NNNNN — second should be one greater
+        n1 = int(memo1.invoice_number.rsplit('-', 1)[-1])
+        n2 = int(memo2.invoice_number.rsplit('-', 1)[-1])
+        self.assertEqual(n2, n1 + 1)
+
+    def test_view_creates_memo_via_post(self):
+        inv = self._make_invoice_with_lines()
+        c = Client()
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+        # Enable PSA gate so @require_psa_enabled lets us through
+        ss = SystemSetting.get_settings()
+        ss.psa_enabled = True
+        ss.save()
+        with override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False):
+            r = c.post(f'/psa/invoices/{inv.pk}/credit-memo/',
+                       {'reason': 'service credit', 'amount': '40.00'})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(inv.credit_memos.count(), 1)
+        memo = inv.credit_memos.get()
+        self.assertEqual(memo.subtotal, -40)
+        self.assertTrue(memo.invoice_number.startswith('CN-'))

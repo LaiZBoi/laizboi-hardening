@@ -580,7 +580,7 @@ Planned capabilities:
 - Tax reconciliation (compare what we calculated vs. what QBO recorded)
 - Accounts receivable aging tied directly back to QBO/Xero AR
 - Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches)
-- Refund / credit-memo workflows (today only credit-charge type exists)
+- Refund / credit-memo workflows *(shipped v3.17.264 — `Invoice.is_credit_memo` + `credits_invoice` FK + `create_credit_memo()` method that copies/negates lines or creates a lump-sum credit; sequential `CN-YYYY-NNNNN` numbering; UI modal on invoice detail; POST-only view at `/psa/invoices/<pk>/credit-memo/`)*
 - Multi-entity / multi-book support for MSPs operating multiple legal entities
 - Audit trail of every accounting-system interaction *(shipped v3.17.260 — `AccountingAuditLog` writes one row per `push_invoice` / `record_payment` call across QBO + Xero providers; viewer at `/integrations/accounting/<pk>/audit-log/`. Stores truncated req/resp summaries — full payloads intentionally not stored to keep the log free of secrets/PII)*
 

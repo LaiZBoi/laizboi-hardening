@@ -30,8 +30,62 @@
                 <i class="fas fa-cloud-upload-alt"></i> Push to accounting
             </button>
         </form>
+        {% if not item.is_credit_memo %}
+        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#creditMemoModal">
+            <i class="fas fa-rotate-left"></i> Issue Credit Memo
+        </button>
+        {% endif %}
     </div>
 </div>
+
+{% if item.is_credit_memo %}
+<div class="alert alert-info">
+    <i class="fas fa-info-circle"></i> This is a <strong>credit memo</strong>{% if item.credits_invoice %} issued against
+    <a href="{% url 'psa:invoice_detail' item.credits_invoice.pk %}">{{ item.credits_invoice.invoice_number }}</a>{% endif %}.
+</div>
+{% endif %}
+
+{% if item.credit_memos.exists %}
+<div class="alert alert-warning">
+    <strong>Credit memos issued against this invoice:</strong>
+    <ul class="mb-0">
+    {% for cm in item.credit_memos.all %}
+        <li><a href="{% url 'psa:invoice_detail' cm.pk %}">{{ cm.invoice_number }}</a> — total {{ cm.total }} ({{ cm.invoice_date|date:'Y-m-d' }})</li>
+    {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if not item.is_credit_memo %}
+<div class="modal fade" id="creditMemoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'psa:invoice_credit_memo' item.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Issue Credit Memo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">A credit memo is a negative-amount invoice issued against {{ item.invoice_number }}. Leave Amount blank to fully credit all line items; enter a positive amount to issue a partial / lump-sum credit.</p>
+                    <div class="mb-3">
+                        <label class="form-label">Reason</label>
+                        <input type="text" name="reason" class="form-control" placeholder="Service-credit / billing dispute / RMA refund">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Amount (optional)</label>
+                        <input type="number" step="0.01" min="0.01" name="amount" class="form-control" placeholder="Leave blank for full credit">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-danger">Issue Credit Memo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="row">
     <div class="col-md-4">

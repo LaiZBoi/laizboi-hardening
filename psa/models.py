@@ -2016,6 +2016,17 @@ class Invoice(models.Model):
         null=True, blank=True, related_name='approved_psa_invoices',
     )
     approved_at = models.DateTimeField(null=True, blank=True)
+
+    # Phase 27 v3 (v3.17.264) — first-class credit memos. A credit memo
+    # is an invoice with negative line totals; the FK below points back
+    # at the invoice it credits (when issued against an existing one).
+    is_credit_memo = models.BooleanField(default=False,
+        help_text='True for credit memos (negative-amount invoices).')
+    credits_invoice = models.ForeignKey('self',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='credit_memos',
+        help_text='When set, this credit memo was issued against the named source invoice.')
+
     created_by = models.ForeignKey(
         django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='created_psa_invoices',
@@ -2118,6 +2129,78 @@ class Invoice(models.Model):
                 self.status = 'partial'
         self.save(update_fields=['subtotal', 'tax_amount', 'total',
                                  'amount_paid', 'status', 'updated_at'])
+
+    def create_credit_memo(self, *, user=None, reason='', amount=None):
+        """Phase 27 v3 (v3.17.264): issue a credit memo against this
+        invoice. Returns the new credit-memo Invoice.
+
+        Behavior:
+          - The new invoice is `is_credit_memo=True`, `credits_invoice=self`,
+            client_org / organization / currency / tax_rate copied from self.
+          - If ``amount`` is None: copies all non-credit lines, negating
+            unit_price so the totals come out negative.
+          - If ``amount`` is set: creates a single InvoiceLineItem with
+            unit_price = -amount (used for partial credits / lump-sum
+            adjustments).
+          - The new memo's invoice_number uses a `CN-YYYY-NNNNN` prefix
+            so credit memos sort separately from regular invoices.
+        """
+        from decimal import Decimal as _D
+        if self.is_credit_memo:
+            raise ValueError('Cannot issue a credit memo against another credit memo.')
+
+        memo = Invoice(
+            organization=self.organization,
+            client_org=self.client_org,
+            title=f'Credit Memo for {self.invoice_number}',
+            description=(reason or '')[:500],
+            status='draft',
+            invoice_date=timezone.now().date(),
+            currency=self.currency,
+            tax_rate=self.tax_rate,
+            is_credit_memo=True,
+            credits_invoice=self,
+            created_by=user,
+        )
+        # Override _next_number prefix via direct assign before save
+        memo.invoice_number = self._next_credit_memo_number()
+        memo.save()
+
+        if amount is not None:
+            InvoiceLineItem.objects.create(
+                invoice=memo,
+                description=(reason or f'Credit memo against {self.invoice_number}')[:300],
+                quantity=1,
+                unit_price=-_D(str(amount)),
+                is_taxable=False,
+                source='manual',
+            )
+        else:
+            for li in self.line_items.all():
+                InvoiceLineItem.objects.create(
+                    invoice=memo,
+                    description=f'Credit: {li.description}'[:300],
+                    quantity=li.quantity,
+                    unit_price=-li.unit_price,
+                    is_taxable=li.is_taxable,
+                    source='manual',
+                )
+        memo.recompute_totals()
+        return memo
+
+    @classmethod
+    def _next_credit_memo_number(cls):
+        year = timezone.now().year
+        prefix = f'CN-{year}-'
+        last = cls.objects.filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
+        if last and last.invoice_number:
+            try:
+                n = int(last.invoice_number.rsplit('-', 1)[-1])
+            except ValueError:
+                n = 0
+        else:
+            n = 0
+        return f'{prefix}{n + 1:05d}'
 
 
 class InvoiceLineItem(models.Model):

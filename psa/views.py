@@ -3643,6 +3643,59 @@ def invoice_request_approval(request, pk):
 @require_admin
 @require_psa_enabled
 @require_http_methods(['POST'])
+def invoice_credit_memo(request, pk):
+    """Phase 27 v3 (v3.17.264): issue a credit memo against this invoice.
+
+    POST fields:
+      - reason: optional, captured on the new memo's description
+      - amount: optional decimal; when set, creates a single-line lump-sum
+                credit. When blank, copies all source line items with
+                negated unit_price (full credit).
+
+    Forbidden against credit memos themselves (model raises ValueError).
+    """
+    from .models import Invoice
+    org = get_request_organization(request)
+    qs = Invoice.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    invoice = get_object_or_404(qs, pk=pk)
+
+    reason = (request.POST.get('reason') or '').strip()[:500]
+    amount_raw = (request.POST.get('amount') or '').strip()
+    amount = None
+    if amount_raw:
+        try:
+            from decimal import Decimal as _D
+            amount = _D(amount_raw)
+            if amount <= 0:
+                raise ValueError('Amount must be positive')
+        except Exception as e:
+            messages.error(request, f'Invalid credit amount: {e}')
+            return redirect('psa:invoice_detail', pk=invoice.pk)
+
+    try:
+        memo = invoice.create_credit_memo(user=request.user, reason=reason, amount=amount)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('psa:invoice_detail', pk=invoice.pk)
+
+    AuditLog.log(
+        user=request.user, action='create',
+        organization=org or invoice.organization,
+        object_type='psa.Invoice', object_id=memo.pk,
+        object_repr=memo.invoice_number,
+        description=f'Issued credit memo {memo.invoice_number} against {invoice.invoice_number} (total {memo.total})',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Credit memo {memo.invoice_number} created.')
+    return redirect('psa:invoice_detail', pk=memo.pk)
+
+
+@login_required
+@require_admin
+@require_psa_enabled
+@require_http_methods(['POST'])
 def invoice_push_to_accounting(request, pk):
     """Push the invoice to the configured accounting provider for this org."""
     from .models import Invoice

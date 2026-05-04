@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.264] - 2026-05-04
+
+### Added — Phase 27 v3 Credit Memo Workflow
+Closes the "Refund / credit-memo workflows" sub-bullet of Phase 27. Today only the `Charge.is_credit=True` adjustment row exists; this adds first-class credit memos as negative-amount invoices linked back to the source.
+
+- **2 new fields on `Invoice`** (migration `psa.0037`):
+  - `is_credit_memo` (Boolean) — true on the credit-memo row.
+  - `credits_invoice` (self-FK, nullable) — points at the invoice being credited.
+- **New `Invoice.create_credit_memo(*, user, reason, amount=None)`** method:
+  - Returns a new draft Invoice with `is_credit_memo=True`, `credits_invoice=self`, copied `client_org` / `organization` / `currency` / `tax_rate`, invoice_number prefix `CN-YYYY-NNNNN`.
+  - When `amount` is None: copies every line from the source with `unit_price` negated (full credit).
+  - When `amount` is set: creates a single lump-sum line at `-amount` (partial / service credit).
+  - Refuses to credit a credit memo (raises ValueError).
+- **New view + URL `/psa/invoices/<pk>/credit-memo/` (POST-only)** — admin-gated, audit-logged, redirects to the new memo. Surfaces an "Issue Credit Memo" modal on the invoice detail page (with Reason + optional Amount fields).
+- **Detail page** shows a banner on credit memos (linked back to source) and lists any credit memos issued against a regular invoice.
+- **Sequential numbering** — `CN-` series advances independently of `INV-`.
+
+### Tests
+- 5 tests in `psa.tests.test_phase3_5_features.CreditMemoTests` covering full credit (lines negated), partial lump-sum, the no-credit-on-credit guard, sequential `CN-` numbering, and the view POST flow.
+
+### Roadmap
+Phase 27 sub-bullet "Refund / credit-memo workflows" annotated `*(shipped v3.17.264)*`.
+
 ## [3.17.263] - 2026-05-04
 
 ### Added — Phase 13 v6 Asset Lifecycle Scoring
