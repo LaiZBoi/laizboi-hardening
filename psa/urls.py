@@ -113,6 +113,9 @@ urlpatterns = [
     path('timesheet/<int:year>/<int:week>/', views.my_timesheet, name='my_timesheet_iso'),
     path('timesheet-approvals/', views.timesheet_approval_queue, name='timesheet_approval_queue'),
     path('timesheet-approvals/<int:pk>/decide/', views.timesheet_decide, name='timesheet_decide'),
+    # Phase 25 v2 (v3.17.249) — bulk decide + payroll CSV export.
+    path('timesheet-approvals/bulk/', views.timesheet_bulk_decide, name='timesheet_bulk_decide'),
+    path('timesheet-approvals/payroll-export/', views.timesheet_payroll_export, name='timesheet_payroll_export'),
 
     # Procurement (Phase 4.1) — Purchase Requisitions
     path('requisitions/', views.requisition_list, name='requisition_list'),

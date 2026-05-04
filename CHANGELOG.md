@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.249] - 2026-05-04
+
+### Added — Phase 25 v2 Lock approved + Bulk approve + Payroll CSV
+Three sub-bullets close out: lock-after-approval prevents tampering, bulk-decide is a one-form action, payroll CSV export hands off to QuickBooks Time / Gusto / etc.
+
+- **Approved entries now lock against further edits.** `TicketTimeEntry.save()` checks the current row's `submission.status`; if `approved`, the save is silently a no-op. Admins can override with `entry.save(_force_unlock=True)` for legitimate corrections.
+- **Bulk approve / reject view at `POST /psa/timesheet-approvals/bulk/`** — accepts a list of `submission_ids` plus `decision=approve|reject` and an optional `notes` field. Iterates pending submissions and calls the existing `approve()` / `reject()` model methods.
+- **Approval queue page** gains a sticky bulk-action bar at the top (Select all + notes + Approve selected / Reject selected). Per-submission detail (entry breakdown) collapses cleanly under each row. Per-row Approve/Reject buttons hidden by default, toggled visible by a small JS link for one-at-a-time decisions.
+- **Payroll CSV export at `GET /psa/timesheet-approvals/payroll-export/?start=YYYY-MM-DD&end=YYYY-MM-DD`** — returns one row per (tech, week) with Total minutes / Billable minutes / Approved at / Approved by columns. Defaults to last 30 days when range params are missing.
+
+### Tests
+- 4 new tests in `TimesheetApprovalTests`:
+  - Approved entry's save is silently a no-op (notes field stays at original).
+  - `_force_unlock=True` lets the admin push an edit through.
+  - Bulk decide approves all selected pending submissions.
+  - Payroll CSV export contains approved rows + correct headers; non-staff blocked.
+
+### Roadmap — Phase 25 marked complete
+Phase 25 — Mature Timesheet Approval Workflows flipped to `[complete]`. Sub-bullets shipped: weekly timesheet model, submit→review→approve pipeline, lock approved entries, bulk approve, payroll CSV export, audit trail (decided_by/at/notes per submission). Multi-tier approval and per-entry rejection with note remain on the planned list as future v3 work.
+
 ## [3.17.248] - 2026-05-04
 
 ### Added — Phase 36 v3 Included-vs-billable labor reconciliation

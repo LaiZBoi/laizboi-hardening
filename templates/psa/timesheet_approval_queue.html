@@ -8,57 +8,97 @@
     </ol>
 </nav>
 
-<h2 class="mb-3"><i class="fas fa-clipboard-check me-2"></i>Timesheet Approvals</h2>
-<p class="text-muted small">Pending weekly timesheet submissions from techs. Approving rolls the entries forward into invoicing.</p>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>Timesheet Approvals</h2>
+    <a href="{% url 'psa:timesheet_payroll_export' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Payroll CSV (last 30 days)
+    </a>
+</div>
+<p class="text-muted small">Pending weekly timesheet submissions from techs. Approving rolls the entries forward into invoicing and locks them against further edits.</p>
 
 <h5 class="mt-4">Pending</h5>
 {% if pending %}
-{% for s in pending %}
-<div class="card mb-2 border-warning">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-            <div>
-                <strong>{{ s.user.username }}</strong>
-                <span class="text-muted small ms-1">— week of {{ s.period_start }} ({{ s.entries.count }} entries, {{ s.total_minutes }} min, {{ s.total_billable_minutes }} billable)</span>
-                <div class="text-muted small">Submitted {{ s.submitted_at|date:'Y-m-d H:i' }}</div>
-            </div>
+<form method="post" action="{% url 'psa:timesheet_bulk_decide' %}">
+    {% csrf_token %}
+    <div class="card mb-2 bg-light">
+        <div class="card-body py-2 d-flex gap-2 align-items-center flex-wrap">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-select-all">Select all</button>
+            <input type="text" name="notes" class="form-control form-control-sm flex-grow-1"
+                   placeholder="Optional decision notes for all selected..." style="max-width: 320px;">
+            <button type="submit" name="decision" value="approve" class="btn btn-sm btn-success"
+                    onclick="return confirm('Approve all selected timesheets?');">
+                <i class="fas fa-check me-1"></i>Approve selected
+            </button>
+            <button type="submit" name="decision" value="reject" class="btn btn-sm btn-outline-danger"
+                    onclick="return confirm('Reject all selected timesheets?');">
+                <i class="fas fa-times me-1"></i>Reject selected
+            </button>
         </div>
-        {% if s.submitter_notes %}
-        <div class="mt-2 p-2 bg-light rounded small" style="white-space: pre-wrap;">{{ s.submitter_notes }}</div>
-        {% endif %}
-
-        <details class="mt-2">
-            <summary class="text-muted small">View {{ s.entries.count }} entries</summary>
-            <table class="table table-sm small mt-2 mb-0">
-                <thead><tr><th>Started</th><th>Ticket</th><th>Notes</th><th class="text-end">Min</th><th>Billable</th></tr></thead>
-                <tbody>
-                {% for e in s.entries.all %}
-                    <tr>
-                        <td>{{ e.started_at|date:'Y-m-d H:i' }}</td>
-                        <td><a href="{% url 'psa:ticket_detail' e.ticket.ticket_number %}">{{ e.ticket.ticket_number }}</a></td>
-                        <td class="text-muted">{{ e.notes|truncatechars:50 }}</td>
-                        <td class="text-end">{{ e.duration_minutes }}</td>
-                        <td>{% if e.is_billable %}Yes{% else %}—{% endif %}</td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </details>
-
-        <form method="post" action="{% url 'psa:timesheet_decide' s.pk %}" class="mt-3">
-            {% csrf_token %}
-            <textarea name="notes" rows="2" class="form-control form-control-sm mb-2"
-                      placeholder="Optional decision notes..."></textarea>
-            <button type="submit" name="decision" value="approve" class="btn btn-sm btn-success me-1">
-                <i class="fas fa-check me-1"></i>Approve
-            </button>
-            <button type="submit" name="decision" value="reject" class="btn btn-sm btn-outline-danger">
-                <i class="fas fa-times me-1"></i>Reject
-            </button>
-        </form>
     </div>
+    {% for s in pending %}
+    <div class="card mb-2 border-warning">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                <div>
+                    <input type="checkbox" name="submission_ids" value="{{ s.pk }}" class="form-check-input me-1 js-bulk">
+                    <strong>{{ s.user.username }}</strong>
+                    <span class="text-muted small ms-1">— week of {{ s.period_start }} ({{ s.entries.count }} entries, {{ s.total_minutes }} min, {{ s.total_billable_minutes }} billable)</span>
+                    <div class="text-muted small ms-4">Submitted {{ s.submitted_at|date:'Y-m-d H:i' }}</div>
+                </div>
+            </div>
+            {% if s.submitter_notes %}
+            <div class="mt-2 p-2 bg-light rounded small" style="white-space: pre-wrap;">{{ s.submitter_notes }}</div>
+            {% endif %}
+            <details class="mt-2">
+                <summary class="text-muted small">View {{ s.entries.count }} entries</summary>
+                <table class="table table-sm small mt-2 mb-0">
+                    <thead><tr><th>Started</th><th>Ticket</th><th>Notes</th><th class="text-end">Min</th><th>Billable</th></tr></thead>
+                    <tbody>
+                    {% for e in s.entries.all %}
+                        <tr>
+                            <td>{{ e.started_at|date:'Y-m-d H:i' }}</td>
+                            <td><a href="{% url 'psa:ticket_detail' e.ticket.ticket_number %}">{{ e.ticket.ticket_number }}</a></td>
+                            <td class="text-muted">{{ e.notes|truncatechars:50 }}</td>
+                            <td class="text-end">{{ e.duration_minutes }}</td>
+                            <td>{% if e.is_billable %}Yes{% else %}—{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </details>
+        </div>
+    </div>
+    {% endfor %}
+</form>
+<script>
+(function() {
+    var selAll = document.getElementById('bulk-select-all');
+    var boxes = document.querySelectorAll('.js-bulk');
+    if (!selAll) return;
+    selAll.addEventListener('click', function() {
+        var any = Array.from(boxes).some(function(b) { return !b.checked; });
+        boxes.forEach(function(b) { b.checked = any; });
+    });
+})();
+</script>
+
+<p class="text-muted small mt-3">
+    Need to decide one at a time?
+    <a href="#" onclick="document.querySelectorAll('.js-single-decide').forEach(function(el){el.classList.toggle('d-none')});return false;">
+        Toggle per-row buttons
+    </a>
+</p>
+<div class="d-none">
+    {% for s in pending %}
+    <form method="post" action="{% url 'psa:timesheet_decide' s.pk %}" class="js-single-decide d-none mb-2">
+        {% csrf_token %}
+        <strong>{{ s.user.username }} — {{ s.period_start }}</strong>
+        <textarea name="notes" rows="1" class="form-control form-control-sm my-1" placeholder="Notes..."></textarea>
+        <button type="submit" name="decision" value="approve" class="btn btn-sm btn-success">Approve this one</button>
+        <button type="submit" name="decision" value="reject" class="btn btn-sm btn-outline-danger">Reject this one</button>
+    </form>
+    {% endfor %}
 </div>
-{% endfor %}
 {% else %}
 <div class="alert alert-success small">
     <i class="fas fa-check-circle me-1"></i>Nothing pending. All techs are caught up.

@@ -7203,3 +7203,99 @@ def timesheet_decide(request, pk):
     else:
         messages.error(request, 'Pick approve or reject.')
     return redirect('psa:timesheet_approval_queue')
+
+
+@login_required
+@require_psa_enabled
+@require_http_methods(['POST'])
+def timesheet_bulk_decide(request):
+    """
+    Phase 25 v2 (v3.17.249): bulk approve / reject TimesheetSubmissions
+    by pk. POST `submission_ids` (multi-value) and `decision` (approve | reject).
+    Staff/superuser only.
+    """
+    from .models import TimesheetSubmission
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not (request.user.is_superuser or is_staff):
+        messages.error(request, 'Only staff can decide timesheets.')
+        return redirect('core:dashboard')
+    decision = request.POST.get('decision') or ''
+    if decision not in ('approve', 'reject'):
+        messages.error(request, 'Pick approve or reject.')
+        return redirect('psa:timesheet_approval_queue')
+    ids = request.POST.getlist('submission_ids')
+    qs = TimesheetSubmission.objects.filter(pk__in=ids, status='pending')
+    notes = (request.POST.get('notes') or '').strip()[:5000]
+    n = 0
+    for sub in qs:
+        if decision == 'approve':
+            sub.approve(user=request.user, notes=notes)
+        else:
+            sub.reject(user=request.user, notes=notes)
+        n += 1
+    if n:
+        verb = 'approved' if decision == 'approve' else 'rejected'
+        messages.success(request, f'{verb.capitalize()} {n} timesheet{"s" if n != 1 else ""}.')
+    else:
+        messages.info(request, 'No pending submissions matched.')
+    return redirect('psa:timesheet_approval_queue')
+
+
+@login_required
+@require_psa_enabled
+def timesheet_payroll_export(request):
+    """
+    Phase 25 v2 (v3.17.249): payroll CSV export. Returns approved
+    TimesheetSubmission rows in a date range, one row per (tech, week)
+    with total minutes + billable minutes. Tools like QuickBooks Time /
+    Gusto can map this directly.
+
+    Query params:
+      ?start=YYYY-MM-DD&end=YYYY-MM-DD
+        — period_start within the inclusive range. Defaults to last 30
+          days.
+    """
+    from .models import TimesheetSubmission
+    import csv as _csv
+    from datetime import date as _date, timedelta as _td
+    from django.http import HttpResponse
+    is_staff = request.is_staff_user if hasattr(request, 'is_staff_user') else False
+    if not (request.user.is_superuser or is_staff):
+        messages.error(request, 'Only staff can export payroll.')
+        return redirect('core:dashboard')
+
+    today = _date.today()
+    try:
+        start = _date.fromisoformat(request.GET.get('start') or
+                                     (today - _td(days=30)).isoformat())
+        end = _date.fromisoformat(request.GET.get('end') or today.isoformat())
+    except ValueError:
+        messages.error(request, 'Invalid date range.')
+        return redirect('psa:timesheet_approval_queue')
+
+    qs = (TimesheetSubmission.objects
+          .filter(status='approved',
+                  period_start__gte=start, period_start__lte=end)
+          .select_related('user', 'decided_by').order_by('user__username', 'period_start'))
+
+    resp = HttpResponse(content_type='text/csv')
+    resp['Content-Disposition'] = (
+        f'attachment; filename="payroll-{start.isoformat()}-to-{end.isoformat()}.csv"'
+    )
+    w = _csv.writer(resp)
+    w.writerow([
+        'Username', 'Email', 'Period start', 'Period end',
+        'Total minutes', 'Billable minutes', 'Approved at', 'Approved by',
+    ])
+    for sub in qs:
+        w.writerow([
+            sub.user.username,
+            sub.user.email or '',
+            sub.period_start.isoformat(),
+            sub.period_end.isoformat(),
+            sub.total_minutes,
+            sub.total_billable_minutes,
+            sub.decided_at.isoformat() if sub.decided_at else '',
+            sub.decided_by.username if sub.decided_by_id else '',
+        ])
+    return resp

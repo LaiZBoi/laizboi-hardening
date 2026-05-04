@@ -1181,3 +1181,114 @@ class TimesheetApprovalTests(TestCase):
         self.assertEqual(r.status_code, 302)  # redirect to dashboard
         sub.refresh_from_db()
         self.assertEqual(sub.status, 'pending')
+
+    # --- Phase 25 v2 (v3.17.249) ---------------------------------------
+
+    def test_approved_entry_locked_against_edit(self):
+        # v3.17.249: TicketTimeEntry.save() must be a no-op when the entry
+        # is attached to an APPROVED submission.
+        from psa.models import TimesheetSubmission, TicketTimeEntry
+        c_tech = Client()
+        self._login(c_tech, self.tech)
+        year, week = self._iso()
+        c_tech.post(f'/psa/timesheet/{year}/{week}/', data={})
+        sub = TimesheetSubmission.objects.get(user=self.tech)
+        c_staff = Client()
+        self._login(c_staff, self.staff)
+        c_staff.post(f'/psa/timesheet-approvals/{sub.pk}/decide/',
+                     data={'decision': 'approve'})
+
+        entry = TicketTimeEntry.objects.filter(submission=sub).first()
+        original = entry.notes
+        entry.notes = 'tampered'
+        entry.save()
+        # Re-read; expect untouched.
+        entry.refresh_from_db()
+        self.assertEqual(entry.notes, original)
+
+    def test_force_unlock_allows_admin_override(self):
+        # _force_unlock=True must let an admin push an edit through.
+        from psa.models import TimesheetSubmission, TicketTimeEntry
+        c_tech = Client()
+        self._login(c_tech, self.tech)
+        year, week = self._iso()
+        c_tech.post(f'/psa/timesheet/{year}/{week}/', data={})
+        sub = TimesheetSubmission.objects.get(user=self.tech)
+        c_staff = Client()
+        self._login(c_staff, self.staff)
+        c_staff.post(f'/psa/timesheet-approvals/{sub.pk}/decide/',
+                     data={'decision': 'approve'})
+
+        entry = TicketTimeEntry.objects.filter(submission=sub).first()
+        entry.notes = 'admin override'
+        entry.save(_force_unlock=True)
+        entry.refresh_from_db()
+        self.assertEqual(entry.notes, 'admin override')
+
+    def test_bulk_decide_approves_selected(self):
+        from psa.models import TimesheetSubmission, Ticket, TicketTimeEntry
+        from datetime import datetime, timedelta as _td
+        # Create a second tech + their submission.
+        tech2 = User.objects.create_user('tech2', password='pw', email='t2@x.com')
+        Membership.objects.update_or_create(
+            user=tech2, organization=self.org,
+            defaults={'role': Role.OWNER, 'is_active': True},
+        )
+        from psa.models import Queue, TicketPriority, TicketStatus, TicketType
+        ticket = Ticket.objects.create(
+            organization=self.org, subject='Y',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first(),
+        )
+        started = self.monday + _td(days=1)
+        TicketTimeEntry.objects.create(
+            ticket=ticket, user=tech2,
+            started_at=timezone.make_aware(started),
+            ended_at=timezone.make_aware(started + _td(minutes=30)),
+            duration_minutes=30,
+        )
+        c_t1 = Client(); self._login(c_t1, self.tech)
+        c_t2 = Client(); self._login(c_t2, tech2)
+        year, week = self._iso()
+        c_t1.post(f'/psa/timesheet/{year}/{week}/', data={})
+        c_t2.post(f'/psa/timesheet/{year}/{week}/', data={})
+        ids = list(TimesheetSubmission.objects.values_list('pk', flat=True))
+        self.assertEqual(len(ids), 2)
+
+        c_staff = Client()
+        self._login(c_staff, self.staff)
+        r = c_staff.post('/psa/timesheet-approvals/bulk/', data={
+            'submission_ids': [str(i) for i in ids],
+            'decision': 'approve',
+            'notes': 'batch ok',
+        })
+        self.assertEqual(r.status_code, 302)
+        for s in TimesheetSubmission.objects.all():
+            self.assertEqual(s.status, 'approved')
+
+    def test_payroll_csv_export_contains_approved(self):
+        from psa.models import TimesheetSubmission
+        c_tech = Client()
+        self._login(c_tech, self.tech)
+        year, week = self._iso()
+        c_tech.post(f'/psa/timesheet/{year}/{week}/', data={})
+        sub = TimesheetSubmission.objects.get(user=self.tech)
+        c_staff = Client()
+        self._login(c_staff, self.staff)
+        c_staff.post(f'/psa/timesheet-approvals/{sub.pk}/decide/',
+                     data={'decision': 'approve'})
+        # Pull CSV with a wide window to be sure we capture it.
+        r = c_staff.get('/psa/timesheet-approvals/payroll-export/?start=2026-01-01&end=2030-01-01')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('time-tech', body)  # username column
+        self.assertIn('Total minutes', body.split('\n')[0])
+
+    def test_payroll_csv_blocked_for_non_staff(self):
+        c_tech = Client()
+        self._login(c_tech, self.tech)
+        r = c_tech.get('/psa/timesheet-approvals/payroll-export/')
+        self.assertEqual(r.status_code, 302)

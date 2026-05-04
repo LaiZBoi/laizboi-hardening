@@ -617,10 +617,26 @@ class TicketTimeEntry(models.Model):
         was_running = False
         prior_duration = 0
         if not is_new:
-            prior = TicketTimeEntry.objects.filter(pk=self.pk).only('duration_minutes', 'ended_at').first()
+            prior = TicketTimeEntry.objects.filter(pk=self.pk).only(
+                'duration_minutes', 'ended_at', 'submission_id',
+            ).first()
             if prior:
                 was_running = prior.ended_at is None
                 prior_duration = prior.duration_minutes or 0
+                # Phase 25 v2 (v3.17.249): lock entries attached to an
+                # approved TimesheetSubmission. Caller can pass
+                # `_force_unlock=True` for admin overrides; otherwise the
+                # save is silently a no-op via early return.
+                if (prior.submission_id
+                        and not kwargs.pop('_force_unlock', False)):
+                    try:
+                        sub = TimesheetSubmission.objects.only('status').get(
+                            pk=prior.submission_id,
+                        )
+                        if sub.status == 'approved':
+                            return
+                    except Exception:
+                        pass
 
         if self.ended_at and self.started_at and not self.duration_minutes:
             delta = self.ended_at - self.started_at
