@@ -990,6 +990,20 @@ class PSAApproval(models.Model):
     # a SOW, approval to spend over an MSA cap, etc.
     is_client_approval = models.BooleanField(default=False)
 
+    # Phase 20 v1 (v3.17.256): escalation-on-idle cron.
+    escalation_threshold_hours = models.PositiveIntegerField(
+        default=48,
+        help_text='Approvals still pending after this many hours get '
+                  'flagged in the daily escalation digest. 0 = never '
+                  'escalate.',
+    )
+    escalated_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the escalation digest mentioned this approval. '
+                  'Set by `psa_escalate_idle_approvals` so an approval '
+                  'isn\'t escalated repeatedly.',
+    )
+
     class Meta:
         db_table = 'psa_approvals'
         ordering = ['-requested_at']

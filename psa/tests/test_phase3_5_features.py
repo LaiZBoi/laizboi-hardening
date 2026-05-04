@@ -1292,3 +1292,113 @@ class TimesheetApprovalTests(TestCase):
         self._login(c_tech, self.tech)
         r = c_tech.get('/psa/timesheet-approvals/payroll-export/')
         self.assertEqual(r.status_code, 302)
+
+
+# ---------------------------------------------------------------------------
+# Phase 20 v1 — escalate idle PSAApprovals (v3.17.256)
+# ---------------------------------------------------------------------------
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class PSAApprovalEscalationTests(TestCase):
+    """v3.17.256 — Phase 20 v1: idle-approval escalation cron."""
+
+    def setUp(self):
+        from accounts.models import Membership, Role
+        from datetime import timedelta as _td
+        _setup_seed()
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        self.org = Organization.objects.create(name='EscalCo', slug='escal-co')
+        self.user = User.objects.create_user('escal-user', 'eu@x.com', 'pw')
+        Membership.objects.create(user=self.user, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+        self.admin = User.objects.create_user('escal-admin', 'admin@x.com', 'pw',
+                                                is_staff=True, is_superuser=True)
+        from psa.models import PSAApproval
+        # Idle (60h old, 48h threshold) — should escalate
+        idle = PSAApproval.objects.create(
+            organization=self.org, kind='time',
+            object_type='psa.TicketTimeEntry', object_id=1,
+            requested_by=self.user, escalation_threshold_hours=48,
+        )
+        PSAApproval.objects.filter(pk=idle.pk).update(
+            requested_at=timezone.now() - _td(hours=60),
+        )
+        self.idle = idle
+        # Fresh (1h old, 48h threshold) — should NOT
+        self.fresh = PSAApproval.objects.create(
+            organization=self.org, kind='time',
+            object_type='psa.TicketTimeEntry', object_id=2,
+            requested_by=self.user, escalation_threshold_hours=48,
+        )
+        # Threshold=0 (never escalate) but old
+        decay = PSAApproval.objects.create(
+            organization=self.org, kind='time',
+            object_type='psa.TicketTimeEntry', object_id=3,
+            requested_by=self.user, escalation_threshold_hours=0,
+        )
+        PSAApproval.objects.filter(pk=decay.pk).update(
+            requested_at=timezone.now() - _td(hours=200),
+        )
+        self.never = decay
+        # Already escalated old approval — should NOT re-escalate
+        already = PSAApproval.objects.create(
+            organization=self.org, kind='time',
+            object_type='psa.TicketTimeEntry', object_id=4,
+            requested_by=self.user, escalation_threshold_hours=48,
+        )
+        PSAApproval.objects.filter(pk=already.pk).update(
+            requested_at=timezone.now() - _td(hours=80),
+            escalated_at=timezone.now() - _td(hours=20),
+        )
+        self.already = already
+
+    def test_command_emails_admins_about_idle_approvals(self):
+        from django.core import mail
+        from django.core.management import call_command
+        from psa.models import PSAApproval
+        mail.outbox = []
+        call_command('psa_escalate_idle_approvals', verbosity=0)
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertEqual(msg.to, ['admin@x.com'])
+        # Idle one referenced by pk
+        self.assertIn(f'#{self.idle.pk}', msg.body)
+        # Fresh / never / already-escalated absent
+        self.assertNotIn(f'#{self.fresh.pk}', msg.body)
+        self.assertNotIn(f'#{self.never.pk}', msg.body)
+        self.assertNotIn(f'#{self.already.pk}', msg.body)
+        # escalated_at stamped
+        self.idle.refresh_from_db()
+        self.assertIsNotNone(self.idle.escalated_at)
+
+    def test_command_dedupe_runs_no_op_after_first(self):
+        from django.core import mail
+        from django.core.management import call_command
+        mail.outbox = []
+        call_command('psa_escalate_idle_approvals', verbosity=0)
+        first_count = len(mail.outbox)
+        # Re-fire — already-escalated row stays out, no other idle rows.
+        call_command('psa_escalate_idle_approvals', verbosity=0)
+        self.assertEqual(len(mail.outbox), first_count)  # no new email
+
+    def test_dry_run_does_not_send_or_stamp(self):
+        from django.core import mail
+        from django.core.management import call_command
+        mail.outbox = []
+        call_command('psa_escalate_idle_approvals', '--dry-run', verbosity=0)
+        self.assertEqual(len(mail.outbox), 0)
+        self.idle.refresh_from_db()
+        self.assertIsNone(self.idle.escalated_at)
+
+    def test_no_admins_no_send(self):
+        # Strip the admin's email, command bails out cleanly.
+        from django.core import mail
+        from django.core.management import call_command
+        from django.contrib.auth.models import User as _U
+        _U.objects.filter(is_superuser=True).update(email='')
+        mail.outbox = []
+        call_command('psa_escalate_idle_approvals', verbosity=0)
+        self.assertEqual(len(mail.outbox), 0)

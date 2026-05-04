@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.256] - 2026-05-04
+
+### Added — Phase 20 v1 Idle-approval escalation cron
+First slice of Phase 20 (Approval & Change Management Workflows). Approvals that sit pending past their threshold now surface as a daily digest to superusers — no more "the request died in the queue" surprises.
+
+- **2 new fields on `psa.PSAApproval`** (migration `psa.0036`):
+  - `escalation_threshold_hours` (default 48) — approvals still pending after this many hours flag for escalation. 0 = never.
+  - `escalated_at` — set by the cron after a digest mentions this approval. Prevents the same approval from re-escalating on every run.
+- **New management command `psa_escalate_idle_approvals`** — finds pending PSAApproval rows where elapsed time ≥ threshold AND `escalated_at IS NULL`, sends one digest email to all active superusers with email on file, then stamps `escalated_at`. Supports `--dry-run`.
+- **Per-row threshold** (not a global setting) so high-stakes approvals can be tightened to 4 hours while routine ones stay at 48.
+
+### Tests
+- 4 tests in `PSAApprovalEscalationTests`:
+  - Idle approvals (60h old, 48h threshold) trigger one email; fresh / threshold=0 / already-escalated approvals are excluded.
+  - `escalated_at` stamped after send.
+  - Re-running the cron is a no-op (dedupe).
+  - Dry-run doesn't send or stamp.
+  - When no superusers have email on file, command bails cleanly.
+
+### Roadmap
+- Phase 20 sub-bullet "Escalation approvals (auto-escalate idle approvals)" annotated `*(shipped v3.17.256)*`. Phase 20 marked `[in progress]` (multi-stage approvals, threshold-based routing, conditional approvals still planned).
+
 ## [3.17.255] - 2026-05-04
 
 ### Added — Phase 27 v1 Accounting Reconciliation report

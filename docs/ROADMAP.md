@@ -425,7 +425,7 @@ Planned capabilities:
 
 **Goal:** Provide MSP operational visibility and business insight.
 
-## Phase 20 — Approval & Change Management Workflows **(M)**
+## Phase 20 — Approval & Change Management Workflows **(M)** [in progress]
 
 **Roadmap item:** Approval Routing & Change Management. Extends Phase 6.1 (CAB) + the existing approvals queue.
 
@@ -434,7 +434,7 @@ Planned capabilities:
 - Change advisory workflows *(shipped — Phase 6.1 CAB)*
 - Quote approval routing (gate quotes above threshold)
 - Financial approval chains (POs / invoices over $X)
-- Escalation approvals (auto-escalate idle approvals)
+- Escalation approvals (auto-escalate idle approvals) *(shipped v3.17.256 — `psa_escalate_idle_approvals` management command + per-row `escalation_threshold_hours` + `escalated_at` dedupe; emails superusers a single digest)*
 - Conditional approvals (rules: "if value > $5k, route to owner")
 - Approval audit trails *(partial — single-approver audit shipped)*
 - Workflow enforcement
