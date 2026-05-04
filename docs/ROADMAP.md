@@ -430,7 +430,7 @@ Planned capabilities:
 **Roadmap item:** Approval Routing & Change Management. Extends Phase 6.1 (CAB) + the existing approvals queue.
 
 Planned capabilities:
-- Multi-stage approvals (sequential gates: tech lead → manager → CAB)
+- Multi-stage approvals (sequential gates: tech lead → manager → CAB) *(shipped v3.17.265 — `PSAApproval.parent_approval` self-FK + `stage_index` + `blocked` status; `PSAApproval.create_chain()` factory; approve cascades to next blocked stage; deny cancels downstream)*
 - Change advisory workflows *(shipped — Phase 6.1 CAB)*
 - Quote approval routing (gate quotes above threshold)
 - Financial approval chains (POs / invoices over $X) *(shipped v3.17.259 — `SystemSetting.invoice_approval_threshold_total` + `invoice_approval_overage_pct` auto-flag invoices via post_save signal; uses existing `Invoice.flag_for_approval` machinery)*

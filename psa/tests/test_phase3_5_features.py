@@ -1565,3 +1565,105 @@ class CreditMemoTests(TestCase):
         memo = inv.credit_memos.get()
         self.assertEqual(memo.subtotal, -40)
         self.assertTrue(memo.invoice_number.startswith('CN-'))
+
+
+class MultiStageApprovalTests(TestCase):
+    """Phase 20 v3 (v3.17.265): chained PSAApproval stages."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='ChainCo', slug='chain-co')
+        self.user = User.objects.create_user('chain-user', 'cu@x.com', 'pw')
+        self.user2 = User.objects.create_user('chain-user-2', 'cu2@x.com', 'pw')
+
+    def _stages(self, **base):
+        return [
+            {'request_comment': 'Stage 1 — manager'},
+            {'request_comment': 'Stage 2 — director'},
+            {'request_comment': 'Stage 3 — CFO'},
+        ]
+
+    def test_create_chain_marks_first_pending_rest_blocked(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=42,
+            stages=self._stages(),
+        )
+        self.assertEqual(len(chain), 3)
+        self.assertEqual(chain[0].status, 'pending')
+        self.assertEqual(chain[1].status, 'blocked')
+        self.assertEqual(chain[2].status, 'blocked')
+        # parent links
+        self.assertIsNone(chain[0].parent_approval)
+        self.assertEqual(chain[1].parent_approval, chain[0])
+        self.assertEqual(chain[2].parent_approval, chain[1])
+        # stage_index
+        self.assertEqual([s.stage_index for s in chain], [1, 2, 3])
+
+    def test_approving_first_unblocks_second(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=42,
+            stages=self._stages(),
+        )
+        chain[0].decide(user=self.user, approved=True, comment='ok')
+        chain[1].refresh_from_db()
+        chain[2].refresh_from_db()
+        self.assertEqual(chain[1].status, 'pending')
+        # Stage 3 still blocked — only the immediate next stage moves.
+        self.assertEqual(chain[2].status, 'blocked')
+
+    def test_approving_each_stage_walks_to_completion(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=42,
+            stages=self._stages(),
+        )
+        chain[0].decide(user=self.user, approved=True)
+        chain[1].refresh_from_db()
+        chain[1].decide(user=self.user, approved=True)
+        chain[2].refresh_from_db()
+        chain[2].decide(user=self.user, approved=True)
+        for stage in chain:
+            stage.refresh_from_db()
+        self.assertEqual([s.status for s in chain], ['approved', 'approved', 'approved'])
+
+    def test_denying_a_stage_cancels_downstream(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=42,
+            stages=self._stages(),
+        )
+        chain[0].decide(user=self.user, approved=False, comment='nope')
+        chain[1].refresh_from_db()
+        chain[2].refresh_from_db()
+        self.assertEqual(chain[0].status, 'denied')
+        self.assertEqual(chain[1].status, 'cancelled')
+        self.assertEqual(chain[2].status, 'cancelled')
+        self.assertIn('prior stage', chain[1].decision_comment)
+
+    def test_blocked_stage_cannot_be_decided_directly(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=42,
+            stages=self._stages(),
+        )
+        with self.assertRaises(ValueError):
+            chain[2].decide(user=self.user, approved=True)
+
+    def test_single_stage_chain_works_like_solo_approval(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='change',
+            object_type='psa.Quote', object_id=99,
+            stages=[{'request_comment': 'just the one'}],
+        )
+        self.assertEqual(len(chain), 1)
+        self.assertEqual(chain[0].status, 'pending')
+        chain[0].decide(user=self.user, approved=True)
+        self.assertEqual(chain[0].status, 'approved')

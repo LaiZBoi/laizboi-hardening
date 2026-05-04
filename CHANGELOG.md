@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.265] - 2026-05-04
+
+### Added — Phase 20 v3 Multi-Stage Approval Chains
+Closes the "Multi-stage approvals (manager → director → CFO)" sub-bullet of Phase 20. `PSAApproval` now supports parent/child stage chains so a single object (quote, change, invoice, …) can be routed through several approvers in sequence.
+
+- **2 new fields on `PSAApproval`** (migration `psa.0038`):
+  - `parent_approval` (self-FK, cascade) — the prior stage; `next_stages` is the reverse accessor.
+  - `stage_index` (PositiveSmallInt, default 0) — 1-indexed within the chain; 0 for stand-alone approvals (back-compat).
+- **New `blocked` status** — added to `STATUS_CHOICES` for stages waiting on a prior approval.
+- **New `PSAApproval.create_chain(*, organization, kind, …, stages=[…])` factory** — creates the whole chain with `parent_approval` links, marks stage 1 `pending` and the rest `blocked`.
+- **`decide()` cascade**:
+  - Approving a stage auto-promotes its lowest-stage_index `blocked` child to `pending`.
+  - Denying a stage cancels every downstream `blocked` descendant (with an auto-comment so it's clear why), so they don't sit in queues forever.
+  - Calling `decide()` on a `blocked` stage raises ValueError.
+- **Solo approvals still work unchanged** — `parent_approval=None` + `stage_index=0` is the legacy shape; existing call sites are unaffected.
+
+### Tests
+- 6 tests in `psa.tests.test_phase3_5_features.MultiStageApprovalTests` covering chain creation, sequential unblocking, full walk to completion, denial cascade, the blocked-decision guard, and the single-stage case.
+
+### Roadmap
+Phase 20 sub-bullet "Multi-stage approvals (manager → director → CFO)" annotated `*(shipped v3.17.265)*`.
+
 ## [3.17.264] - 2026-05-04
 
 ### Added — Phase 27 v3 Credit Memo Workflow

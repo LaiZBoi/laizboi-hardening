@@ -951,6 +951,9 @@ class PSAApproval(models.Model):
         ('approved', 'Approved'),
         ('denied', 'Denied'),
         ('cancelled', 'Cancelled'),
+        # Phase 20 v3 (v3.17.265): chained approvals — a blocked stage is
+        # waiting for an earlier stage in the chain to be approved.
+        ('blocked', 'Blocked (waiting on prior stage)'),
     ]
 
     organization = models.ForeignKey(
@@ -1004,6 +1007,19 @@ class PSAApproval(models.Model):
                   'isn\'t escalated repeatedly.',
     )
 
+    # Phase 20 v3 (v3.17.265): multi-stage / chained approval support.
+    parent_approval = models.ForeignKey(
+        'self', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='next_stages',
+        help_text='When set, this approval is a stage in a chain — it '
+                  'cannot leave `blocked` until the parent is approved.',
+    )
+    stage_index = models.PositiveSmallIntegerField(
+        default=0,
+        help_text='0 for stand-alone approvals; 1+ for chain stages '
+                  '(stage 1 starts as "pending", later stages start "blocked").',
+    )
+
     class Meta:
         db_table = 'psa_approvals'
         ordering = ['-requested_at']
@@ -1017,11 +1033,69 @@ class PSAApproval(models.Model):
         return f'{self.get_kind_display()} #{self.pk} — {self.get_status_display()}'
 
     def decide(self, *, user, approved: bool, comment: str = ''):
+        if self.status == 'blocked':
+            raise ValueError('This approval is waiting on an earlier stage; '
+                             'approve the prior stage first.')
         self.status = 'approved' if approved else 'denied'
         self.decided_by = user
         self.decided_at = timezone.now()
         self.decision_comment = comment[:5000]
         self.save(update_fields=['status', 'decided_by', 'decided_at', 'decision_comment'])
+
+        # Phase 20 v3: cascade through the chain.
+        if approved:
+            # Unblock the next blocked stage in this chain (lowest
+            # stage_index among children of THIS row).
+            nxt = (self.next_stages.filter(status='blocked')
+                   .order_by('stage_index').first())
+            if nxt is not None:
+                nxt.status = 'pending'
+                nxt.save(update_fields=['status'])
+        else:
+            # Denial cancels all downstream blocked stages so they
+            # don't sit in the queue forever.
+            self._cancel_downstream_blocked()
+
+    def _cancel_downstream_blocked(self):
+        for child in self.next_stages.filter(status='blocked'):
+            child.status = 'cancelled'
+            child.decision_comment = (
+                f'Auto-cancelled — prior stage #{self.pk} was denied'
+            )[:5000]
+            child.save(update_fields=['status', 'decision_comment'])
+            child._cancel_downstream_blocked()
+
+    @classmethod
+    def create_chain(cls, *, organization, kind, object_type, object_id,
+                     object_repr='', requested_by=None, stages):
+        """Phase 20 v3: factory that creates a multi-stage approval chain.
+
+        ``stages`` is an ordered iterable of dicts; each dict may include
+        any field on PSAApproval except parent_approval / stage_index /
+        status (those are set by this method).
+
+        Stage 1 is created as 'pending'; subsequent stages are 'blocked'
+        and parented to the prior stage. Returns the list of created
+        approvals in stage order.
+        """
+        if not stages:
+            raise ValueError('Chain must have at least one stage')
+        created = []
+        for idx, stage_kwargs in enumerate(stages, start=1):
+            kwargs = dict(stage_kwargs)
+            kwargs.update({
+                'organization': organization,
+                'kind': kind,
+                'object_type': object_type,
+                'object_id': object_id,
+                'object_repr': object_repr or kwargs.pop('object_repr', ''),
+                'requested_by': requested_by,
+                'parent_approval': created[-1] if created else None,
+                'stage_index': idx,
+                'status': 'pending' if idx == 1 else 'blocked',
+            })
+            created.append(cls.objects.create(**kwargs))
+        return created
 
 
 # ---------------------------------------------------------------------------
