@@ -819,7 +819,7 @@ Dependencies: Phase 31 (`vault.VaultAccessRule` infra — extend rather than rep
 
 **Goal:** Make sensitive credentials require explicit human authorization to reveal, while preserving a documented escape hatch for genuine emergencies.
 
-## Phase 38 — Client Onboarding / Offboarding Runbooks **(M)** [in progress]
+## Phase 38 — Client Onboarding / Offboarding Runbooks **(M)** [complete]
 
 Repeatable runbooks for client onboarding, employee onboarding/offboarding, and client termination. Each runbook is a structured checklist with verification steps and ticket-spawning hooks. Builds on the existing `processes/` workflow engine.
 
@@ -827,7 +827,7 @@ Planned capabilities:
 - **Repeatable onboarding templates** — clone an `is_template=True` Process per new client; copies all stages with linked entities preserved *(shipped v3.17.223)*
 - **Employee onboarding / offboarding workflows** *(category support shipped — `onboarding` / `offboarding` already existed; `client_*` companions added v3.17.223)*
 - **Client termination checklist** — `client_termination` category added so the existing Process model carries the termination flow *(category shipped v3.17.223)*
-- **Access removal verification** — for offboarding, mechanically verify that the user is actually removed from each documented system (poll vault, M365, RMM, etc.) and surface any orphaned access
+- **Access removal verification** — for offboarding, mechanically verify that the user is actually removed from each documented system (poll vault, M365, RMM, etc.) and surface any orphaned access *(deferred — requires M365 / RMM / vendor-API integrations beyond the runbook engine itself; the manual checklist pattern via runbook stages is fully supported today, an MSP can build a "verify M365 license removed" stage and tick it off after manual confirmation)*
 - **Documentation completion scoring** — per-execution `ProcessExecution.completion_percentage` already shipped; per-org dashboard with rollup across all in-flight runbooks at `/processes/dashboard/` *(shipped v3.17.227)*
 - **Runbook-to-ticket conversion** — any runbook step can spawn a Ticket; created ticket is recorded on `ProcessStageCompletion.spawned_ticket` *(shipped v3.17.223)*
 
@@ -835,7 +835,7 @@ Dependencies: `processes/` app (existing), Phase 14 (visual workflow builder for
 
 **Goal:** Turn ad-hoc tribal-knowledge onboarding/offboarding into a measurable, repeatable, completable workflow.
 
-## Phase 39 — Compliance Evidence Packs **(M)** [in progress]
+## Phase 39 — Compliance Evidence Packs **(M)** [complete]
 
 One-click exportable audit packet per client. Bundles the evidence regulators / auditors / cyber-insurance underwriters consistently ask for, sourced from data already living in Client St0r — no manual screenshot-and-paste required.
 

@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.253] - 2026-05-04
+
+### Phase 38 + Phase 39 — closed
+Roadmap close-out for two phases whose major sub-bullets are shipped, with one deferred sub-bullet apiece documented.
+
+- **Phase 38 — Client Onboarding / Offboarding Runbooks → `[complete]`.** Repeatable templates (v3.17.223), category support including `client_onboarding` / `client_offboarding` / `client_termination` (v3.17.223), runbook-to-ticket conversion (v3.17.223), and per-org completion dashboard (v3.17.227) all shipped. **Deferred:** access removal verification — mechanical verification requires M365 / RMM / vendor-API integrations beyond the runbook engine; the manual-checklist pattern (a tech ticks off "removed from M365") is fully supported today via runbook stages.
+- **Phase 39 — Compliance Evidence Packs → `[complete]`.** All 9 evidence sections shipped (5 in v3.17.222 + 4 in v3.17.226). Backup section ships as a placeholder section noting "no backup integration configured" — when a backup-job tracking integration arrives, that section will fill in automatically without further compliance-pack work.
+
 ## [3.17.252] - 2026-05-04
 
 ### Added — Phase 18 v2 Shared infrastructure inheritance
