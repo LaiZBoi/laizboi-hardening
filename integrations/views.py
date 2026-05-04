@@ -3281,6 +3281,33 @@ def accounting_delete(request, pk):
 
 @login_required
 @user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def accounting_audit_log(request, pk):
+    """Phase 27 v2 (v3.17.260): show every recorded interaction with a
+    given accounting connection. Supports a simple `?ok=fail|ok` filter
+    plus pagination via Django Paginator (50/page)."""
+    from .models import AccountingAuditLog
+    from django.core.paginator import Paginator
+
+    item = get_object_or_404(AccountingConnection, pk=pk)
+    qs = AccountingAuditLog.objects.filter(connection=item).order_by('-created_at')
+    ok_filter = request.GET.get('ok') or ''
+    if ok_filter == 'ok':
+        qs = qs.filter(success=True)
+    elif ok_filter == 'fail':
+        qs = qs.filter(success=False)
+
+    paginator = Paginator(qs, 50)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    return render(request, 'integrations/accounting_audit_log.html', {
+        'item': item,
+        'page_obj': page_obj,
+        'ok_filter': ok_filter,
+        'total': qs.count(),
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
 def accounting_test(request, pk):
     from .providers.accounting import get_accounting_provider
     item = get_object_or_404(AccountingConnection, pk=pk)

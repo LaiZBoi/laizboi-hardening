@@ -582,7 +582,7 @@ Planned capabilities:
 - Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches)
 - Refund / credit-memo workflows (today only credit-charge type exists)
 - Multi-entity / multi-book support for MSPs operating multiple legal entities
-- Audit trail of every accounting-system interaction (req/resp pairs stored encrypted)
+- Audit trail of every accounting-system interaction *(shipped v3.17.260 — `AccountingAuditLog` writes one row per `push_invoice` / `record_payment` call across QBO + Xero providers; viewer at `/integrations/accounting/<pk>/audit-log/`. Stores truncated req/resp summaries — full payloads intentionally not stored to keep the log free of secrets/PII)*
 
 Dependencies: existing AccountingConnection pattern. Builds on Phase 15.
 

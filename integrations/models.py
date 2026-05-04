@@ -1017,3 +1017,56 @@ class AccountingConnection(BaseModel):
         creds = self.get_credentials()
         creds.update(kwargs)
         self.set_credentials(creds)
+
+
+class AccountingAuditLog(BaseModel):
+    """Phase 27 v2 (v3.17.260): one row per accounting-system interaction.
+
+    Captures every push_invoice / record_payment call so reconciliation can
+    explain *why* an invoice's status diverges from QBO/Xero. Stores small
+    request/response summaries (truncated; never full payloads) — enough to
+    debug without pulling secrets or PII into the table.
+    """
+    ACTION_CHOICES = [
+        ('push_invoice', 'Push Invoice'),
+        ('record_payment', 'Record Payment'),
+        ('test_connection', 'Test Connection'),
+        ('refresh_token', 'Refresh Token'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='accounting_audit_logs',
+    )
+    connection = models.ForeignKey(
+        AccountingConnection, on_delete=models.CASCADE,
+        related_name='audit_logs', null=True, blank=True,
+    )
+    provider_type = models.CharField(max_length=50)
+    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
+    resource_type = models.CharField(max_length=40, blank=True,
+        help_text='e.g. invoice, payment')
+    resource_id = models.CharField(max_length=120, blank=True,
+        help_text='Local PK of the source row (Invoice.pk / Payment.pk)')
+    external_id = models.CharField(max_length=120, blank=True,
+        help_text='Provider-side ID returned on success')
+    success = models.BooleanField(default=False)
+    http_status = models.PositiveIntegerField(null=True, blank=True)
+    error_message = models.CharField(max_length=500, blank=True)
+    request_summary = models.CharField(max_length=500, blank=True)
+    response_summary = models.CharField(max_length=500, blank=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'accounting_audit_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization', '-created_at']),
+            models.Index(fields=['connection', '-created_at']),
+            models.Index(fields=['action', 'success']),
+        ]
+
+    def __str__(self):
+        ok = 'ok' if self.success else 'fail'
+        return f'{self.provider_type}:{self.action} ({ok}) #{self.pk}'

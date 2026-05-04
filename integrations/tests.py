@@ -362,3 +362,133 @@ class IntegrationListViewLogicTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b'Findable Ingram', resp.content)
         self.assertNotIn(b'Hidden Other', resp.content)
+
+
+# ---------------------------------------------------------------------------
+# Phase 27 v2 — Accounting audit log
+# ---------------------------------------------------------------------------
+
+from django.conf import settings as _django_settings
+from django.test import Client
+
+_AUDIT_TEST_MIDDLEWARE = [
+    m for m in _django_settings.MIDDLEWARE
+    if 'Enforce2FAMiddleware' not in m and 'AxesMiddleware' not in m
+]
+
+
+@override_settings(MIDDLEWARE=_AUDIT_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class AccountingAuditLogTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from .models import AccountingConnection
+        User = get_user_model()
+        self.org = Organization.objects.create(name='AuditCo')
+        self.user = User.objects.create_user(
+            username='audit_admin', email='aa@aa.com', password='x',
+            is_staff=True, is_superuser=True,
+        )
+        self.conn = AccountingConnection.objects.create(
+            organization=self.org, provider_type='quickbooks_online',
+            name='QBO-test', is_active=True, sync_enabled=False,
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+        s = self.client.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_helper_writes_a_row(self):
+        from .models import AccountingAuditLog
+        from .providers.accounting.base import log_accounting_call
+        log_accounting_call(
+            connection=self.conn, action='push_invoice',
+            resource_type='invoice', resource_id=42,
+            external_id='qbo-99', success=True, http_status=200,
+            request_summary='lines=2', response_summary='ok',
+        )
+        row = AccountingAuditLog.objects.get()
+        self.assertEqual(row.organization, self.org)
+        self.assertEqual(row.connection, self.conn)
+        self.assertEqual(row.provider_type, 'quickbooks_online')
+        self.assertEqual(row.action, 'push_invoice')
+        self.assertEqual(row.resource_id, '42')
+        self.assertEqual(row.external_id, 'qbo-99')
+        self.assertTrue(row.success)
+        self.assertEqual(row.http_status, 200)
+
+    def test_helper_truncates_long_strings(self):
+        from .models import AccountingAuditLog
+        from .providers.accounting.base import log_accounting_call
+        long = 'X' * 1000
+        log_accounting_call(
+            connection=self.conn, action='push_invoice',
+            success=False, error_message=long,
+            request_summary=long, response_summary=long,
+        )
+        row = AccountingAuditLog.objects.get()
+        self.assertEqual(len(row.error_message), 500)
+        self.assertEqual(len(row.request_summary), 500)
+        self.assertEqual(len(row.response_summary), 500)
+
+    def test_view_renders_rows(self):
+        from .providers.accounting.base import log_accounting_call
+        log_accounting_call(
+            connection=self.conn, action='push_invoice',
+            resource_type='invoice', resource_id=7,
+            external_id='qbo-1', success=True, http_status=200,
+        )
+        log_accounting_call(
+            connection=self.conn, action='push_invoice',
+            resource_type='invoice', resource_id=8,
+            success=False, http_status=400,
+            error_message='HTTP 400: bad payload',
+        )
+        resp = self.client.get(f'/integrations/accounting/{self.conn.pk}/audit-log/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('invoice#7', body)
+        self.assertIn('invoice#8', body)
+        self.assertIn('HTTP 400: bad payload', body)
+
+    def test_view_filter_failures_only(self):
+        from .providers.accounting.base import log_accounting_call
+        log_accounting_call(connection=self.conn, action='push_invoice',
+                            resource_type='invoice', resource_id=10, success=True)
+        log_accounting_call(connection=self.conn, action='push_invoice',
+                            resource_type='invoice', resource_id=11, success=False,
+                            error_message='boom')
+        resp = self.client.get(f'/integrations/accounting/{self.conn.pk}/audit-log/?ok=fail')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('invoice#11', body)
+        self.assertNotIn('invoice#10', body)
+
+    def test_qbo_push_invoice_logs_on_failure(self):
+        """The QBO provider's _api shortcut bails before any HTTP call when
+        no realm_id is configured. We use that to drive the failure path of
+        push_invoice without mocking, then assert an audit row was written."""
+        from unittest import mock
+        from .providers.accounting.quickbooks_online import QuickBooksOnlineProvider
+        from .models import AccountingAuditLog
+
+        # Stub out the invoice/customer model surface enough that the provider
+        # method runs without DB or network. The point is to verify the audit
+        # write — not the QBO API surface.
+        provider = QuickBooksOnlineProvider(self.conn)
+        fake_invoice = mock.MagicMock()
+        fake_invoice.pk = 99
+        fake_invoice.invoice_number = 'INV-99'
+        fake_invoice.client_org = mock.MagicMock(name='client_org')
+        # Force _ensure_customer to raise — that hits the first failure exit
+        # of push_invoice, which writes an audit row.
+        with mock.patch.object(provider, '_ensure_customer',
+                               side_effect=RuntimeError('no creds')):
+            result = provider.push_invoice(fake_invoice)
+        self.assertFalse(result['success'])
+        row = AccountingAuditLog.objects.get()
+        self.assertEqual(row.action, 'push_invoice')
+        self.assertFalse(row.success)
+        self.assertIn('no creds', row.error_message)
+        self.assertEqual(row.resource_id, '99')

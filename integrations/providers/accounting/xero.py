@@ -25,6 +25,7 @@ from .base import (
     AccountingAuthError,
     AccountingProviderError,
     BaseAccountingProvider,
+    log_accounting_call,
 )
 
 
@@ -189,6 +190,12 @@ class XeroProvider(BaseAccountingProvider):
         except Exception as exc:
             invoice.last_push_error = str(exc)[:500]
             invoice.save(update_fields=['last_push_error', 'updated_at'])
+            log_accounting_call(
+                connection=self.connection, action='push_invoice',
+                resource_type='invoice', resource_id=invoice.pk,
+                success=False, error_message=str(exc),
+                request_summary=f'invoice={invoice.invoice_number}',
+            )
             return {'success': False, 'error': str(exc)}
 
         body = {
@@ -216,6 +223,14 @@ class XeroProvider(BaseAccountingProvider):
             err = f'HTTP {resp.status_code}: {resp.text[:500]}'
             invoice.last_push_error = err
             invoice.save(update_fields=['last_push_error', 'updated_at'])
+            log_accounting_call(
+                connection=self.connection, action='push_invoice',
+                resource_type='invoice', resource_id=invoice.pk,
+                success=False, http_status=resp.status_code,
+                error_message=err,
+                request_summary=f'invoice={invoice.invoice_number} lines={len(body["Invoices"][0].get("LineItems", []))}',
+                response_summary=resp.text[:500],
+            )
             return {'success': False, 'error': err}
 
         data = resp.json() or {}
@@ -229,6 +244,14 @@ class XeroProvider(BaseAccountingProvider):
             'accounting_provider', 'accounting_external_id',
             'pushed_to_accounting_at', 'last_push_error', 'updated_at'
         ])
+        log_accounting_call(
+            connection=self.connection, action='push_invoice',
+            resource_type='invoice', resource_id=invoice.pk,
+            external_id=invoice.accounting_external_id,
+            success=True, http_status=resp.status_code,
+            request_summary=f'invoice={invoice.invoice_number} lines={len(body["Invoices"][0].get("LineItems", []))}',
+            response_summary=f'xero_id={invoice.accounting_external_id}',
+        )
         return {'success': True, 'invoice_id': invoice.accounting_external_id}
 
     def record_payment(self, payment) -> Dict[str, Any]:
@@ -245,5 +268,21 @@ class XeroProvider(BaseAccountingProvider):
         }
         resp = self._api('POST', '/Payments', json=body)
         if resp.status_code not in (200, 201):
-            return {'success': False, 'error': f'HTTP {resp.status_code}: {resp.text[:200]}'}
+            err = f'HTTP {resp.status_code}: {resp.text[:200]}'
+            log_accounting_call(
+                connection=self.connection, action='record_payment',
+                resource_type='payment', resource_id=payment.pk,
+                success=False, http_status=resp.status_code,
+                error_message=err,
+                request_summary=f'payment={payment.pk} amount={payment.amount} invoice={invoice.invoice_number}',
+                response_summary=resp.text[:500],
+            )
+            return {'success': False, 'error': err}
+        log_accounting_call(
+            connection=self.connection, action='record_payment',
+            resource_type='payment', resource_id=payment.pk,
+            success=True, http_status=resp.status_code,
+            request_summary=f'payment={payment.pk} amount={payment.amount} invoice={invoice.invoice_number}',
+            response_summary='ok',
+        )
         return {'success': True}

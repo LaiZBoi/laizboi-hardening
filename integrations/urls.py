@@ -97,6 +97,8 @@ urlpatterns = [
     path('accounting/<int:pk>/edit/', views.accounting_edit, name='accounting_edit'),
     path('accounting/<int:pk>/delete/', views.accounting_delete, name='accounting_delete'),
     path('accounting/<int:pk>/test/', views.accounting_test, name='accounting_test'),
+    path('accounting/<int:pk>/audit-log/', views.accounting_audit_log,
+         name='accounting_audit_log'),
     path('accounting/<int:pk>/connect/', views.accounting_connect, name='accounting_connect'),
     path('accounting/oauth/callback/', views.accounting_oauth_callback,
          name='accounting_oauth_callback'),

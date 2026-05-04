@@ -121,3 +121,33 @@ class BaseAccountingProvider:
         """Optional. Record a Payment row against the provider's invoice
         (when accounting_external_id is set)."""
         return {'skipped': True, 'reason': 'record_payment not supported'}
+
+
+def log_accounting_call(*, connection, action, resource_type='', resource_id='',
+                         external_id='', success=False, http_status=None,
+                         error_message='', request_summary='',
+                         response_summary=''):
+    """Phase 27 v2 helper — one-line write into AccountingAuditLog.
+
+    Best-effort: a logging failure must never break a push. All callers wrap
+    their try/except around their existing API call; this just records what
+    happened.
+    """
+    try:
+        from integrations.models import AccountingAuditLog
+        AccountingAuditLog.objects.create(
+            organization=connection.organization,
+            connection=connection,
+            provider_type=connection.provider_type,
+            action=action,
+            resource_type=resource_type,
+            resource_id=str(resource_id or ''),
+            external_id=str(external_id or ''),
+            success=bool(success),
+            http_status=http_status,
+            error_message=(error_message or '')[:500],
+            request_summary=(request_summary or '')[:500],
+            response_summary=(response_summary or '')[:500],
+        )
+    except Exception:
+        logger.exception('AccountingAuditLog write failed')

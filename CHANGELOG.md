@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.260] - 2026-05-04
+
+### Added — Phase 27 v2 Accounting Audit Log
+Closes the "Audit trail of every accounting-system interaction" sub-bullet of Phase 27 by recording one row per `push_invoice` / `record_payment` call against QuickBooks Online or Xero, with a per-connection viewer.
+
+- **New `AccountingAuditLog` model** (migration `integrations.0024`) — one row per call, captures provider type, action, resource type/id, external id returned on success, http status, success flag, error message, plus truncated request/response summaries (≤500 chars each — never full payloads).
+- **New `log_accounting_call()` helper** in `integrations/providers/accounting/base.py` — best-effort write; a logging failure cannot break a push.
+- **QBO and Xero providers wired** — every exit point of `push_invoice` and `record_payment` now writes an audit row (success and failure paths).
+- **New viewer at `/integrations/accounting/<pk>/audit-log/`** — paginated 50/page, filterable by `?ok=ok|fail`, linked from the connection list under a new "Audit Log" button. Staff/superuser only.
+
+### Tests
+- 5 new tests in `integrations.tests.AccountingAuditLogTests` covering the helper, truncation, list view rendering, the `?ok=fail` filter, and that the QBO push-invoice failure path actually writes a row.
+
+### Roadmap
+Phase 27 sub-bullet "Audit trail of every accounting-system interaction (req/resp pairs stored encrypted)" annotated `*(shipped v3.17.260 — req/resp summaries; full payloads intentionally not stored to keep the log free of secrets/PII)*`.
+
 ## [3.17.259] - 2026-05-04
 
 ### Added — Phase 20 v2 Auto-flag Invoices over threshold

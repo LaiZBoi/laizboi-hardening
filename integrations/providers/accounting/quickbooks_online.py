@@ -26,6 +26,7 @@ from .base import (
     AccountingAuthError,
     AccountingProviderError,
     BaseAccountingProvider,
+    log_accounting_call,
 )
 
 
@@ -172,6 +173,12 @@ class QuickBooksOnlineProvider(BaseAccountingProvider):
         except Exception as exc:
             invoice.last_push_error = str(exc)[:500]
             invoice.save(update_fields=['last_push_error', 'updated_at'])
+            log_accounting_call(
+                connection=self.connection, action='push_invoice',
+                resource_type='invoice', resource_id=invoice.pk,
+                success=False, error_message=str(exc),
+                request_summary=f'invoice={invoice.invoice_number}',
+            )
             return {'success': False, 'error': str(exc)}
 
         body = {
@@ -200,6 +207,14 @@ class QuickBooksOnlineProvider(BaseAccountingProvider):
             err = f'HTTP {resp.status_code}: {resp.text[:500]}'
             invoice.last_push_error = err
             invoice.save(update_fields=['last_push_error', 'updated_at'])
+            log_accounting_call(
+                connection=self.connection, action='push_invoice',
+                resource_type='invoice', resource_id=invoice.pk,
+                success=False, http_status=resp.status_code,
+                error_message=err,
+                request_summary=f'invoice={invoice.invoice_number} lines={len(body.get("Line", []))}',
+                response_summary=resp.text[:500],
+            )
             return {'success': False, 'error': err}
 
         data = resp.json().get('Invoice') or {}
@@ -211,6 +226,14 @@ class QuickBooksOnlineProvider(BaseAccountingProvider):
             'accounting_provider', 'accounting_external_id',
             'pushed_to_accounting_at', 'last_push_error', 'updated_at'
         ])
+        log_accounting_call(
+            connection=self.connection, action='push_invoice',
+            resource_type='invoice', resource_id=invoice.pk,
+            external_id=invoice.accounting_external_id,
+            success=True, http_status=resp.status_code,
+            request_summary=f'invoice={invoice.invoice_number} lines={len(body.get("Line", []))}',
+            response_summary=f'qbo_id={invoice.accounting_external_id}',
+        )
         return {'success': True, 'invoice_id': invoice.accounting_external_id}
 
     def record_payment(self, payment) -> Dict[str, Any]:
@@ -235,5 +258,23 @@ class QuickBooksOnlineProvider(BaseAccountingProvider):
         }
         resp = self._api('POST', '/payment', json=body)
         if resp.status_code not in (200, 201):
-            return {'success': False, 'error': f'HTTP {resp.status_code}: {resp.text[:200]}'}
-        return {'success': True, 'payment_id': resp.json().get('Payment', {}).get('Id')}
+            err = f'HTTP {resp.status_code}: {resp.text[:200]}'
+            log_accounting_call(
+                connection=self.connection, action='record_payment',
+                resource_type='payment', resource_id=payment.pk,
+                success=False, http_status=resp.status_code,
+                error_message=err,
+                request_summary=f'payment={payment.pk} amount={payment.amount} invoice={invoice.invoice_number}',
+                response_summary=resp.text[:500],
+            )
+            return {'success': False, 'error': err}
+        ext_id = resp.json().get('Payment', {}).get('Id') or ''
+        log_accounting_call(
+            connection=self.connection, action='record_payment',
+            resource_type='payment', resource_id=payment.pk,
+            external_id=str(ext_id),
+            success=True, http_status=resp.status_code,
+            request_summary=f'payment={payment.pk} amount={payment.amount} invoice={invoice.invoice_number}',
+            response_summary=f'qbo_payment_id={ext_id}',
+        )
+        return {'success': True, 'payment_id': ext_id}
