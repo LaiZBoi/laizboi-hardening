@@ -114,6 +114,9 @@ urlpatterns = [
     # v3.17.257 — Phase 19 v1 ticket aging analytics.
     path('ticket-aging/',
          views.ticket_aging_report, name='ticket_aging_report'),
+    # v3.17.258 — Phase 13 v3 procurement summary report.
+    path('procurement-summary/',
+         views.procurement_summary, name='procurement_summary'),
     # Phase 26 v1 (v3.17.246) — Saved Queries / Custom Report Writer.
     path('saved-queries/', views.saved_query_list, name='saved_query_list'),
     path('saved-queries/new/', views.saved_query_form, name='saved_query_create'),

@@ -1588,6 +1588,91 @@ class AgreementReconciliationTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProcurementSummaryTests(TestCase):
+    """Phase 13 v3 (v3.17.258): procurement summary report."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import PurchaseOrder
+        from datetime import date as _date, timedelta as _td
+        from decimal import Decimal as _D
+        cls.org = Organization.objects.create(name='ProcCo', slug='proc-co')
+        cls.staff = User.objects.create_user('proc-staff', 'ps@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('proc-mem', 'pm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        # Three POs across two vendors, all 'sent' (counts toward spend).
+        for i, (vendor, total) in enumerate([
+            ('Acme Hardware', '500.00'),
+            ('Acme Hardware', '750.00'),
+            ('Beta Distribution', '1200.00'),
+        ]):
+            po = PurchaseOrder.objects.create(
+                organization=cls.org, po_number=f'PO-2026-{i:05d}',
+                vendor_name=vendor, title=f'PO {i}',
+                status='sent', total=_D(total),
+            )
+        # Draft PO — should be excluded from spend.
+        PurchaseOrder.objects.create(
+            organization=cls.org, po_number='PO-2026-99999',
+            vendor_name='Draft Vendor', title='Draft',
+            status='draft', total=_D('999'),
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_summary_with_vendor_aggregates(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/procurement-summary/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        self.assertEqual(ctx['summary']['po_count'], 3)
+        self.assertEqual(ctx['summary']['total_spend'], 500.0 + 750.0 + 1200.0)
+        # 2 distinct vendors (excluding the draft)
+        self.assertEqual(ctx['summary']['vendor_count'], 2)
+
+    def test_draft_excluded_from_totals(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/procurement-summary/')
+        body = r.content.decode('utf-8')
+        self.assertNotIn('Draft Vendor', body)
+
+    def test_csv_export_contains_per_vendor_rows(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/procurement-summary/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('Acme Hardware', body)
+        self.assertIn('Beta Distribution', body)
+        # Acme aggregated total = 1250
+        self.assertIn('1250', body)
+
+    def test_non_staff_member_blocked_with_404(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/procurement-summary/')
+        self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class TicketAgingReportTests(TestCase):
     """Phase 19 v1 (v3.17.257) — ticket aging analytics."""
 

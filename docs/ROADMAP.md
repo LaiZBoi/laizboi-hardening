@@ -303,7 +303,7 @@ Planned capabilities:
 - Procurement forecasting from historical PR/PO data
 - Recurring purchasing templates (e.g. "monthly toner refill")
 - Vendor cost history (price-at-time-of-PO trend)
-- Procurement reporting
+- Procurement reporting *(shipped v3.17.258 — `/reports/procurement-summary/` per-vendor + per-month spend over last 365 days; CSV export; staff-only)*
 
 **Goal:** Improve operational procurement visibility and hardware lifecycle management.
 

@@ -2896,3 +2896,73 @@ def ticket_aging_report(request):
         'aged_tickets': aged_tickets,
         'aged_count': aged_tickets.count() if hasattr(aged_tickets, 'count') else len(aged_tickets),
     })
+
+
+@login_required
+def procurement_summary(request):
+    """
+    Phase 13 v3 (v3.17.258): procurement summary report. Aggregates
+    PurchaseOrder data already in the system into per-vendor totals
+    + a 12-month spend trend chart.
+
+    Tenant ACL: superuser/staff sees all; org members are excluded
+    (procurement is an MSP-internal ops view, not a client report).
+    """
+    from psa.models import PurchaseOrder
+    from datetime import date as _date, timedelta as _td
+    from django.db.models import Count, Sum
+    from collections import defaultdict
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('Procurement reports are staff-only')
+
+    # Last 12 months of PO data, status not draft/cancelled (so totals
+    # reflect committed spend, not work-in-progress).
+    cutoff = _date.today() - _td(days=365)
+    qs = (PurchaseOrder.objects
+          .filter(created_at__date__gte=cutoff)
+          .exclude(status__in=['draft', 'cancelled', 'void'])
+          .select_related('vendor'))
+
+    # Per-vendor aggregates
+    by_vendor = (qs.values('vendor_name')
+                   .annotate(
+                       po_count=Count('id'),
+                       total_spend=Sum('total'),
+                   )
+                   .order_by('-total_spend'))
+
+    # Per-month trend
+    monthly = defaultdict(float)
+    for po in qs.values('created_at', 'total'):
+        key = po['created_at'].strftime('%Y-%m')
+        monthly[key] += float(po['total'] or 0)
+    monthly_rows = sorted(monthly.items())
+
+    summary = {
+        'po_count': qs.count(),
+        'total_spend': float(qs.aggregate(s=Sum('total'))['s'] or 0),
+        'vendor_count': len({v['vendor_name'] for v in by_vendor}),
+        'window_days': 365,
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="procurement-summary.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Vendor', 'PO count', 'Total spend'])
+        for v in by_vendor:
+            w.writerow([v['vendor_name'], v['po_count'],
+                        float(v['total_spend'] or 0)])
+        return resp
+
+    return render(request, 'reports/procurement_summary.html', {
+        'by_vendor': by_vendor,
+        'monthly_rows': monthly_rows,
+        'summary': summary,
+    })

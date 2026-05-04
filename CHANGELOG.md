@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.258] - 2026-05-04
+
+### Added — Phase 13 v3 Procurement summary report
+Closes the "Procurement reporting" sub-bullet of Phase 13. Aggregates the existing `psa.PurchaseOrder` data into a per-vendor + per-month spend snapshot.
+
+- **New view `/reports/procurement-summary/`** — last 365 days of committed POs (draft / cancelled / void excluded).
+- **Per-vendor table** — vendor name, PO count, total spend, sorted by total spend descending.
+- **Per-month trend table** — YYYY-MM bucket with summed total, helps spot procurement seasonality.
+- **Summary cards** — PO count, total spend, distinct vendor count.
+- **CSV export** at `?format=csv` — per-vendor rows, ready for spreadsheet import.
+- **Staff-only.** Procurement is an MSP-internal ops view; org members (clients) get 404.
+- **Reports home page** gains a "Procurement Summary" tile.
+
+### Tests
+- 4 tests in `ProcurementSummaryTests`:
+  - Staff sees per-vendor aggregates with correct totals (Acme Hardware aggregated across 2 POs = $1250).
+  - Draft POs excluded from totals.
+  - CSV export contains all vendor names + aggregated totals.
+  - Non-staff org member blocked with 404.
+
+### Roadmap
+- Phase 13 sub-bullet "Procurement reporting" annotated `*(shipped v3.17.258 — `/reports/procurement-summary/` per-vendor + per-month spend report with CSV export, staff-only)*`.
+
 ## [3.17.257] - 2026-05-04
 
 ### Added — Phase 19 v1 Ticket Aging Analytics
