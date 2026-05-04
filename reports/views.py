@@ -2385,3 +2385,204 @@ def agreement_reconciliation(request):
         'summary': summary,
         'total_contracts': len(rows),
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 26 v1 (v3.17.246) — Saved Queries / Custom Report Writer
+# ---------------------------------------------------------------------------
+
+@login_required
+def saved_query_list(request):
+    """List the user's own saved queries + shared queries from their orgs."""
+    from .models import SavedQuery
+    from .saved_query import MODEL_CONFIG
+
+    own = SavedQuery.objects.filter(owner=request.user)
+    org_ids = []
+    if hasattr(request.user, 'memberships'):
+        org_ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+    shared = SavedQuery.objects.filter(
+        is_shared=True, organization_id__in=org_ids,
+    ).exclude(owner=request.user)
+    return render(request, 'reports/saved_query_list.html', {
+        'own_queries': own,
+        'shared_queries': shared,
+        'model_choices': [(k, v['label']) for k, v in MODEL_CONFIG.items()],
+    })
+
+
+@login_required
+def saved_query_form(request, pk=None):
+    """Create or edit a SavedQuery. Form posts back here on save."""
+    import json as _json
+    from .models import SavedQuery
+    from .saved_query import MODEL_CONFIG, OPERATORS_BY_TYPE
+
+    instance = None
+    if pk is not None:
+        instance = get_object_or_404(SavedQuery, pk=pk)
+        if not instance.can_edit(request.user):
+            messages.error(request, "You can't edit that saved query.")
+            return redirect('reports:saved_query_list')
+
+    org_ids = []
+    if hasattr(request.user, 'memberships'):
+        org_ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+
+    if request.method == 'POST':
+        target = request.POST.get('target_model') or ''
+        if target not in MODEL_CONFIG:
+            messages.error(request, 'Pick a valid target model.')
+            return redirect(request.path)
+        name = (request.POST.get('name') or '').strip()
+        description = (request.POST.get('description') or '').strip()
+        if not name:
+            messages.error(request, 'Name is required.')
+            return redirect(request.path)
+        # Filters arrive as parallel arrays from the dynamic form rows.
+        fields = request.POST.getlist('filter_field')
+        ops = request.POST.getlist('filter_op')
+        values = request.POST.getlist('filter_value')
+        allowed = MODEL_CONFIG[target]['filterable_fields']
+        filters = []
+        for f, o, v in zip(fields, ops, values):
+            if not f or f not in allowed:
+                continue
+            if o not in OPERATORS_BY_TYPE.get(allowed[f], []):
+                continue
+            filters.append({'field': f, 'op': o, 'value': v})
+        columns = request.POST.getlist('column')
+        columns = [c for c in columns if c in MODEL_CONFIG[target]['columns']]
+        sort_by = request.POST.get('sort_by') or ''
+        is_shared = request.POST.get('is_shared') == 'on'
+
+        org = None
+        org_pk = request.POST.get('organization')
+        if org_pk:
+            try:
+                from core.models import Organization
+                org = Organization.objects.filter(pk=org_pk, id__in=org_ids).first()
+            except Exception:
+                org = None
+
+        if instance is None:
+            instance = SavedQuery.objects.create(
+                owner=request.user, name=name, description=description,
+                organization=org, target_model=target,
+                filters=filters, columns=columns, sort_by=sort_by,
+                is_shared=is_shared,
+            )
+            messages.success(request, f'Saved "{instance.name}".')
+        else:
+            instance.name = name
+            instance.description = description
+            instance.organization = org
+            instance.target_model = target
+            instance.filters = filters
+            instance.columns = columns
+            instance.sort_by = sort_by
+            instance.is_shared = is_shared
+            instance.save()
+            messages.success(request, f'Updated "{instance.name}".')
+        return redirect('reports:saved_query_run', pk=instance.pk)
+
+    from core.models import Organization
+    user_orgs = Organization.objects.filter(id__in=org_ids).order_by('name')
+    return render(request, 'reports/saved_query_form.html', {
+        'instance': instance,
+        'model_config_json': _json.dumps({
+            k: {
+                'label': v['label'],
+                'fields': [
+                    {'name': fn, 'type': ft, 'ops': OPERATORS_BY_TYPE[ft]}
+                    for fn, ft in v['filterable_fields'].items()
+                ],
+                'columns': v['columns'],
+            }
+            for k, v in MODEL_CONFIG.items()
+        }),
+        'user_orgs': user_orgs,
+        'instance_filters_json': _json.dumps(instance.filters or [] if instance else []),
+        'instance_columns_json': _json.dumps(instance.columns or [] if instance else []),
+    })
+
+
+@login_required
+def saved_query_run(request, pk):
+    """Execute a saved query and render the results (HTML / CSV)."""
+    from .models import SavedQuery
+    from .saved_query import execute, render_columns
+    from django.utils import timezone as _tz
+    sq = get_object_or_404(SavedQuery, pk=pk)
+    if not sq.visible_to(request.user):
+        from django.http import Http404
+        raise Http404('Saved query not available')
+
+    org = None
+    if sq.organization_id:
+        org = sq.organization
+    model, qs = execute(sq, organization=org)
+    if model is None:
+        messages.error(request, 'Target model unavailable.')
+        return redirect('reports:saved_query_list')
+
+    columns = render_columns(sq)
+    qs = qs[:1000]  # cap render set
+
+    rows = []
+    for obj in qs:
+        row = []
+        for col in columns:
+            try:
+                v = obj
+                for part in col.split('__'):
+                    if v is None:
+                        break
+                    v = getattr(v, part, None)
+                row.append(v if v is not None else '')
+            except Exception:
+                row.append('')
+        rows.append(row)
+
+    sq.last_run_at = _tz.now()
+    sq.last_run_count = len(rows)
+    sq.save(update_fields=['last_run_at', 'last_run_count', 'updated_at'])
+
+    fmt = (request.GET.get('format') or 'html').lower()
+    if fmt == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse
+        resp = HttpResponse(content_type='text/csv')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="{sq.name[:40].replace(" ", "_")}.csv"'
+        )
+        w = _csv.writer(resp)
+        w.writerow(columns)
+        for r in rows:
+            w.writerow([str(c) for c in r])
+        return resp
+
+    return render(request, 'reports/saved_query_run.html', {
+        'sq': sq,
+        'columns': columns,
+        'rows': rows,
+        'count': len(rows),
+        'capped': len(rows) >= 1000,
+        'can_edit': sq.can_edit(request.user),
+    })
+
+
+@login_required
+@require_http_methods(['POST'])
+def saved_query_delete(request, pk):
+    from .models import SavedQuery
+    sq = get_object_or_404(SavedQuery, pk=pk)
+    if not sq.can_edit(request.user):
+        messages.error(request, "You can't delete that saved query.")
+        return redirect('reports:saved_query_list')
+    name = sq.name
+    sq.delete()
+    messages.success(request, f'Deleted "{name}".')
+    return redirect('reports:saved_query_list')

@@ -5,6 +5,35 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.246] - 2026-05-04
+
+### Added — Phase 26 v1 Custom Report Writer + Saved Queries
+First slice of Phase 26 — let users build, save, and re-run custom queries over the most useful tenant-data models without writing Python.
+
+- **New `reports.SavedQuery` model** (migration `reports.0005`): name, description, owner, organization (optional scope), target_model (one of `psa.Ticket` / `assets.Asset` / `vault.Password`), filters JSON, columns JSON, sort_by, is_shared, last_run_at, last_run_count.
+- **Allow-listed querying.** `reports/saved_query.py` defines a `MODEL_CONFIG` dict listing per-model `filterable_fields` (with type tag for op-validation) and `columns`. The user can ONLY filter on the listed fields — saving a filter on an unrelated relation is silently dropped at run time. Same for ops: `str` fields support equals/contains/startswith; `int` adds gt/gte/lt/lte; `date` is gt/gte/lt/lte; `bool` is equals only.
+- **Three target models in v1:** PSA Tickets (subject, status, priority, queue, assignee, SLA breach flags, dates), Assets (name/type/serial/vendor/warranty), Vault Passwords (title/username/type/personal/approval-required/expiry).
+- **Three views:**
+  - `/reports/saved-queries/` — list user's own + shared queries.
+  - `/reports/saved-queries/new/` and `/<pk>/edit/` — dynamic-form builder. JS reads `MODEL_CONFIG` JSON embedded in the page, populates the field/op pickers when target changes, supports unlimited filter rows. Column checkboxes pre-checked from the saved set or all-on for new queries.
+  - `/reports/saved-queries/<pk>/run/` — render result table (capped at 1000 rows) + `?format=csv` export.
+- **Visibility model:** owner always sees their own; staff/superuser see everything; same-org members see queries marked `is_shared=True` and scoped to that org. Outsiders → 404. Edit is owner-only (or superuser).
+- **Reports home page** gains a "Saved Queries" tile next to Agreement Reconciliation.
+
+### Tests
+- 11 tests in `SavedQueryTests`:
+  - `build_filter` drops unknown fields silently (defense against schema drift).
+  - `execute()` returns rows matching the saved filters.
+  - `execute()` honors organization scoping when set.
+  - `visible_to`: owner-only by default, peer when `is_shared=True` + same org, blocks outsiders even when shared.
+  - Run view renders HTML matches; CSV export works (correct content type + header row).
+  - Run view 404s for outsider users.
+  - Create view persists multi-filter + column selection.
+  - Delete view blocks non-owner peers.
+
+### Roadmap
+- Phase 26 sub-bullet "Saved queries" annotated `*(shipped v3.17.246)*`. Phase 26 marked `[in progress]` (recurring email-PDF + dashboard widget pinning are v2; widget pinning is partially achievable today via the existing wallboard widget registry).
+
 ## [3.17.245] - 2026-05-04
 
 ### Added — Phase 22 v1 KB Review Reminders + Article Ownership

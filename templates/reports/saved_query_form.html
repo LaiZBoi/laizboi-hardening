@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}{% if instance %}Edit{% else %}New{% endif %} Saved Query{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'reports:saved_query_list' %}">Saved queries</a></li>
+        <li class="breadcrumb-item active">{% if instance %}{{ instance.name }}{% else %}New{% endif %}</li>
+    </ol>
+</nav>
+
+<h2 class="mb-3">
+    <i class="fas fa-magnifying-glass-chart me-2"></i>
+    {% if instance %}Edit Saved Query{% else %}New Saved Query{% endif %}
+</h2>
+
+<form method="post" id="sq-form">
+    {% csrf_token %}
+    <div class="card mb-3">
+        <div class="card-header"><strong>Basics</strong></div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Name <span class="text-danger">*</span></label>
+                <input type="text" name="name" class="form-control" required maxlength="200"
+                       value="{{ instance.name|default:'' }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                <textarea name="description" class="form-control" rows="2">{{ instance.description|default:'' }}</textarea>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Target <span class="text-danger">*</span></label>
+                    <select name="target_model" id="sq-target" class="form-select" required>
+                        <option value="">— pick what to query —</option>
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Scope to organization</label>
+                    <select name="organization" class="form-select">
+                        <option value="">— all orgs you can see —</option>
+                        {% for o in user_orgs %}
+                        <option value="{{ o.pk }}" {% if instance and instance.organization_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-check form-switch mb-0">
+                <input type="checkbox" name="is_shared" class="form-check-input" id="sq-shared"
+                       {% if instance.is_shared %}checked{% endif %}>
+                <label class="form-check-label" for="sq-shared">
+                    Share with other members of the selected org
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3" id="sq-filters-card" style="display: none;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Filters</strong>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="sq-add-filter">
+                <i class="fas fa-plus me-1"></i>Add filter
+            </button>
+        </div>
+        <div class="card-body" id="sq-filters">
+            <p class="text-muted small mb-0" id="sq-filters-empty">No filters — query returns everything.</p>
+        </div>
+    </div>
+
+    <div class="card mb-3" id="sq-columns-card" style="display: none;">
+        <div class="card-header"><strong>Columns to render</strong></div>
+        <div class="card-body" id="sq-columns">
+            <p class="text-muted small">Pick a target above to see its columns.</p>
+        </div>
+    </div>
+
+    <div class="card mb-3" id="sq-sort-card" style="display: none;">
+        <div class="card-header"><strong>Sort</strong></div>
+        <div class="card-body">
+            <input type="text" name="sort_by" id="sq-sort-by" class="form-control"
+                   placeholder="e.g. -created_at, ticket_number"
+                   value="{{ instance.sort_by|default:'' }}">
+            <div class="form-text">Field name; prefix with <code>-</code> for descending.</div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mb-4">
+        <a href="{% url 'reports:saved_query_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save me-1"></i>{% if instance %}Save changes{% else %}Save query{% endif %}
+        </button>
+    </div>
+</form>
+
+<script id="sq-config" type="application/json">{{ model_config_json|safe }}</script>
+<script id="sq-existing-filters" type="application/json">{{ instance_filters_json|safe }}</script>
+<script id="sq-existing-columns" type="application/json">{{ instance_columns_json|safe }}</script>
+<script>
+(function() {
+    var config = JSON.parse(document.getElementById('sq-config').textContent);
+    var existingFilters = JSON.parse(document.getElementById('sq-existing-filters').textContent);
+    var existingColumns = JSON.parse(document.getElementById('sq-existing-columns').textContent);
+    var initialTarget = "{{ instance.target_model|default:'' }}";
+
+    var targetSel = document.getElementById('sq-target');
+    var filtersCard = document.getElementById('sq-filters-card');
+    var filtersBox = document.getElementById('sq-filters');
+    var filtersEmpty = document.getElementById('sq-filters-empty');
+    var addFilterBtn = document.getElementById('sq-add-filter');
+    var columnsCard = document.getElementById('sq-columns-card');
+    var columnsBox = document.getElementById('sq-columns');
+    var sortCard = document.getElementById('sq-sort-card');
+
+    Object.keys(config).forEach(function(key) {
+        var opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = config[key].label;
+        if (key === initialTarget) opt.selected = true;
+        targetSel.appendChild(opt);
+    });
+
+    function renderFilterRow(filter) {
+        var fields = config[targetSel.value].fields;
+        var div = document.createElement('div');
+        div.className = 'row g-2 mb-2 align-items-center sq-filter-row';
+        var fieldOptions = fields.map(function(f) {
+            return '<option value="' + f.name + '"' + (filter && filter.field === f.name ? ' selected' : '') + '>' + f.name + '</option>';
+        }).join('');
+        div.innerHTML =
+            '<div class="col-md-4"><select name="filter_field" class="form-select form-select-sm sq-field">' + fieldOptions + '</select></div>' +
+            '<div class="col-md-3"><select name="filter_op" class="form-select form-select-sm sq-op"></select></div>' +
+            '<div class="col-md-4"><input name="filter_value" class="form-control form-control-sm" placeholder="value" value="' + (filter ? String(filter.value).replace(/"/g, '&quot;') : '') + '"></div>' +
+            '<div class="col-md-1 text-end"><button type="button" class="btn btn-sm btn-outline-danger sq-remove"><i class="fas fa-times"></i></button></div>';
+        filtersBox.appendChild(div);
+        var fieldSel = div.querySelector('.sq-field');
+        var opSel = div.querySelector('.sq-op');
+        function refreshOps() {
+            var f = fields.find(function(x) { return x.name === fieldSel.value; });
+            opSel.innerHTML = '';
+            (f ? f.ops : []).forEach(function(o) {
+                var opt = document.createElement('option');
+                opt.value = o; opt.textContent = o;
+                if (filter && o === filter.op) opt.selected = true;
+                opSel.appendChild(opt);
+            });
+        }
+        fieldSel.addEventListener('change', refreshOps);
+        refreshOps();
+        div.querySelector('.sq-remove').addEventListener('click', function() {
+            div.remove();
+            updateEmpty();
+        });
+        updateEmpty();
+    }
+
+    function updateEmpty() {
+        var has = filtersBox.querySelectorAll('.sq-filter-row').length > 0;
+        filtersEmpty.style.display = has ? 'none' : '';
+    }
+
+    function renderColumns() {
+        var cfg = config[targetSel.value];
+        if (!cfg) return;
+        columnsBox.innerHTML = '';
+        cfg.columns.forEach(function(col) {
+            var checked = !existingColumns.length || existingColumns.indexOf(col) >= 0;
+            var div = document.createElement('div');
+            div.className = 'form-check form-check-inline';
+            div.innerHTML =
+                '<input type="checkbox" class="form-check-input" name="column" value="' + col + '" id="col-' + col + '"' + (checked ? ' checked' : '') + '>' +
+                '<label class="form-check-label" for="col-' + col + '">' + col + '</label>';
+            columnsBox.appendChild(div);
+        });
+    }
+
+    function onTargetChange() {
+        if (!targetSel.value) {
+            filtersCard.style.display = 'none';
+            columnsCard.style.display = 'none';
+            sortCard.style.display = 'none';
+            return;
+        }
+        filtersCard.style.display = '';
+        columnsCard.style.display = '';
+        sortCard.style.display = '';
+        // Wipe existing filter rows on target change so we don't end up with
+        // rows referencing the old model's fields.
+        filtersBox.querySelectorAll('.sq-filter-row').forEach(function(r) { r.remove(); });
+        renderColumns();
+        updateEmpty();
+    }
+
+    targetSel.addEventListener('change', onTargetChange);
+    addFilterBtn.addEventListener('click', function() { renderFilterRow(null); });
+
+    if (initialTarget) {
+        onTargetChange();
+        existingFilters.forEach(renderFilterRow);
+    }
+})();
+</script>
+{% endblock %}

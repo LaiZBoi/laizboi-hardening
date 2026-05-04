@@ -411,3 +411,84 @@ class WallboardWidget(models.Model):
         if self.refresh_seconds is not None:
             return self.refresh_seconds
         return self.wallboard.refresh_seconds
+
+
+# ---------------------------------------------------------------------------
+# Phase 26 v1 (v3.17.246) — Custom Report Writer + Saved Queries
+# ---------------------------------------------------------------------------
+
+class SavedQuery(models.Model):
+    """
+    User-defined saved query. The filter set + sort + columns are
+    persisted as JSON; the security boundary is `target_model` (must be
+    in `reports.saved_query.MODEL_CONFIG`) and the filterable_fields
+    allow-list inside that config.
+    """
+    TARGET_MODEL_CHOICES = [
+        ('psa.Ticket', 'PSA Tickets'),
+        ('assets.Asset', 'Assets'),
+        ('vault.Password', 'Vault Passwords'),
+    ]
+
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='saved_queries',
+    )
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='saved_queries',
+        null=True, blank=True,
+        help_text='Optional. When set, results are filtered to this org. '
+                  'Null = run against every org the requester can see.',
+    )
+    target_model = models.CharField(
+        max_length=80, choices=TARGET_MODEL_CHOICES,
+        help_text='Which app+model to query.',
+    )
+    filters = models.JSONField(
+        default=list, blank=True,
+        help_text='List of {field, op, value} dicts. Bad fields are '
+                  'silently ignored at run time.',
+    )
+    columns = models.JSONField(
+        default=list, blank=True,
+        help_text='Ordered list of field names to render. Empty = all '
+                  'columns from the target_model\'s default set.',
+    )
+    sort_by = models.CharField(max_length=120, blank=True)
+    is_shared = models.BooleanField(
+        default=False,
+        help_text='When true, other members of the same organization '
+                  'can see + run this query.',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_run_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'reports_saved_queries'
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['owner', '-updated_at']),
+            models.Index(fields=['organization', 'is_shared']),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_target_model_display()})'
+
+    def visible_to(self, user) -> bool:
+        if self.owner_id == user.id:
+            return True
+        if user.is_superuser or getattr(user, 'is_staff', False):
+            return True
+        if self.is_shared and self.organization_id and user.is_authenticated:
+            return user.memberships.filter(
+                organization_id=self.organization_id, is_active=True,
+            ).exists()
+        return False
+
+    def can_edit(self, user) -> bool:
+        return self.owner_id == user.id or user.is_superuser

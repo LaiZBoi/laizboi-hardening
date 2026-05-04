@@ -1501,6 +1501,194 @@ class AgreementReconciliationTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class SavedQueryTests(TestCase):
+    """Phase 26 v1 (v3.17.246) — Saved Query model + run endpoint."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from django.contrib.auth.models import User
+        from psa.models import Queue, Ticket, TicketPriority, TicketStatus, TicketType
+        from django.core.management import call_command
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='SQCo', slug='sq-co')
+        cls.outsider = Organization.objects.create(name='OutsideSQ', slug='sq-out')
+        cls.user = User.objects.create_user('sq-user', 'sq@x.com', 'pw')
+        Membership.objects.create(user=cls.user, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+        cls.peer = User.objects.create_user('sq-peer', 'p@x.com', 'pw')
+        Membership.objects.create(user=cls.peer, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+        cls.outsider_user = User.objects.create_user('sq-out', 'o@x.com', 'pw')
+        Membership.objects.create(user=cls.outsider_user, organization=cls.outsider,
+                                   role=Role.OWNER, is_active=True)
+        cls.queue = Queue.objects.first()
+        cls.priority = TicketPriority.objects.first()
+        cls.ttype = TicketType.objects.first()
+        cls.status = TicketStatus.objects.filter(slug='new').first()
+        cls.urgent = Ticket.objects.create(
+            organization=cls.org, subject='Network down — urgent fix needed',
+            queue=cls.queue, priority=cls.priority,
+            ticket_type=cls.ttype, status=cls.status,
+        )
+        cls.normal = Ticket.objects.create(
+            organization=cls.org, subject='Add a printer to office 3',
+            queue=cls.queue, priority=cls.priority,
+            ticket_type=cls.ttype, status=cls.status,
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_build_filter_drops_unknown_field(self):
+        from reports.saved_query import build_filter
+        # Bad field is silently dropped, query becomes "match all"
+        q = build_filter('psa.Ticket', [
+            {'field': 'definitely_not_a_field', 'op': 'equals', 'value': 'x'},
+        ])
+        self.assertEqual(str(q), str(__import__('django.db.models', fromlist=['Q']).Q()))
+
+    def test_execute_filters_by_subject_contains(self):
+        from reports.models import SavedQuery
+        from reports.saved_query import execute
+        sq = SavedQuery.objects.create(
+            owner=self.user, name='Urgent tickets',
+            target_model='psa.Ticket',
+            filters=[{'field': 'subject', 'op': 'contains', 'value': 'urgent'}],
+        )
+        _model, qs = execute(sq)
+        titles = list(qs.values_list('subject', flat=True))
+        self.assertIn('Network down — urgent fix needed', titles)
+        self.assertNotIn('Add a printer to office 3', titles)
+
+    def test_execute_scopes_to_organization(self):
+        from reports.models import SavedQuery
+        from reports.saved_query import execute
+        from psa.models import Ticket
+        Ticket.objects.create(
+            organization=self.outsider, subject='Outside ticket',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        sq = SavedQuery.objects.create(
+            owner=self.user, organization=self.org,
+            name='Org tickets', target_model='psa.Ticket',
+        )
+        _model, qs = execute(sq, organization=sq.organization)
+        titles = list(qs.values_list('subject', flat=True))
+        self.assertNotIn('Outside ticket', titles)
+
+    def test_visible_to_owner_only_by_default(self):
+        from reports.models import SavedQuery
+        sq = SavedQuery.objects.create(
+            owner=self.user, organization=self.org,
+            name='Private', target_model='psa.Ticket',
+        )
+        self.assertTrue(sq.visible_to(self.user))
+        self.assertFalse(sq.visible_to(self.peer))
+
+    def test_visible_to_peer_when_shared_in_same_org(self):
+        from reports.models import SavedQuery
+        sq = SavedQuery.objects.create(
+            owner=self.user, organization=self.org,
+            name='Shared', target_model='psa.Ticket', is_shared=True,
+        )
+        self.assertTrue(sq.visible_to(self.peer))
+
+    def test_visible_to_blocks_outsider_even_when_shared(self):
+        from reports.models import SavedQuery
+        sq = SavedQuery.objects.create(
+            owner=self.user, organization=self.org,
+            name='Shared', target_model='psa.Ticket', is_shared=True,
+        )
+        self.assertFalse(sq.visible_to(self.outsider_user))
+
+    def test_run_view_renders_html(self):
+        from reports.models import SavedQuery
+        from django.test import Client
+        sq = SavedQuery.objects.create(
+            owner=self.user, name='Net tickets',
+            target_model='psa.Ticket',
+            filters=[{'field': 'subject', 'op': 'contains', 'value': 'Network'}],
+        )
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.get(f'/reports/saved-queries/{sq.pk}/run/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Network down')
+        self.assertNotContains(r, 'Add a printer')
+
+    def test_run_view_csv_export(self):
+        from reports.models import SavedQuery
+        from django.test import Client
+        sq = SavedQuery.objects.create(
+            owner=self.user, name='All tickets',
+            target_model='psa.Ticket',
+        )
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.get(f'/reports/saved-queries/{sq.pk}/run/?format=csv')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('subject', body.split('\n')[0])
+
+    def test_run_view_404_for_outsider(self):
+        from reports.models import SavedQuery
+        from django.test import Client
+        sq = SavedQuery.objects.create(
+            owner=self.user, name='My private', target_model='psa.Ticket',
+        )
+        c = Client()
+        self._login(c, self.outsider_user, self.outsider)
+        r = c.get(f'/reports/saved-queries/{sq.pk}/run/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_create_view_persists_filters(self):
+        from reports.models import SavedQuery
+        from django.test import Client
+        c = Client()
+        self._login(c, self.user, self.org)
+        r = c.post('/reports/saved-queries/new/', data={
+            'name': 'Customer asks',
+            'description': '',
+            'target_model': 'psa.Ticket',
+            'organization': '',
+            'filter_field': ['subject', 'subject'],
+            'filter_op': ['contains', 'contains'],
+            'filter_value': ['printer', 'office'],
+            'column': ['ticket_number', 'subject'],
+            'sort_by': '-created_at',
+        })
+        self.assertEqual(r.status_code, 302)
+        sq = SavedQuery.objects.get(name='Customer asks')
+        self.assertEqual(sq.target_model, 'psa.Ticket')
+        self.assertEqual(len(sq.filters), 2)
+        self.assertEqual(sq.columns, ['ticket_number', 'subject'])
+
+    def test_delete_view_blocks_non_owner(self):
+        from reports.models import SavedQuery
+        from django.test import Client
+        sq = SavedQuery.objects.create(
+            owner=self.user, name='Mine', target_model='psa.Ticket',
+        )
+        c = Client()
+        self._login(c, self.peer, self.org)
+        c.post(f'/reports/saved-queries/{sq.pk}/delete/')
+        # Still exists.
+        self.assertTrue(SavedQuery.objects.filter(pk=sq.pk).exists())
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class WallboardGlobalScopeTests(TestCase):
     """v3.17.216: organization-null = global wallboard, staff-only."""
 

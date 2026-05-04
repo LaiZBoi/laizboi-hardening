@@ -104,5 +104,11 @@ urlpatterns = [
     # v3.17.225 — Phase 36 Agreement Reconciliation
     path('agreement-reconciliation/',
          views.agreement_reconciliation, name='agreement_reconciliation'),
+    # Phase 26 v1 (v3.17.246) — Saved Queries / Custom Report Writer.
+    path('saved-queries/', views.saved_query_list, name='saved_query_list'),
+    path('saved-queries/new/', views.saved_query_form, name='saved_query_create'),
+    path('saved-queries/<int:pk>/edit/', views.saved_query_form, name='saved_query_edit'),
+    path('saved-queries/<int:pk>/run/', views.saved_query_run, name='saved_query_run'),
+    path('saved-queries/<int:pk>/delete/', views.saved_query_delete, name='saved_query_delete'),
     path('psa/<str:report_type>/', views.psa_report_run, name='psa_report_run'),
 ]
