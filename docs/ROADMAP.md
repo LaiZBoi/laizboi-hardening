@@ -354,13 +354,13 @@ Planned capabilities:
 **Roadmap item:** Infrastructure Relationship Mapping & Dependency Visualization.
 
 Planned capabilities:
-- Asset relationship mapping (parent / child / depends-on)
-- Visual dependency graphs (DAG renders)
+- Asset relationship mapping (parent / child / depends-on) *(shipped — `assets.Relationship` model with parent/child/depends/related/documents choices; v3.17.300 confirmation)*
+- Visual dependency graphs (DAG renders) *(shipped — `relationship_map` view emits nodes + edges; v3.17.300 confirmation)*
 - Topology visualization
-- Nested organization mapping (extends Phase 17 multi-location)
-- Shared infrastructure relationships
+- Nested organization mapping (extends Phase 17 multi-location) *(shipped — Phase 18 v1, v3.17.240)*
+- Shared infrastructure relationships *(shipped — Phase 18 v3, v3.17.252 — `Asset.is_shared_with_descendants` + `visible_to_org()`)*
 - Automatic asset linking (heuristic — same subnet, same rack, etc.)
-- Infrastructure dependency chains
+- Infrastructure dependency chains *(shipped v3.17.300 — `Asset.dependency_chain(direction='downstream'|'upstream', max_depth=10)` BFS walker; cycle-safe)*
 - Rack relationship visualization *(partial — racks already shipped)*
 - Service relationship tracking ("Email service depends on Exchange Online + DNS X + Connector Y")
 - Documentation inheritance (child sites inherit parent SOPs)

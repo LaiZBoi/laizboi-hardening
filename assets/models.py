@@ -366,6 +366,55 @@ class Asset(BaseModel):
         delta = self.warranty_expiry - date.today()
         return delta.days
 
+    def dependency_chain(self, *, direction='downstream', max_depth=10):
+        """Phase 16 v7 (v3.17.300): walk this asset's `depends`
+        relationship graph and return the dependency chain as a list
+        of `Asset` rows in BFS order.
+
+        - `direction='downstream'` returns assets THIS asset depends on
+          (transitively): "if I go down, what else takes the hit"
+          (well, the reverse — if X depends on Y, X going down takes Y's
+          place; we walk source→target edges of `relation_type='depends'`
+          where this asset is the source).
+        - `direction='upstream'` returns assets that depend on THIS one
+          (walks the reverse direction): "if I go down, what else
+          breaks?"
+
+        Cycle-safe — visited set prevents infinite loops. Capped at
+        `max_depth` levels to keep the response bounded.
+        """
+        from .models import Relationship
+        if direction not in ('downstream', 'upstream'):
+            raise ValueError('direction must be "downstream" or "upstream"')
+        out = []
+        seen = {self.pk}
+        queue = [(self.pk, 0)]
+        while queue:
+            current, depth = queue.pop(0)
+            if depth >= max_depth:
+                continue
+            if direction == 'downstream':
+                rels = Relationship.objects.filter(
+                    organization=self.organization,
+                    source_type='asset', source_id=current,
+                    target_type='asset', relation_type='depends',
+                ).values_list('target_id', flat=True)
+            else:
+                rels = Relationship.objects.filter(
+                    organization=self.organization,
+                    target_type='asset', target_id=current,
+                    source_type='asset', relation_type='depends',
+                ).values_list('source_id', flat=True)
+            for nbr_id in rels:
+                if nbr_id in seen:
+                    continue
+                seen.add(nbr_id)
+                queue.append((nbr_id, depth + 1))
+        return list(Asset.objects.filter(
+            pk__in=(seen - {self.pk}),
+            organization=self.organization,
+        ).order_by('name'))
+
     def lifecycle_score(self):
         """Phase 13 v6 (v3.17.263): composite 0-100 replacement-priority
         score. Higher score = stronger candidate for refresh.

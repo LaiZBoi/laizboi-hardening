@@ -470,3 +470,67 @@ class RMAViewTests(TestCase):
         self.assertEqual(rma.status, 'replaced')
         self.assertEqual(rma.replacement_serial, 'NEW-SN-7')
         self.assertIsNotNone(rma.closed_at)
+
+
+class DependencyChainTests(TestCase):
+    """Phase 16 v7 (v3.17.300): `Asset.dependency_chain()` walks the
+    `Relationship(relation_type='depends')` edges in either direction."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from assets.models import Relationship
+        cls.org = Organization.objects.create(name='DcCo', slug='dc-co')
+        # Build: web → app → db → san
+        cls.web = Asset.objects.create(organization=cls.org, name='web',
+                                         asset_type='server')
+        cls.app = Asset.objects.create(organization=cls.org, name='app',
+                                         asset_type='server')
+        cls.db = Asset.objects.create(organization=cls.org, name='db',
+                                        asset_type='server')
+        cls.san = Asset.objects.create(organization=cls.org, name='san',
+                                         asset_type='storage')
+        # Unrelated standalone
+        cls.lonely = Asset.objects.create(organization=cls.org, name='lonely',
+                                            asset_type='switch')
+        for src, dst in [(cls.web, cls.app), (cls.app, cls.db),
+                          (cls.db, cls.san)]:
+            Relationship.objects.create(
+                organization=cls.org,
+                source_type='asset', source_id=src.pk,
+                target_type='asset', target_id=dst.pk,
+                relation_type='depends',
+            )
+
+    def test_downstream_walks_full_chain(self):
+        names = [a.name for a in self.web.dependency_chain(direction='downstream')]
+        self.assertEqual(set(names), {'app', 'db', 'san'})
+
+    def test_upstream_walks_reverse_chain(self):
+        names = [a.name for a in self.san.dependency_chain(direction='upstream')]
+        self.assertEqual(set(names), {'web', 'app', 'db'})
+
+    def test_isolated_asset_returns_empty(self):
+        self.assertEqual(self.lonely.dependency_chain(direction='downstream'), [])
+
+    def test_max_depth_caps(self):
+        # max_depth=1 from web should only include 'app'
+        chain = self.web.dependency_chain(direction='downstream', max_depth=1)
+        names = [a.name for a in chain]
+        self.assertEqual(names, ['app'])
+
+    def test_cycle_safe(self):
+        from assets.models import Relationship
+        # Create a cycle: san → web (closing the loop)
+        Relationship.objects.create(
+            organization=self.org,
+            source_type='asset', source_id=self.san.pk,
+            target_type='asset', target_id=self.web.pk,
+            relation_type='depends',
+        )
+        # Should not infinite-loop; must include all 4 distinct assets
+        names = {a.name for a in self.web.dependency_chain(direction='downstream')}
+        self.assertEqual(names, {'app', 'db', 'san'})
+
+    def test_invalid_direction_raises(self):
+        with self.assertRaises(ValueError):
+            self.web.dependency_chain(direction='sideways')

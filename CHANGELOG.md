@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.300] - 2026-05-05
+
+### Added — Phase 16 v1/v2/v4/v5/v7 — Asset relationship + dependency chain
+Closes 5 sub-bullets of Phase 16. Most are already covered by existing infrastructure (`Relationship` model + `relationship_map` view from earlier); this release adds the `Asset.dependency_chain()` walker so impact analysis ("what else breaks if this asset goes down?") becomes a one-line query.
+
+- **New `Asset.dependency_chain(*, direction='downstream', max_depth=10)` method** — BFS walk over `Relationship(relation_type='depends')` edges where the asset is the source (`downstream`) or target (`upstream`). Cycle-safe via a visited set. Returns a list of related `Asset` rows in name-sorted order, capped at `max_depth` hops.
+  - **Downstream**: "this asset depends on X, X depends on Y" → returns [X, Y].
+  - **Upstream**: "X depends on this asset; Y depends on X" → returns [X, Y]. The reverse direction answers the impact-analysis question directly.
+- **5 sub-bullets confirmed shipped via existing infra**:
+  1. **Asset relationship mapping (parent / child / depends-on)** — `assets.Relationship` model has `parent` / `child` / `depends` / `related` / `documents` choices since the project's early days.
+  2. **Visual dependency graphs (DAG renders)** — `relationship_map` view emits nodes + edges and the existing template renders them.
+  3. **Nested organization mapping** — Phase 18 v1 (v3.17.240) `Organization.parent` self-FK + `breadcrumb_label`.
+  4. **Shared infrastructure relationships** — Phase 18 v3 (v3.17.252) `Asset.is_shared_with_descendants` + `visible_to_org()`.
+  5. **Infrastructure dependency chains** — `Asset.dependency_chain()` shipped in this release.
+
+### Tests
+- 6 tests in `assets.tests.DependencyChainTests` covering: downstream walks the full 4-node chain, upstream walks the reverse, isolated assets return empty, `max_depth=1` caps to one hop, cycle in graph doesn't infinite-loop, invalid direction raises.
+
+### Roadmap
+- "Asset relationship mapping (parent / child / depends-on)" → annotated `*(shipped — `assets.Relationship` model, v3.17.300 confirmation)*`.
+- "Visual dependency graphs (DAG renders)" → annotated `*(shipped — `relationship_map` view, v3.17.300 confirmation)*`.
+- "Nested organization mapping (extends Phase 17 multi-location)" → annotated `*(shipped — Phase 18 v1, v3.17.240)*`.
+- "Shared infrastructure relationships" → annotated `*(shipped — Phase 18 v3, v3.17.252)*`.
+- "Infrastructure dependency chains" → annotated `*(shipped v3.17.300 — `Asset.dependency_chain()` BFS walker, cycle-safe, depth-capped)*`.
+
 ## [3.17.299] - 2026-05-05
 
 ### Added — Phase 15 v3/v10/v11 — Renewals + profitability + invoice automation (closes Phase 15)
