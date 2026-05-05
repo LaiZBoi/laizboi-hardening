@@ -31,9 +31,11 @@ class Command(BaseCommand):
         cap = options['max_per_contract']
         today = date.today()
 
+        # Phase 15 v13: skip paused contracts (paused_at non-null)
         qs = Contract.objects.filter(
             status='active',
             next_billing_date__lte=today,
+            paused_at__isnull=True,
         ).exclude(billing_frequency='none')
 
         spawned = 0

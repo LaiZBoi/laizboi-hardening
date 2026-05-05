@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.298] - 2026-05-05
+
+### Added — Phase 15 v13 — Subscription lifecycle management
+Closes the "Subscription lifecycle management" sub-bullet of Phase 15. Pause / resume / cancel-at-period-end on Contract — proper SaaS-style subscription controls.
+
+- **3 new fields on `Contract`** (migration `psa.0052`):
+  - `paused_at` (DateTime, nullable) — non-null = paused.
+  - `paused_until` (Date, nullable) — optional auto-resume gate.
+  - `cancel_at_period_end` (Boolean, default False) — flips status to `cancelled` on next billing-date pass.
+- **3 new methods on `Contract`**:
+  - `pause(*, until=None)` — sets `paused_at`; idempotent. `until` enables auto-resume via the cron.
+  - `resume()` — clears the pause; idempotent.
+  - `cancel_at_end_of_period()` — sets the auto-cancel flag without immediate status change.
+- **Recurring-invoice cron updated** — `psa_generate_recurring_invoices` now filters out paused contracts.
+- **New management command `psa_advance_subscription_lifecycle`** — daily timer; auto-resumes contracts whose `paused_until <= today`; transitions cancel-at-period-end contracts to `status='cancelled'` after their `next_billing_date` passes.
+
+### Tests
+- 8 tests in `psa.tests.test_workflow_kb_contracts.SubscriptionLifecycleTests` covering: `pause()` sets timestamp + idempotent, `resume()` clears + idempotent, recurring cron skips paused contracts, lifecycle cron auto-resumes when due, lifecycle cron does not auto-resume too early, `cancel_at_end_of_period()` sets flag without changing status, lifecycle cron cancels after next_billing_date passes.
+
+### Roadmap
+Phase 15 sub-bullet "Subscription lifecycle management" annotated `*(shipped v3.17.298)*`.
+
 ## [3.17.297] - 2026-05-05
 
 ### Added — Phase 15 v12 — Tax-compute scaffolding (Avalara + TaxJar)

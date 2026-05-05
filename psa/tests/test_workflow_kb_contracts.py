@@ -1296,6 +1296,90 @@ class LateFeeTests(TestCase):
             description__contains='Late fee').count(), 0)
 
 
+class SubscriptionLifecycleTests(TestCase):
+    """Phase 15 v13 (v3.17.298): pause / resume / cancel-at-period-end."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from decimal import Decimal as _D
+        from psa.models import Contract
+        _setup_seed()
+        self.msp = Organization.objects.create(name='SubMsp', slug='sub-msp')
+        self.client_org = Organization.objects.create(name='SubClient',
+                                                       slug='sub-client')
+        self.contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            name='Subscription test',
+            contract_type='retainer', status='active',
+            start_date=date.today() - timedelta(days=30),
+            recurring_amount=_D('1000'),
+            billing_frequency='monthly',
+            next_billing_date=date.today() - timedelta(days=1),
+        )
+
+    def test_pause_sets_paused_at(self):
+        from django.utils import timezone
+        result = self.contract.pause()
+        self.assertTrue(result)
+        self.contract.refresh_from_db()
+        self.assertIsNotNone(self.contract.paused_at)
+
+    def test_pause_idempotent(self):
+        self.contract.pause()
+        result = self.contract.pause()
+        self.assertFalse(result)
+
+    def test_resume_clears_pause(self):
+        self.contract.pause()
+        result = self.contract.resume()
+        self.assertTrue(result)
+        self.contract.refresh_from_db()
+        self.assertIsNone(self.contract.paused_at)
+
+    def test_recurring_cron_skips_paused(self):
+        from django.core.management import call_command
+        from psa.models import Invoice
+        self.contract.pause()
+        call_command('psa_generate_recurring_invoices', verbosity=0)
+        self.assertEqual(
+            Invoice.objects.filter(source_contract=self.contract).count(),
+            0,
+        )
+
+    def test_lifecycle_cron_auto_resumes_when_paused_until_passed(self):
+        from datetime import date, timedelta
+        from django.core.management import call_command
+        self.contract.pause(until=date.today() - timedelta(days=1))
+        call_command('psa_advance_subscription_lifecycle', verbosity=0)
+        self.contract.refresh_from_db()
+        self.assertIsNone(self.contract.paused_at)
+
+    def test_lifecycle_cron_does_not_auto_resume_until_date_reached(self):
+        from datetime import date, timedelta
+        from django.core.management import call_command
+        self.contract.pause(until=date.today() + timedelta(days=7))
+        call_command('psa_advance_subscription_lifecycle', verbosity=0)
+        self.contract.refresh_from_db()
+        self.assertIsNotNone(self.contract.paused_at)
+
+    def test_cancel_at_period_end_sets_flag(self):
+        self.contract.cancel_at_end_of_period()
+        self.contract.refresh_from_db()
+        self.assertTrue(self.contract.cancel_at_period_end)
+        # status should still be active until cron processes
+        self.assertEqual(self.contract.status, 'active')
+
+    def test_lifecycle_cron_cancels_after_next_billing_passes(self):
+        from datetime import date, timedelta
+        from django.core.management import call_command
+        self.contract.cancel_at_end_of_period()
+        # next_billing_date already in the past per setUp
+        call_command('psa_advance_subscription_lifecycle', verbosity=0)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.status, 'cancelled')
+        self.assertFalse(self.contract.cancel_at_period_end)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

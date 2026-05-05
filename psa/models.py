@@ -1296,6 +1296,26 @@ class Contract(models.Model):
         null=True, blank=True,
         help_text='Date of the most recent recurring-invoice generation.',
     )
+
+    # Phase 15 v13 (v3.17.298) — subscription lifecycle. `paused_at` /
+    # `paused_until` are non-null when the contract is paused; the
+    # recurring-invoice cron skips paused contracts. `cancel_at_period_end`
+    # flips the contract to `cancelled` after the next billing date,
+    # giving the customer their full paid-up period without renewal.
+    paused_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the contract was paused. Non-null = paused.',
+    )
+    paused_until = models.DateField(
+        null=True, blank=True,
+        help_text='Optional auto-resume date — `psa_advance_subscription_lifecycle` '
+                  'cron clears the pause when today >= this date.',
+    )
+    cancel_at_period_end = models.BooleanField(
+        default=False,
+        help_text='When True, the lifecycle cron transitions the '
+                  'contract to `cancelled` after the next billing date.',
+    )
     proration_enabled = models.BooleanField(
         default=False,
         help_text='When true, mid-month start/cancel prorates the allowance '
@@ -1489,6 +1509,34 @@ class Contract(models.Model):
                 meter.save(update_fields=['current_quantity',
                                             'last_billed_at', 'updated_at'])
         return inv
+
+    def pause(self, *, until=None):
+        """Phase 15 v13 (v3.17.298): pause the contract. The recurring-
+        invoice cron skips paused contracts. `until` (optional Date)
+        gates auto-resume by `psa_advance_subscription_lifecycle`."""
+        from django.utils import timezone as _tz
+        if self.paused_at:
+            return False  # already paused
+        self.paused_at = _tz.now()
+        self.paused_until = until
+        self.save(update_fields=['paused_at', 'paused_until', 'updated_at'])
+        return True
+
+    def resume(self):
+        """Phase 15 v13 (v3.17.298): resume a paused contract. Idempotent
+        — returns False if not paused."""
+        if not self.paused_at:
+            return False
+        self.paused_at = None
+        self.paused_until = None
+        self.save(update_fields=['paused_at', 'paused_until', 'updated_at'])
+        return True
+
+    def cancel_at_end_of_period(self):
+        """Phase 15 v13 (v3.17.298): flag for auto-cancel at the next
+        billing date. Customer keeps the paid-up period."""
+        self.cancel_at_period_end = True
+        self.save(update_fields=['cancel_at_period_end', 'updated_at'])
 
     def usage_line_items(self):
         """Phase 15 v2 (v3.17.292): generate one InvoiceLineItem-spec

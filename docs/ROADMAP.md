@@ -345,7 +345,7 @@ Planned capabilities:
 - Contract profitability tracking *(partial — Phase 3 profitability-by-contract shipped)*
 - Invoice automation
 - Tax handling support (Avalara / TaxJar integrations) *(shipped v3.17.297 — `TaxConnection` model + `BaseTaxProvider` interface + Avalara & TaxJar adapter stubs; live `compute_tax()` lands when an MSP connects a real account)*
-- Subscription lifecycle management
+- Subscription lifecycle management *(shipped v3.17.298 — `Contract.paused_at` / `paused_until` / `cancel_at_period_end` fields + `pause()` / `resume()` / `cancel_at_end_of_period()` methods; daily `psa_advance_subscription_lifecycle` cron auto-resumes + cancels)*
 
 **Goal:** Improve recurring service management and operational billing visibility.
 
