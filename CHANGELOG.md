@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.306] - 2026-05-05
+
+### Added — Phase 17 v6 — Patch correlation (CVE → assets)
+Closes the "Patch correlation (this CVE matches these N assets)" sub-bullet of Phase 17. New `Vulnerability` model + `affected_assets()` walker.
+
+- **New `assets.Vulnerability` model** (migration `assets.0022`) — fields: organization (nullable for global advisories), cve_id, title, description, severity (4-level CVSS bucket), cvss_score, affected_pattern (substring matched against `RMMSoftware.name`), fixed_version, published_at, is_active, notes.
+- **`Vulnerability.affected_assets()` method** — joins through `RMMSoftware → RMMDevice → Asset` (by `device_name` ↔ `Asset.name`) to surface every asset running matching software. Org-scoped or global based on `organization`.
+- **Pattern matching** — case-insensitive substring on `RMMSoftware.name` (e.g. "Log4j" matches "Apache Log4j 2.14.0"). Empty pattern returns empty list.
+
+### Tests
+- 4 tests in `assets.tests.VulnerabilityTests` covering: affected_assets finds matching devices, empty result on no match, global advisory (org=None) finds matches across orgs, empty pattern returns empty.
+
+### Roadmap
+Phase 17 sub-bullet "Patch correlation (this CVE matches these N assets)" annotated `*(shipped v3.17.306)*`.
+
 ## [3.17.305] - 2026-05-05
 
 ### Added — Phase 17 v3 — Software compliance auditing

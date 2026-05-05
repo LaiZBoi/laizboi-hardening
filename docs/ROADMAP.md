@@ -377,7 +377,7 @@ Planned capabilities:
 - Software compliance auditing *(shipped v3.17.305 — `SoftwarePolicy` model with deny/require actions + severity; `/reports/software-compliance/` joins policies against `RMMSoftware` inventory and surfaces deny violations + require gaps)*
 - Hardware lifecycle scoring (composite — see Phase 13)
 - Warranty lookups (vendor API integrations)
-- Patch correlation (this CVE matches these N assets)
+- Patch correlation (this CVE matches these N assets) *(shipped v3.17.306 — `Vulnerability` model with cve_id + cvss_score + affected_pattern; `affected_assets()` walks `RMMSoftware → RMMDevice → Asset` (by name) to surface affected endpoints)*
 - Smart asset grouping (auto-cohort by role/version/location)
 - Vulnerability-to-ticket linking
 - Configuration monitoring

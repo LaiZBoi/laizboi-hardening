@@ -686,6 +686,88 @@ class Service(BaseModel):
         ).order_by('name'))
 
 
+class Vulnerability(BaseModel):
+    """Phase 17 v6 (v3.17.306): CVE-style vulnerability record with
+    a software-name matcher. The `affected_assets()` query walks
+    `integrations.RMMSoftware` to find every device running matching
+    software so a tech can see "CVE-2026-1234 affects 47 endpoints
+    in our portfolio."
+
+    Vulnerabilities are typically MSP-wide (NIST/MITRE feeds), so
+    `organization=None` is the common case. Per-org overrides (custom
+    advisories) are supported.
+    """
+    SEVERITY_CHOICES = [
+        ('low', 'Low (CVSS 0.1–3.9)'),
+        ('medium', 'Medium (CVSS 4.0–6.9)'),
+        ('high', 'High (CVSS 7.0–8.9)'),
+        ('critical', 'Critical (CVSS 9.0–10.0)'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='vulnerabilities',
+        null=True, blank=True,
+        help_text='None = global advisory applied to every org.',
+    )
+    cve_id = models.CharField(
+        max_length=40, blank=True,
+        help_text='CVE-YYYY-NNNN format when applicable.',
+    )
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES,
+                                  default='medium')
+    cvss_score = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='CVSS 3.x base score 0.0–10.0',
+    )
+    affected_pattern = models.CharField(
+        max_length=200,
+        help_text='Case-insensitive substring matched against '
+                  'RMMSoftware.name (e.g. "Apache Log4j").',
+    )
+    fixed_version = models.CharField(
+        max_length=100, blank=True,
+        help_text='First version where the issue is fixed (advisory ref).',
+    )
+    published_at = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'vulnerabilities'
+        ordering = ['-severity', '-published_at']
+        indexes = [
+            models.Index(fields=['cve_id']),
+            models.Index(fields=['severity', 'is_active']),
+        ]
+
+    def __str__(self):
+        cve = f'{self.cve_id} ' if self.cve_id else ''
+        return f'{cve}{self.title} [{self.get_severity_display()}]'
+
+    def affected_assets(self):
+        """Return distinct Asset rows whose RMMDevice has installed
+        software matching `affected_pattern`. Tenant scope: when
+        `organization` is set, only that org's devices; else all."""
+        from integrations.models import RMMSoftware
+        if not self.affected_pattern:
+            return []
+        sw_qs = RMMSoftware.objects.filter(
+            name__icontains=self.affected_pattern,
+        ).select_related('device', 'organization')
+        if self.organization_id:
+            sw_qs = sw_qs.filter(organization_id=self.organization_id)
+        # Map RMMDevice → matching Asset by device_name (best-effort linkage)
+        device_names = {sw.device.device_name for sw in sw_qs if sw.device}
+        return list(Asset.objects.filter(
+            name__in=device_names,
+        ).select_related('organization').order_by('organization__name', 'name'))
+
+
 class SoftwarePolicy(BaseModel):
     """Phase 17 v3 (v3.17.305): allow/deny rules for software inventory.
     The compliance report scans `RMMSoftware` rows per org and flags

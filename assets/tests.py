@@ -842,3 +842,84 @@ class SoftwarePolicyTests(TestCase):
         )
         self.assertIsNone(p.organization)
         self.assertTrue(p.matches('CryptoLocker variant'))
+
+
+class VulnerabilityTests(TestCase):
+    """Phase 17 v6 (v3.17.306): CVE → asset matcher."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from integrations.models import (
+            RMMConnection, RMMDevice, RMMSoftware,
+        )
+        cls.org = Organization.objects.create(name='VuCo', slug='vu-co')
+        # Create RMM linkage
+        cls.rmm = RMMConnection.objects.create(
+            organization=cls.org, provider_type='ninjarmm',
+            name='NinjaTest',
+        )
+        # Two assets, two devices, log4j installed on one
+        cls.a1 = Asset.objects.create(
+            organization=cls.org, name='affected-server',
+            asset_type='server',
+        )
+        cls.a2 = Asset.objects.create(
+            organization=cls.org, name='clean-server',
+            asset_type='server',
+        )
+        d1 = RMMDevice.objects.create(
+            organization=cls.org, connection=cls.rmm,
+            external_id='dev-1', device_name='affected-server',
+        )
+        d2 = RMMDevice.objects.create(
+            organization=cls.org, connection=cls.rmm,
+            external_id='dev-2', device_name='clean-server',
+        )
+        RMMSoftware.objects.create(
+            organization=cls.org, connection=cls.rmm, device=d1,
+            name='Apache Log4j 2.14.0',
+        )
+        RMMSoftware.objects.create(
+            organization=cls.org, connection=cls.rmm, device=d2,
+            name='nginx 1.24.0',
+        )
+
+    def test_affected_assets_finds_matching_devices(self):
+        from assets.models import Vulnerability
+        v = Vulnerability.objects.create(
+            cve_id='CVE-2021-44228', title='Log4Shell',
+            severity='critical',
+            affected_pattern='Log4j',
+            organization=self.org,
+        )
+        affected = v.affected_assets()
+        names = {a.name for a in affected}
+        self.assertIn('affected-server', names)
+        self.assertNotIn('clean-server', names)
+
+    def test_affected_assets_empty_when_no_match(self):
+        from assets.models import Vulnerability
+        v = Vulnerability.objects.create(
+            title='Phantom CVE',
+            severity='low',
+            affected_pattern='no-such-software',
+            organization=self.org,
+        )
+        self.assertEqual(v.affected_assets(), [])
+
+    def test_global_vulnerability_scopes_across_orgs(self):
+        from assets.models import Vulnerability
+        v = Vulnerability.objects.create(
+            organization=None,  # global advisory
+            title='Global Log4j',
+            severity='critical',
+            affected_pattern='Log4j',
+        )
+        affected = v.affected_assets()
+        names = {a.name for a in affected}
+        self.assertIn('affected-server', names)
+
+    def test_empty_pattern_returns_empty(self):
+        from assets.models import Vulnerability
+        v = Vulnerability(affected_pattern='', title='x', severity='low')
+        self.assertEqual(v.affected_assets(), [])
