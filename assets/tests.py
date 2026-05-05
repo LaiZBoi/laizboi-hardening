@@ -749,3 +749,63 @@ class TopologyJSONTests(TestCase):
         edges = resp.json()['edges']
         types = {e['type'] for e in edges}
         self.assertIn('depends', types)
+
+
+class AssetBaselineDriftTests(TestCase):
+    """Phase 17 v1+v2 (v3.17.304): baseline capture + drift detection."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='BlCo', slug='bl-co')
+        cls.asset = Asset.objects.create(
+            organization=cls.org, name='srv01', asset_type='server',
+            os_version='Ubuntu 24.04', firmware_version='1.2.3',
+            ip_address='10.0.0.5', mac_address='00:11:22:33:44:55',
+            manufacturer='Dell', model='R650', serial_number='SN12345',
+        )
+
+    def test_capture_baseline_records_snapshot(self):
+        b = self.asset.capture_baseline(label='post-deploy')
+        self.assertEqual(b.snapshot['os_version'], 'Ubuntu 24.04')
+        self.assertEqual(b.snapshot['firmware_version'], '1.2.3')
+        self.assertEqual(b.snapshot['serial_number'], 'SN12345')
+        self.assertTrue(b.is_current)
+        self.assertEqual(b.label, 'post-deploy')
+
+    def test_capture_baseline_marks_old_as_not_current(self):
+        b1 = self.asset.capture_baseline(label='v1')
+        b2 = self.asset.capture_baseline(label='v2')
+        b1.refresh_from_db()
+        self.assertFalse(b1.is_current)
+        self.assertTrue(b2.is_current)
+
+    def test_detect_drift_returns_empty_when_unchanged(self):
+        self.asset.capture_baseline()
+        self.assertEqual(self.asset.detect_drift(), [])
+
+    def test_detect_drift_finds_changed_fields(self):
+        self.asset.capture_baseline()
+        self.asset.os_version = 'Ubuntu 24.10'
+        self.asset.firmware_version = '1.2.4'
+        self.asset.save()
+        drift = self.asset.detect_drift()
+        fields = {d['field'] for d in drift}
+        self.assertIn('os_version', fields)
+        self.assertIn('firmware_version', fields)
+
+    def test_detect_drift_returns_empty_with_no_baseline(self):
+        # Fresh asset, no baseline captured
+        a = Asset.objects.create(
+            organization=self.org, name='fresh', asset_type='server',
+        )
+        self.assertEqual(a.detect_drift(), [])
+
+    def test_drift_includes_baseline_and_current_values(self):
+        self.asset.capture_baseline()
+        self.asset.ip_address = '10.0.0.99'
+        self.asset.save()
+        drift = self.asset.detect_drift()
+        ip_drift = next((d for d in drift if d['field'] == 'ip_address'), None)
+        self.assertIsNotNone(ip_drift)
+        self.assertEqual(ip_drift['baseline'], '10.0.0.5')
+        self.assertEqual(ip_drift['current'], '10.0.0.99')

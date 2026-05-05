@@ -366,6 +366,51 @@ class Asset(BaseModel):
         delta = self.warranty_expiry - date.today()
         return delta.days
 
+    # Phase 17 v1/v2 (v3.17.304): fields used for baseline + drift
+    BASELINE_FIELDS = (
+        'os_version', 'firmware_version', 'ip_address',
+        'mac_address', 'manufacturer', 'model', 'serial_number',
+    )
+
+    def capture_baseline(self, *, label='', user=None):
+        """Phase 17 v1 (v3.17.304): snapshot the asset's
+        intelligence-relevant fields into a new `AssetBaseline` row.
+        Marks the new baseline as `is_current=True` and clears the
+        flag on prior baselines so `detect_drift()` always compares
+        against the most recent one."""
+        snap = {f: (getattr(self, f, '') or '') for f in self.BASELINE_FIELDS}
+        AssetBaseline.objects.filter(asset=self, is_current=True).update(
+            is_current=False)
+        return AssetBaseline.objects.create(
+            asset=self, organization=self.organization,
+            label=label, snapshot=snap, is_current=True,
+            captured_by=user,
+        )
+
+    def detect_drift(self):
+        """Phase 17 v2 (v3.17.304): compare current asset state to the
+        latest baseline. Returns a list of dicts:
+        [{field, baseline, current}, ...]. Empty list when no drift
+        or no baseline exists yet."""
+        baseline = (AssetBaseline.objects
+                    .filter(asset=self, is_current=True)
+                    .first())
+        if baseline is None:
+            return []
+        snap = baseline.snapshot or {}
+        out = []
+        for field in self.BASELINE_FIELDS:
+            base_val = (snap.get(field) or '')
+            cur_val = (getattr(self, field, '') or '')
+            # Coerce both to strings for comparison
+            if str(base_val) != str(cur_val):
+                out.append({
+                    'field': field,
+                    'baseline': str(base_val),
+                    'current': str(cur_val),
+                })
+        return out
+
     def dependency_chain(self, *, direction='downstream', max_depth=10):
         """Phase 16 v7 (v3.17.300): walk this asset's `depends`
         relationship graph and return the dependency chain as a list
@@ -639,6 +684,57 @@ class Service(BaseModel):
         return list(Asset.objects.filter(
             organization=self.organization, pk__in=rels,
         ).order_by('name'))
+
+
+class AssetBaseline(BaseModel):
+    """Phase 17 v1/v2 (v3.17.304): point-in-time snapshot of an asset's
+    intelligence-relevant fields. Used by `Asset.detect_drift()` to
+    surface "this server's OS / firmware / IP / etc. has shifted from
+    the approved baseline."
+
+    Stores the full snapshot as JSON so future schema additions don't
+    invalidate historical baselines — comparison is field-by-field
+    against the current asset.
+    """
+    asset = models.ForeignKey(
+        Asset, on_delete=models.CASCADE,
+        related_name='baselines',
+    )
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='asset_baselines',
+    )
+    label = models.CharField(
+        max_length=100,
+        help_text='Optional human label, e.g. "post-deployment v1.0".',
+        blank=True,
+    )
+    snapshot = models.JSONField(
+        default=dict, blank=True,
+        help_text='Field map captured by `Asset.capture_baseline()`.',
+    )
+    is_current = models.BooleanField(
+        default=False,
+        help_text='True for the most-recent baseline of this asset; '
+                  'previous baselines are kept for history.',
+    )
+    captured_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+',
+    )
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'asset_baselines'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['asset', '-created_at']),
+            models.Index(fields=['asset', 'is_current']),
+        ]
+
+    def __str__(self):
+        return f'{self.asset.name} baseline @ {self.created_at:%Y-%m-%d %H:%M}'
 """
 Flexible Asset Type System - Customizable asset tracking engine
 Allows users to define their own asset types with custom fields

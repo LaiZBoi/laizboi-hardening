@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.304] - 2026-05-05
+
+### Added — Phase 17 v1/v2 — Asset baseline + drift detection
+Closes 2 sub-bullets of Phase 17. Capture an approved snapshot of an asset's intelligence-relevant fields (OS, firmware, IP, MAC, manufacturer/model, serial); detect later drift in one query.
+
+- **New `AssetBaseline` model** (migration `assets.0020`) — fields: asset FK, organization FK, label, snapshot (JSONField), is_current Boolean, captured_by User. JSON snapshot survives schema additions.
+- **`Asset.capture_baseline(*, label='', user=None)` method** — snapshots the BASELINE_FIELDS tuple (os_version, firmware_version, ip_address, mac_address, manufacturer, model, serial_number) into a new `AssetBaseline`. Marks new as `is_current=True` and clears the flag on prior baselines so `detect_drift()` always compares against the latest.
+- **`Asset.detect_drift()` method** — compares current asset state to the latest baseline; returns a list of `{field, baseline, current}` dicts for every changed field. Empty when no baseline exists or no drift.
+- **JSON-stored snapshot** — adding new asset fields later doesn't break historical baselines; comparison is field-by-field.
+
+### Tests
+- 6 tests in `assets.tests.AssetBaselineDriftTests` covering: snapshot records all baseline fields, capturing a new baseline marks the old one not-current, no drift on unchanged asset, drift surfaces changed fields, no-baseline returns empty, drift includes both baseline and current values.
+
+### Roadmap
+- Phase 17 sub-bullet "Asset drift detection" annotated `*(shipped v3.17.304 — `Asset.detect_drift()` field-by-field comparison against the latest `AssetBaseline`)*`.
+- Phase 17 sub-bullet "Baseline comparison" annotated `*(shipped v3.17.304 — `AssetBaseline` model + `Asset.capture_baseline()` snapshot method)*`.
+
 ## [3.17.303] - 2026-05-05
 
 ### Added — Phase 16 v3/v8/v10 — Topology JSON + confirmations (closes Phase 16)
