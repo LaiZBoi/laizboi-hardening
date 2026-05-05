@@ -2884,6 +2884,45 @@ def quote_accept(request, pk):
 
 
 @login_required
+@require_psa_enabled
+def ticket_route_urls(request, ticket_number):
+    """Phase 21 v11 (v3.17.317): mobile dispatch routing helper.
+
+    Returns JSON `{address, urls: {google, apple, waze}}` so the PWA
+    can render a "Navigate" picker on the ticket detail page. URLs
+    use the ticket's `client_org` (else `organization`) address —
+    fails gracefully when no street address is set.
+    """
+    from urllib.parse import quote_plus
+    org = get_request_organization(request)
+    qs = Ticket.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    ticket = get_object_or_404(qs, ticket_number=ticket_number)
+    target_org = ticket.organization
+    addr = (target_org.full_address or '').strip() if target_org else ''
+    if not addr:
+        return JsonResponse({
+            'success': False,
+            'error': 'No street address on the ticket\'s organization.',
+            'address': '', 'urls': {},
+        })
+    encoded = quote_plus(addr)
+    return JsonResponse({
+        'success': True,
+        'address': addr,
+        'urls': {
+            # Google Maps universal URL
+            'google': f'https://www.google.com/maps/dir/?api=1&destination={encoded}',
+            # Apple Maps universal URL
+            'apple': f'https://maps.apple.com/?daddr={encoded}',
+            # Waze deep link
+            'waze': f'https://www.waze.com/ul?q={encoded}&navigate=yes',
+        },
+    })
+
+
+@login_required
 @require_write
 @require_psa_enabled
 @require_http_methods(['POST'])

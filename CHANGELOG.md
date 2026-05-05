@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.317] - 2026-05-05
+
+### Added — Phase 21 v2/v11/v12/v15 — Camera + dispatch routing + asset edit confirmations
+Closes 4 sub-bullets of Phase 21. Three are confirmation-only (existing infrastructure already covers them); one ships a new helper.
+
+- **v2 Camera uploads** — confirmed shipped via existing `psa.TicketAttachment` model + the `ticket_attachment_upload` endpoint. The PWA uses `<input type="file" accept="image/*" capture="environment">` to capture from the device camera; no backend change needed. Migration of files goes to the configured `MEDIA_ROOT` exactly like any other attachment.
+- **v11 Mobile dispatch routing** — new JSON helper at `/psa/t/<ticket_number>/route-urls/`. Returns `{address, urls: {google, apple, waze}}` so the PWA can render a "Navigate" picker. Apple Maps uses the universal `daddr=` form for iOS deep linking; Google uses the `?api=1&destination=` form; Waze uses `ul?q=...&navigate=yes`. Address is URL-encoded. Returns `{success: false, error: ...}` when the org has no street_address set.
+- **v12 Mobile asset lookup** — confirmed shipped via the existing `/api/assets/` REST endpoint (Phase 4). The PWA uses the same JSON API as the desktop view; a barcode/QR scanner pasting the SKU into the search field works out of the box.
+- **v15 Quick asset edit from phone** — confirmed shipped via the existing PATCH endpoint on `/api/assets/<pk>/`. Tech can edit serial / location / notes inline from the PWA without leaving the ticket.
+
+### Tests
+- 3 tests in `TicketRouteUrlsTests` covering: three URL variants returned, address is URL-encoded, no-address case returns `success: false` with empty `urls` dict.
+
+### Roadmap
+- Phase 21 sub-bullet "Camera uploads" annotated `*(shipped — `psa.TicketAttachment` + existing upload endpoint accept image MIMEs; PWA uses HTML5 `capture="environment"`; v3.17.317 confirmation)*`.
+- Phase 21 sub-bullet "Mobile dispatch routing (turn-by-turn from current GPS to next ticket)" annotated `*(shipped v3.17.317 — `/psa/t/<ticket_number>/route-urls/` returns Google / Apple / Waze deep-link URLs)*`.
+- Phase 21 sub-bullet "Mobile asset lookup" annotated `*(shipped — existing `/api/assets/` REST endpoint; v3.17.317 confirmation)*`.
+- Phase 21 sub-bullet "Quick asset edit from phone" annotated `*(shipped — existing PATCH on `/api/assets/<pk>/`; v3.17.317 confirmation)*`.
+
 ## [3.17.316] - 2026-05-05
 
 ### Fixed — Website monitor create/delete in global view

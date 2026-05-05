@@ -1774,6 +1774,89 @@ class WebPushSubscriptionTests(TestCase):
         self.assertEqual(WebPushSubscription.objects.count(), 2)
 
 
+class TicketRouteUrlsTests(TestCase):
+    """Phase 21 v11 (v3.17.317): mobile dispatch routing JSON helper."""
+
+    def setUp(self):
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        _setup_seed()
+        ss = SystemSetting.get_settings()
+        ss.psa_enabled = True
+        ss.save()
+        self.org = Organization.objects.create(
+            name='RouteCo', slug='route-co',
+            street_address='100 Tech Way', city='Austin',
+            state='TX', postal_code='78701',
+        )
+        self.user = User.objects.create_user('rt-user', 'r@x.com', 'pw')
+        Membership.objects.create(
+            user=self.user, organization=self.org,
+            role=Role.OWNER, is_active=True,
+        )
+        from psa.models import Ticket
+        self.ticket = Ticket.objects.create(
+            organization=self.org,
+            subject='Onsite work',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first()
+                or TicketStatus.objects.first(),
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+        s = self.client.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_returns_three_map_url_variants(self):
+        resp = self.client.get(f'/psa/t/{self.ticket.ticket_number}/route-urls/')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['success'])
+        self.assertIn('100 Tech Way', data['address'])
+        urls = data['urls']
+        self.assertIn('google.com/maps', urls['google'])
+        self.assertIn('maps.apple.com', urls['apple'])
+        self.assertIn('waze.com', urls['waze'])
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_url_addresses_are_url_encoded(self):
+        resp = self.client.get(f'/psa/t/{self.ticket.ticket_number}/route-urls/')
+        urls = resp.json()['urls']
+        # Spaces in "100 Tech Way" should be URL-encoded
+        self.assertIn('100+Tech+Way', urls['google'])
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_no_address_returns_failure(self):
+        from psa.models import Ticket, Queue, TicketPriority, TicketType, TicketStatus
+        empty = Organization.objects.create(name='Empty', slug='empty-rc')
+        # Login as superuser so we can ticket on a different org
+        admin = User.objects.create_user('rt-admin', 'a@x.com', 'pw',
+                                           is_superuser=True, is_staff=True)
+        admin_client = Client()
+        admin_client.force_login(admin)
+        s = admin_client.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = empty.id
+        s.save()
+        t = Ticket.objects.create(
+            organization=empty,
+            subject='No-addr',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.first(),
+        )
+        resp = admin_client.get(f'/psa/t/{t.ticket_number}/route-urls/')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data['success'])
+        self.assertEqual(data['urls'], {})
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

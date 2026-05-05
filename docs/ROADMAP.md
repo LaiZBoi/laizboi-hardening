@@ -449,20 +449,20 @@ Planned capabilities:
 
 Planned capabilities:
 - Offline workflow support (work without connectivity, sync on reconnect)
-- Camera uploads (photo upload from the phone, attached to the ticket)
+- Camera uploads (photo upload from the phone, attached to the ticket) *(shipped — `psa.TicketAttachment` model + existing upload endpoint accept image MIMEs; PWA uses HTML5 `<input capture="environment">`; v3.17.317 confirmation)*
 - Barcode scanning *(partial — vehicle inventory QR shipped)*
 - QR scanning *(partial — same; extends to client-asset QR scan)*
 - NFC scanning
-- GPS time tracking *(planned — Phase 8.2)*
+- GPS time tracking *(shipped v3.17.315 — `TicketTimeEntry.start_lat/lng` + `end_lat/lng` Decimal fields captured by the PWA at timer start/stop)*
 - Technician signatures (canvas signature pad on completion) *(shipped v3.17.312 — `TicketSignature` model one-to-one with Ticket; base64 PNG data-URI storage + geo capture)*
 - Onsite checklist enforcement (must complete X before close) *(shipped v3.17.312 — `TicketChecklistItem` model + `Ticket.has_outstanding_checklist` property + sign-off-required transitions blocked while required items are incomplete)*
 - Push notifications *(shipped v3.17.313 — `WebPushSubscription` model with per-user/endpoint uniqueness + `send()` helper; live VAPID-signed delivery via pywebpush when `WEBPUSH_VAPID_PUBLIC_KEY` / `WEBPUSH_VAPID_PRIVATE_KEY` are configured)*
-- Voice-to-ticket workflows
-- Mobile dispatch routing (turn-by-turn from current GPS to next ticket)
-- Mobile asset lookup
+- Voice-to-ticket workflows *(shipped v3.17.315 — `TicketComment.source='voice'` + `voice_meta` JSONField for confidence/language/duration; PWA Web Speech API → existing comment-create endpoint, no new server endpoint needed)*
+- Mobile dispatch routing (turn-by-turn from current GPS to next ticket) *(shipped v3.17.317 — `/psa/t/<ticket_number>/route-urls/` returns Google / Apple / Waze deep-link URLs as JSON; PWA picks the right one based on platform)*
+- Mobile asset lookup *(shipped — existing `/api/assets/` REST endpoint; v3.17.317 confirmation)*
 - **Site check-in / check-out (Field Mode)** — explicit "I have arrived" / "I have left" buttons against the active ticket, separate from the generic Timeclock — gives per-ticket onsite-duration evidence for billing *(shipped v3.17.311 — `SiteVisit` model with arrival/departure lat+lng; `check_out()` stamps closeout + computes `duration_minutes`)*
 - **Mileage and trip logging** — auto-distance from previous geofence to current geofence, plus manual override; rolls up into per-tech / per-org mileage reports *(shipped v3.17.311 — `MileageLog` model with `is_auto` flag + start/end coords + `MileageLog.haversine_miles()` static helper for great-circle distance)*
-- **Quick asset edit from phone** — beyond lookup, lets a tech update serial / location / notes inline without leaving the ticket
+- **Quick asset edit from phone** — beyond lookup, lets a tech update serial / location / notes inline without leaving the ticket *(shipped — existing PATCH on `/api/assets/<pk>/`; PWA calls the same REST endpoint as desktop; v3.17.317 confirmation)*
 
 **Goal:** Improve field technician workflow efficiency and mobility.
 

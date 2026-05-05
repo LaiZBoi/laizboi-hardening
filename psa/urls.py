@@ -25,6 +25,9 @@ urlpatterns = [
     # Per-ticket
     path('t/<str:ticket_number>/context/', views.ticket_vault_context, name='ticket_vault_context'),
     path('t/<str:ticket_number>/comment/', views.ticket_post_comment, name='ticket_post_comment'),
+    # Phase 21 v11 (v3.17.317): mobile dispatch routing — JSON helper
+    path('t/<str:ticket_number>/route-urls/', views.ticket_route_urls,
+         name='ticket_route_urls'),
     path('t/<str:ticket_number>/attach/', views.ticket_attach, name='ticket_attach'),
     path('t/<str:ticket_number>/action/', views.ticket_quick_action, name='ticket_quick_action'),
     path('t/<str:ticket_number>/watch/', views.ticket_watch_toggle, name='ticket_watch_toggle'),
