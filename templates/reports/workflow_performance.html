@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Workflow Performance — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Workflow Performance</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-cogs me-2"></i>Workflow Performance</h2>
+    <a href="?format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted small">All active workflow rules ranked by fire count. Rules with errors are flagged at the top of their fire-count tier so broken automation surfaces fast.</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-secondary">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Active rules</div>
+                <div class="fs-4 fw-bold">{{ summary.rule_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Total fires</div>
+                <div class="fs-4 fw-bold">{{ summary.total_fires }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-danger">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">With errors</div>
+                <div class="fs-4 fw-bold text-danger">{{ summary.error_count }}</div>
+                <small class="text-muted">{{ summary.error_pct }}% of rules</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">MSP-wide</div>
+                <div class="fs-4 fw-bold">{{ summary.msp_wide_count }}</div>
+                <small class="text-muted">{{ summary.org_count }} per-org</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5>By trigger type</h5>
+{% if trigger_rows %}
+<div class="card mb-4">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light">
+            <tr><th>Trigger</th><th class="text-end">Rules</th><th class="text-end">Fires</th><th class="text-end">Errored</th></tr>
+        </thead>
+        <tbody>
+        {% for t in trigger_rows %}
+            <tr>
+                <td><code>{{ t.trigger }}</code></td>
+                <td class="text-end">{{ t.count }}</td>
+                <td class="text-end">{{ t.fires }}</td>
+                <td class="text-end">{% if t.errors %}<span class="text-danger">{{ t.errors }}</span>{% else %}0{% endif %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<h5>Rules</h5>
+{% if rows %}
+<div class="card">
+    <table class="table table-hover small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Rule</th>
+                <th>Trigger</th>
+                <th>Org</th>
+                <th class="text-end">Fires</th>
+                <th>Last fired</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in rows %}
+            <tr {% if r.has_error %}class="table-warning"{% endif %}>
+                <td><a href="/psa/rules/{{ r.id }}/edit/">{{ r.name }}</a>
+                    {% if r.fire_once_per_ticket %}<span class="badge bg-light text-dark">once-per-ticket</span>{% endif %}
+                </td>
+                <td><code>{{ r.trigger }}</code></td>
+                <td>{{ r.organization }}</td>
+                <td class="text-end"><strong>{{ r.fire_count }}</strong></td>
+                <td>{% if r.last_fired_at %}{{ r.last_fired_at|date:"Y-m-d H:i" }}{% else %}<span class="text-muted">never</span>{% endif %}</td>
+                <td>
+                    {% if r.has_error %}
+                        <span class="badge bg-danger" title="{{ r.last_error }}">Error</span>
+                    {% else %}
+                        <span class="badge bg-success">OK</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% if r.has_error %}
+            <tr class="table-warning">
+                <td colspan="6"><small class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>{{ r.last_error|truncatechars:200 }}</small></td>
+            </tr>
+            {% endif %}
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info small"><i class="fas fa-info-circle me-1"></i>No active workflow rules.</div>
+{% endif %}
+{% endblock %}

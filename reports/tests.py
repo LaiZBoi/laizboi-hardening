@@ -4248,3 +4248,115 @@ class OperationalMetricsReportTests(TestCase):
         body = r.content.decode('utf-8')
         self.assertIn('Mean time to first response', body)
         self.assertIn('First-touch resolution', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WorkflowPerformanceReportTests(TestCase):
+    """Phase 19 v6 (v3.17.324) — workflow performance analytics."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import WorkflowRule
+        from django.utils import timezone as _tz
+
+        cls.org = Organization.objects.create(name='WfCo', slug='wf-co')
+        cls.staff = User.objects.create_user('wf-staff', 'ws@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('wf-mem', 'wm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        # Top firing rule: MSP-wide, 200 fires, no error
+        cls.r_top = WorkflowRule.objects.create(
+            organization=None, name='Auto-assign P1',
+            trigger='ticket_created', is_active=True,
+            fire_count=200, last_fired_at=_tz.now(),
+        )
+        # Errored rule: 50 fires + last_error
+        cls.r_err = WorkflowRule.objects.create(
+            organization=cls.org, name='Notify manager',
+            trigger='comment_added', is_active=True,
+            fire_count=50, last_error='SMTP timeout',
+            last_fired_at=_tz.now(),
+        )
+        # Quiet rule: 0 fires
+        cls.r_quiet = WorkflowRule.objects.create(
+            organization=None, name='Quiet rule',
+            trigger='status_changed', is_active=True,
+            fire_count=0,
+        )
+        # Inactive — must NOT appear
+        WorkflowRule.objects.create(
+            organization=None, name='Disabled',
+            trigger='ticket_created', is_active=False,
+            fire_count=999,
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_summary_aggregates(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/workflow-performance/')
+        self.assertEqual(r.status_code, 200)
+        s = r.context['summary']
+        # 3 active rules
+        self.assertEqual(s['rule_count'], 3)
+        self.assertEqual(s['total_fires'], 250)
+        self.assertEqual(s['error_count'], 1)
+
+    def test_rules_sorted_by_fire_count(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/workflow-performance/')
+        rows = r.context['rows']
+        self.assertEqual(rows[0]['name'], 'Auto-assign P1')
+        self.assertEqual(rows[0]['fire_count'], 200)
+        # Errored 50-fire rule comes second
+        self.assertEqual(rows[1]['name'], 'Notify manager')
+        self.assertTrue(rows[1]['has_error'])
+
+    def test_excludes_inactive_rules(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/workflow-performance/')
+        names = [row['name'] for row in r.context['rows']]
+        self.assertNotIn('Disabled', names)
+
+    def test_trigger_rollup(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/workflow-performance/')
+        triggers = {t['trigger']: t for t in r.context['trigger_rows']}
+        self.assertEqual(triggers['ticket_created']['fires'], 200)
+        self.assertEqual(triggers['comment_added']['errors'], 1)
+
+    def test_non_staff_blocked(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/workflow-performance/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/workflow-performance/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('Auto-assign P1', body)
+        self.assertIn('SMTP timeout', body)

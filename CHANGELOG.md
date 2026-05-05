@@ -139,6 +139,22 @@ First slice of **Phase 28 — Browser Extension + Offline Vault Access** server-
 - Phase 28 sub-bullet "Master-password unlock" left planned — that ships in v3.17.329.
 - Documented future endpoints in v3.17.331 contract spec.
 
+## [3.17.324] - 2026-05-05
+
+### Added — Phase 19 v6 — Workflow performance analytics
+Fifth of seven Phase 19 closeout releases. Adds `/reports/workflow-performance/` — a single page that surfaces every active `WorkflowRule` ranked by fire count, with errored rules called out so broken automation is one click away.
+
+- **`reports.views.workflow_performance_report`** — joins `WorkflowRule.fire_count`, `last_fired_at`, `last_error` into per-rule rows. Sort: fire_count desc; tied entries with errors floated to the top of their tier so the highest-traffic broken rule lands first.
+- **By-trigger rollup**: rules and total fires grouped by trigger event (`ticket_created`, `status_changed`, `comment_added`, `sla_threshold_crossed`, etc.) so admins spot which event types carry the automation load.
+- **Summary metrics**: rule count, total fires, error count + error rate, MSP-wide vs. per-org split.
+- **Template** `templates/reports/workflow_performance.html` — KPI cards + by-trigger table + per-rule table that highlights errored rows in `table-warning` and renders the `last_error` text inline.
+- **Tile** added to the Reports home grid.
+- **Tenant ACL**: staff/superuser only (workflow administration is MSP-internal). Non-staff get 404.
+- **CSV export** at `?format=csv`.
+
+### Tests
+`WorkflowPerformanceReportTests` (6 tests): summary aggregates incl. error_count, fire-count sort + errored-tie-break, exclusion of inactive rules, by-trigger rollup math, non-staff 404 gate, CSV export.
+
 ## [3.17.323] - 2026-05-05
 
 ### Added — Phase 19 v5 — Operational metrics

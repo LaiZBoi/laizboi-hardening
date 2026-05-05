@@ -4508,3 +4508,105 @@ def operational_metrics_report(request):
         'queue_rows': queue_rows,
         'age_buckets': age_buckets,
     })
+
+
+@login_required
+def workflow_performance_report(request):
+    """
+    Phase 19 v6 (v3.17.324): workflow performance analytics. Rolls up
+    every active `WorkflowRule` with its `fire_count`, `last_fired_at`,
+    `last_error` to surface:
+        * Top-firing rules (potentially overactive — review for noise)
+        * Rules with errors (broken / mis-configured)
+        * Distribution by trigger type
+        * Distribution by organization (rules can be MSP-wide or per-org)
+
+    Tenant ACL: staff/superuser only — workflow administration is an
+    MSP-internal concern. Optional `?format=csv`.
+    """
+    from psa.models import WorkflowRule
+    from collections import defaultdict
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('Workflow analytics is staff-only')
+
+    qs = (WorkflowRule.objects.filter(is_active=True)
+          .select_related('organization'))
+
+    rows = []
+    by_trigger = defaultdict(lambda: {'count': 0, 'fires': 0, 'errors': 0})
+    total_fires = 0
+    error_count = 0
+    org_count_seen = set()
+
+    for r in qs:
+        has_error = bool(r.last_error)
+        rows.append({
+            'id': r.id,
+            'name': r.name,
+            'trigger': r.trigger,
+            'trigger_display': r.get_trigger_display(),
+            'organization': r.organization.name if r.organization else 'MSP-wide',
+            'fire_count': r.fire_count,
+            'last_fired_at': r.last_fired_at,
+            'last_error': r.last_error or '',
+            'has_error': has_error,
+            'fire_once_per_ticket': r.fire_once_per_ticket,
+        })
+        total_fires += r.fire_count
+        if has_error:
+            error_count += 1
+        bt = by_trigger[r.trigger]
+        bt['count'] += 1
+        bt['fires'] += r.fire_count
+        if has_error:
+            bt['errors'] += 1
+        org_count_seen.add(r.organization_id)
+
+    # Sort: highest fire_count first; rules with errors break ties to the top.
+    rows.sort(key=lambda r: (-r['fire_count'], not r['has_error']))
+
+    # By-trigger distribution sorted by fires descending
+    trigger_rows = []
+    for trig, b in by_trigger.items():
+        trigger_rows.append({
+            'trigger': trig,
+            'count': b['count'],
+            'fires': b['fires'],
+            'errors': b['errors'],
+        })
+    trigger_rows.sort(key=lambda r: -r['fires'])
+
+    summary = {
+        'rule_count': len(rows),
+        'total_fires': total_fires,
+        'error_count': error_count,
+        'error_pct': round(100.0 * error_count / len(rows), 1) if rows else 0,
+        'org_count': len([o for o in org_count_seen if o is not None]),
+        'msp_wide_count': sum(1 for r in rows if r['organization'] == 'MSP-wide'),
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="workflow-performance.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Rule', 'Trigger', 'Organization', 'Fires',
+                    'Last fired', 'Has error', 'Error message'])
+        for r in rows:
+            w.writerow([r['name'], r['trigger'], r['organization'],
+                        r['fire_count'],
+                        r['last_fired_at'].isoformat() if r['last_fired_at'] else '',
+                        'yes' if r['has_error'] else 'no',
+                        r['last_error']])
+        return resp
+
+    return render(request, 'reports/workflow_performance.html', {
+        'rows': rows,
+        'trigger_rows': trigger_rows,
+        'summary': summary,
+    })

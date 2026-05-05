@@ -147,6 +147,9 @@ urlpatterns = [
     # v3.17.323 — Phase 19 v5 operational metrics (MTTR / FTR / queue depth).
     path('operational-metrics/',
          views.operational_metrics_report, name='operational_metrics_report'),
+    # v3.17.324 — Phase 19 v6 workflow performance analytics.
+    path('workflow-performance/',
+         views.workflow_performance_report, name='workflow_performance_report'),
     # v3.17.258 — Phase 13 v3 procurement summary report.
     path('procurement-summary/',
          views.procurement_summary, name='procurement_summary'),
