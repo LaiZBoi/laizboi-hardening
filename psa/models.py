@@ -1042,6 +1042,13 @@ class PSAApproval(models.Model):
         self.decision_comment = comment[:5000]
         self.save(update_fields=['status', 'decided_by', 'decided_at', 'decision_comment'])
 
+        # Phase 20 v6 (v3.17.274): write the decision to AuditLog so the
+        # trail is complete regardless of caller (UI / API / signal).
+        self._log_audit('update',
+                        f'{self.get_status_display()} {self.get_kind_display()} '
+                        f'approval #{self.pk} (stage {self.stage_index})',
+                        user=user)
+
         # Phase 20 v3: cascade through the chain.
         if approved:
             # Unblock the next blocked stage in this chain (lowest
@@ -1051,19 +1058,58 @@ class PSAApproval(models.Model):
             if nxt is not None:
                 nxt.status = 'pending'
                 nxt.save(update_fields=['status'])
+                nxt._log_audit('update',
+                               f'Auto-unblocked approval #{nxt.pk} '
+                               f'(stage {nxt.stage_index}) after parent '
+                               f'#{self.pk} approved',
+                               user=user)
         else:
             # Denial cancels all downstream blocked stages so they
             # don't sit in the queue forever.
-            self._cancel_downstream_blocked()
+            self._cancel_downstream_blocked(triggered_by_user=user)
 
-    def _cancel_downstream_blocked(self):
+    def _cancel_downstream_blocked(self, *, triggered_by_user=None):
         for child in self.next_stages.filter(status='blocked'):
             child.status = 'cancelled'
             child.decision_comment = (
                 f'Auto-cancelled — prior stage #{self.pk} was denied'
             )[:5000]
             child.save(update_fields=['status', 'decision_comment'])
-            child._cancel_downstream_blocked()
+            child._log_audit('update',
+                             f'Auto-cancelled stage {child.stage_index} '
+                             f'(approval #{child.pk}) after prior stage '
+                             f'#{self.pk} denied',
+                             user=triggered_by_user)
+            child._cancel_downstream_blocked(triggered_by_user=triggered_by_user)
+
+    def _log_audit(self, action: str, description: str, *, user=None):
+        """Phase 20 v6 helper — best-effort write to `audit.AuditLog`.
+        Failures are swallowed so an audit-store outage can't block an
+        approval decision."""
+        try:
+            from audit.models import AuditLog
+            AuditLog.log(
+                user=user, action=action,
+                organization=self.organization,
+                object_type='psa.PSAApproval', object_id=self.pk,
+                object_repr=str(self),
+                description=description[:500],
+            )
+        except Exception:
+            import logging
+            logging.getLogger('psa').exception('PSAApproval audit log failed')
+
+    def history(self):
+        """Return the AuditLog rows for this approval, newest-first.
+        Useful on a per-approval audit page."""
+        try:
+            from audit.models import AuditLog
+            return list(AuditLog.objects.filter(
+                object_type='psa.PSAApproval',
+                object_id=self.pk,
+            ).order_by('-timestamp')[:200])
+        except Exception:
+            return []
 
     @classmethod
     def create_chain(cls, *, organization, kind, object_type, object_id,
@@ -1095,6 +1141,15 @@ class PSAApproval(models.Model):
                 'status': 'pending' if idx == 1 else 'blocked',
             })
             created.append(cls.objects.create(**kwargs))
+        # Phase 20 v6: log the chain creation against the FIRST stage so
+        # there's a single anchor row for the chain in AuditLog.
+        if created:
+            created[0]._log_audit(
+                'create',
+                f'Created {len(created)}-stage approval chain for '
+                f'{object_type}#{object_id}',
+                user=requested_by,
+            )
         return created
 
 

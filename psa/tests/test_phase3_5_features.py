@@ -1945,3 +1945,78 @@ class ConditionalQuoteApprovalAutoRouteTests(TestCase):
                                         object_id=q.pk).count(),
             0,
         )
+
+
+class ApprovalAuditTrailTests(TestCase):
+    """Phase 20 v6 (v3.17.274): every PSAApproval transition lands in
+    AuditLog automatically — no manual logging required at the call site."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='AuditApprCo', slug='audit-appr-co')
+        self.user = User.objects.create_user('auditor', 'au@x.com', 'pw')
+
+    def test_chain_creation_logs(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=1,
+            requested_by=self.user,
+            stages=[{'request_comment': 's1'}, {'request_comment': 's2'}],
+        )
+        rows = AuditLog.objects.filter(
+            object_type='psa.PSAApproval', object_id=chain[0].pk,
+        )
+        self.assertGreaterEqual(rows.count(), 1)
+        self.assertIn('2-stage approval chain', rows.first().description)
+
+    def test_decide_approve_logs_and_unblocks_next(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=2,
+            requested_by=self.user,
+            stages=[{'request_comment': 's1'}, {'request_comment': 's2'}],
+        )
+        chain[0].decide(user=self.user, approved=True, comment='ok')
+        # Stage 1: 1 create + 1 update = 2 rows.
+        rows1 = AuditLog.objects.filter(
+            object_type='psa.PSAApproval', object_id=chain[0].pk)
+        self.assertGreaterEqual(rows1.count(), 2)
+        # Stage 2: should have an Auto-unblocked entry.
+        rows2 = AuditLog.objects.filter(
+            object_type='psa.PSAApproval', object_id=chain[1].pk)
+        self.assertGreaterEqual(rows2.count(), 1)
+        self.assertTrue(any('Auto-unblocked' in r.description for r in rows2))
+
+    def test_decide_deny_logs_cascade_cancellations(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=3,
+            requested_by=self.user,
+            stages=[{'request_comment': 's1'},
+                    {'request_comment': 's2'},
+                    {'request_comment': 's3'}],
+        )
+        chain[0].decide(user=self.user, approved=False, comment='nope')
+        # Each downstream stage should have an Auto-cancelled entry.
+        for s in chain[1:]:
+            rows = AuditLog.objects.filter(
+                object_type='psa.PSAApproval', object_id=s.pk)
+            self.assertTrue(any('Auto-cancelled' in r.description for r in rows),
+                             f'Missing cascade log on stage {s.stage_index}')
+
+    def test_history_method_returns_chronological(self):
+        from psa.models import PSAApproval
+        chain = PSAApproval.create_chain(
+            organization=self.org, kind='quote',
+            object_type='psa.Quote', object_id=4,
+            requested_by=self.user,
+            stages=[{'request_comment': 's1'}],
+        )
+        chain[0].decide(user=self.user, approved=True)
+        history = chain[0].history()
+        self.assertGreaterEqual(len(history), 2)
+        # Newest-first: most recent entry should be the decision
+        self.assertIn('Approved', history[0].description)

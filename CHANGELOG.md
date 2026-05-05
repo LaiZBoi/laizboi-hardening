@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.274] - 2026-05-05
+
+### Added — Phase 20 v6 Approval Audit-Trail Completion
+Closes the "Approval audit trails completion" sub-bullet of Phase 20. The view-level audit logging from earlier releases only captured user-driven decisions; programmatic transitions (signal-driven auto-routing, multi-stage cascades) didn't write audit rows. This release moves logging into the model so every transition is captured regardless of caller.
+
+- **`PSAApproval._log_audit()` helper** — best-effort write to `audit.AuditLog` (failures swallowed so the audit store can't block decisions).
+- **`PSAApproval.decide()`** now writes the decision audit row itself (no caller required).
+- **Cascade transitions logged**: `Auto-unblocked stage N` when a parent approval unblocks the next stage; `Auto-cancelled stage N` when a denial cancels downstream blocked stages.
+- **Chain creation logged** against stage 1 by `create_chain()`, so each chain has a single anchor row.
+- **`PSAApproval.history()`** returns the audit rows newest-first for use in the new viewer.
+- **New view + URL `/psa/approvals/<pk>/history/`** — per-approval audit trail page (kind, object reference, parent/stage chain, status badge, full audit-log table).
+- **`approval_decide` view simplified** — the duplicate `AuditLog.log()` call removed since the model now handles it.
+
+### Tests
+- 4 new tests in `psa.tests.test_phase3_5_features.ApprovalAuditTrailTests` covering chain-creation logging, decide-approve unblocking + log entries, denial cascade logging, and the `history()` accessor.
+
+### Roadmap
+Phase 20 sub-bullet "Approval audit trails completion" annotated `*(shipped v3.17.274)*`.
+
 ## [3.17.273] - 2026-05-05
 
 ### Added — Phase 20 v5 Conditional Approvals on Quote

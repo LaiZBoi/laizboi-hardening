@@ -57,6 +57,9 @@ urlpatterns = [
     # Approvals
     path('approvals/', views.approval_list, name='approval_list'),
     path('approvals/<int:pk>/decide/', views.approval_decide, name='approval_decide'),
+    # Phase 20 v6 (v3.17.274): approval audit trail
+    path('approvals/<int:pk>/history/', views.approval_history,
+         name='approval_history'),
     # Contracts (Workstream 5)
     path('contracts/', views.contract_list, name='contract_list'),
     path('contracts/new/', views.contract_form, name='contract_create'),

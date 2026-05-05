@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Approval #{{ approval.pk }} — History{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:approval_list' %}">Approvals</a></li>
+        <li class="breadcrumb-item active">#{{ approval.pk }} History</li>
+    </ol>
+</nav>
+
+<h1 class="mb-3">Approval #{{ approval.pk }} — Audit Trail</h1>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong>Approval</strong></div>
+            <div class="card-body small">
+                <dl class="row mb-0">
+                    <dt class="col-5">Kind</dt><dd class="col-7">{{ approval.get_kind_display }}</dd>
+                    <dt class="col-5">Object</dt><dd class="col-7"><code>{{ approval.object_type }}#{{ approval.object_id }}</code></dd>
+                    <dt class="col-5">Stage</dt><dd class="col-7">{{ approval.stage_index }}{% if approval.parent_approval %} (child of #{{ approval.parent_approval.pk }}){% endif %}</dd>
+                    <dt class="col-5">Status</dt><dd class="col-7">
+                        {% if approval.status == 'approved' %}<span class="badge text-bg-success">Approved</span>
+                        {% elif approval.status == 'denied' %}<span class="badge text-bg-danger">Denied</span>
+                        {% elif approval.status == 'pending' %}<span class="badge text-bg-warning">Pending</span>
+                        {% elif approval.status == 'blocked' %}<span class="badge text-bg-secondary">Blocked</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ approval.get_status_display }}</span>{% endif %}
+                    </dd>
+                    <dt class="col-5">Requested by</dt><dd class="col-7">{{ approval.requested_by|default:'—' }}</dd>
+                    <dt class="col-5">Decided by</dt><dd class="col-7">{{ approval.decided_by|default:'—' }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5>Audit log entries ({{ history|length }})</h5>
+{% if history %}
+<div class="card">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light">
+            <tr><th>When</th><th>User</th><th>Action</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+        {% for row in history %}
+            <tr>
+                <td class="text-nowrap"><span data-utc="{{ row.timestamp|date:'c' }}">{{ row.timestamp|date:'Y-m-d H:i:s' }}</span></td>
+                <td>{{ row.username|default:'—' }}</td>
+                <td><span class="badge text-bg-secondary">{{ row.action }}</span></td>
+                <td>{{ row.description }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info small"><i class="fas fa-info-circle me-1"></i>No audit log entries for this approval yet.</div>
+{% endif %}
+{% endblock %}

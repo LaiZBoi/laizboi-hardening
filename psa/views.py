@@ -2320,16 +2320,25 @@ def approval_decide(request, pk):
         return redirect('psa:approval_list')
 
     approval.decide(user=request.user, approved=(decision == 'approve'), comment=comment)
-    AuditLog.log(
-        user=request.user, action='update',
-        organization=approval.organization,
-        object_type='psa.PSAApproval', object_id=approval.pk,
-        object_repr=str(approval),
-        description=f'{decision.title()}d {approval.get_kind_display()} approval #{approval.pk}',
-        ip_address=_client_ip(request), path=request.path,
-    )
+    # Phase 20 v6 (v3.17.274): the model's decide() now writes the
+    # AuditLog row; the view just redirects.
     messages.success(request, f'{decision.title()}d.')
     return redirect('psa:approval_list')
+
+
+@login_required
+@require_psa_enabled
+def approval_history(request, pk):
+    """Phase 20 v6 (v3.17.274): per-approval audit trail viewer."""
+    org = get_request_organization(request)
+    qs = PSAApproval.objects.all()
+    if org is not None:
+        qs = qs.filter(organization=org)
+    approval = get_object_or_404(qs, pk=pk)
+    return render(request, 'psa/approval_history.html', {
+        'approval': approval,
+        'history': approval.history(),
+    })
 
 
 # ---------------------------------------------------------------------------

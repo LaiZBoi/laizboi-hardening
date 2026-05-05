@@ -436,7 +436,7 @@ Planned capabilities:
 - Financial approval chains (POs / invoices over $X) *(shipped v3.17.259 — `SystemSetting.invoice_approval_threshold_total` + `invoice_approval_overage_pct` auto-flag invoices via post_save signal; uses existing `Invoice.flag_for_approval` machinery)*
 - Escalation approvals (auto-escalate idle approvals) *(shipped v3.17.256 — `psa_escalate_idle_approvals` management command + per-row `escalation_threshold_hours` + `escalated_at` dedupe; emails superusers a single digest)*
 - Conditional approvals (rules: "if value > $5k, route to owner") *(shipped v3.17.273 — `SystemSetting.quote_approval_threshold_total` drives a post_save signal that auto-creates a 2-stage approval chain when total ≥ threshold; only fires on draft/sent statuses; idempotent against open chains)*
-- Approval audit trails *(partial — single-approver audit shipped)*
+- Approval audit trails *(shipped v3.17.274 — `PSAApproval.decide()` and `create_chain()` now write to `audit.AuditLog` automatically; cascade transitions (auto-unblock, auto-cancel-on-deny) are logged too; per-approval history viewer at `/psa/approvals/<pk>/history/`)*
 - Workflow enforcement
 - Change tracking
 - Operational sign-off workflows
