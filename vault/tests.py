@@ -925,3 +925,189 @@ class RoleTemplateExtensionPermissionFieldTests(TestCase):
         perms = m.get_permissions()
         self.assertTrue(perms.vault_extension_use)
         self.assertTrue(perms.vault_extension_offline_cache)
+
+
+# ===========================================================================
+# Phase 28 v3.17.329 — TOTP + reveal + master-password verify
+# ===========================================================================
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionTOTPEndpointTests(TestCase):
+    """v3.17.329 — TOTP code generation via the extension API."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='TOTPCo', slug='totp-co')
+        cls.user = User.objects.create_user('totp_user', 't@x.com', 'pw')
+        from accounts.models import Membership, Role
+        Membership.objects.create(
+            user=cls.user, organization=cls.org,
+            role=Role.OWNER, is_active=True,
+        )
+        cls.password = Password.objects.create(
+            organization=cls.org, title='2FA-enabled',
+            url='https://app.test/', username='alice',
+            encrypted_password='dummy',
+        )
+        # Set a known TOTP secret so generate_otp() works deterministically.
+        cls.password.set_otp_secret('JBSWY3DPEHPK3PXP')
+        cls.password.save()
+
+    def setUp(self):
+        from vault.models import WebExtensionAuthToken
+        self.secret, _ = WebExtensionAuthToken.issue(
+            user=self.user, organization=self.org,
+        )
+        self.c = Client()
+
+    def test_totp_returns_six_digit_code(self):
+        r = self.c.get(
+            f'/vault/api/extension/{self.password.pk}/totp/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertIn('code', data)
+        self.assertEqual(len(data['code']), 6)
+        self.assertTrue(data['code'].isdigit())
+        self.assertIn('valid_until_unix', data)
+
+    def test_totp_404_on_unknown_password(self):
+        r = self.c.get(
+            '/vault/api/extension/99999/totp/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 404)
+
+    def test_totp_400_when_no_secret(self):
+        no_otp = Password.objects.create(
+            organization=self.org, title='No 2FA',
+            url='https://app.test/', encrypted_password='dummy',
+        )
+        r = self.c.get(
+            f'/vault/api/extension/{no_otp.pk}/totp/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 400)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionRevealEndpointTests(TestCase):
+    """v3.17.329 — password reveal via the extension API + approval gate."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='RevealCo', slug='rev-co')
+        cls.user = User.objects.create_user('rev_user', 'r@x.com', 'pw')
+        from accounts.models import Membership, Role
+        Membership.objects.create(
+            user=cls.user, organization=cls.org,
+            role=Role.OWNER, is_active=True,
+        )
+        cls.password = Password.objects.create(
+            organization=cls.org, title='Open',
+            url='https://x.test/', encrypted_password='dummy',
+        )
+        cls.password.set_password('hunter2')
+        cls.password.save()
+
+    def setUp(self):
+        from vault.models import WebExtensionAuthToken
+        self.secret, _ = WebExtensionAuthToken.issue(
+            user=self.user, organization=self.org,
+        )
+        self.c = Client()
+
+    def test_reveal_returns_plaintext(self):
+        r = self.c.post(
+            f'/vault/api/extension/{self.password.pk}/reveal/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['password'], 'hunter2')
+
+    def test_reveal_blocked_when_approval_required(self):
+        guarded = Password.objects.create(
+            organization=self.org, title='Guarded',
+            url='https://x.test/', encrypted_password='dummy',
+            requires_reveal_approval=True,
+        )
+        guarded.set_password('topsecret')
+        guarded.save()
+        r = self.c.post(
+            f'/vault/api/extension/{guarded.pk}/reveal/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 403)
+        self.assertTrue(r.json().get('requires_approval'))
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionVerifyMasterTests(TestCase):
+    """v3.17.329 — master-password verify (proof-of-knowledge stub)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='VMCo', slug='vm-co')
+        cls.user = User.objects.create_user('vm_user', 'v@x.com', 'pw')
+        from accounts.models import Membership, Role
+        Membership.objects.create(
+            user=cls.user, organization=cls.org,
+            role=Role.OWNER, is_active=True,
+        )
+
+    def setUp(self):
+        from vault.models import WebExtensionAuthToken
+        self.secret, self.row = WebExtensionAuthToken.issue(
+            user=self.user, organization=self.org,
+        )
+        self.c = Client()
+
+    def test_happy_path(self):
+        # 1) request a nonce
+        r1 = self.c.get(
+            '/vault/api/extension/verify-master/nonce/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r1.status_code, 200)
+        nonce = r1.json()['nonce']
+        # 2) compute the expected HMAC the way the server will validate
+        import hashlib, hmac, json as _json
+        key = hashlib.sha256(self.user.password.encode('utf-8')).digest()
+        ext_hmac = hmac.new(key, nonce.encode('utf-8'), hashlib.sha256).hexdigest()
+        # 3) post it back
+        r2 = self.c.post(
+            '/vault/api/extension/verify-master/',
+            data=_json.dumps({'nonce': nonce, 'hmac_hex': ext_hmac}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r2.status_code, 200)
+        self.assertTrue(r2.json()['verified'])
+
+    def test_wrong_hmac_returns_401(self):
+        r1 = self.c.get(
+            '/vault/api/extension/verify-master/nonce/',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        nonce = r1.json()['nonce']
+        import json as _json
+        r2 = self.c.post(
+            '/vault/api/extension/verify-master/',
+            data=_json.dumps({'nonce': nonce, 'hmac_hex': 'deadbeef' * 8}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r2.status_code, 401)
+
+    def test_nonce_mismatch_returns_401(self):
+        # No GET first; just attempt to post a guessed nonce.
+        import json as _json
+        r = self.c.post(
+            '/vault/api/extension/verify-master/',
+            data=_json.dumps({'nonce': 'fake', 'hmac_hex': 'a' * 64}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+        )
+        self.assertEqual(r.status_code, 401)

@@ -15,6 +15,11 @@ urlpatterns = [
     # Bearer-authed extension data endpoints (Phase 28 v3.17.328)
     path('api/extension/autofill/', extension_views.autofill, name='extension_autofill'),
     path('api/extension/sync/', extension_views.bulk_sync, name='extension_sync'),
+    # TOTP / reveal / master-password verify (Phase 28 v3.17.329)
+    path('api/extension/<int:pk>/totp/', extension_views.totp_code, name='extension_totp'),
+    path('api/extension/<int:pk>/reveal/', extension_views.reveal, name='extension_reveal'),
+    path('api/extension/verify-master/nonce/', extension_views.verify_master_nonce, name='extension_verify_master_nonce'),
+    path('api/extension/verify-master/', extension_views.verify_master, name='extension_verify_master'),
     path('', views.password_list, name='password_list'),
     path('datatables/', views.password_list_datatables, name='password_list_datatables'),
     path('create/', views.password_create, name='password_create'),

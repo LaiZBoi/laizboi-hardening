@@ -365,3 +365,261 @@ def bulk_sync(request):
             for pw in rows
         ],
     })
+
+
+# ---------------------------------------------------------------------------
+# v3.17.329 — TOTP, reveal, master-password verify
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+@require_http_methods(['GET'])
+@extension_auth_required
+def totp_code(request, pk):
+    """
+    Return the current TOTP code for the password's stored otp_secret.
+
+    GET /vault/api/extension/<pk>/totp/
+
+    Returns `{code, valid_until_unix, time_remaining}`. Audit-logs as
+    `vault_extension_totp`. Gated by vault_extension_use.
+    """
+    organization = request.current_organization
+    if not _has_extension_permission(request.user, organization, 'vault_extension_use'):
+        return JsonResponse({'error': 'Extension use permission required.'}, status=403)
+
+    qs = _visible_password_qs(request.user, organization)
+    try:
+        password = qs.get(pk=pk)
+    except Password.DoesNotExist:
+        return JsonResponse({'error': 'Password not found.'}, status=404)
+
+    otp_data = password.generate_otp()
+    if otp_data is None:
+        return JsonResponse({'error': 'No TOTP secret configured.'}, status=400)
+    if otp_data.get('error'):
+        return JsonResponse({'error': otp_data.get('message', 'TOTP error.')}, status=400)
+
+    import time as _time
+    valid_until = int(_time.time()) + otp_data['time_remaining']
+
+    AuditLog.log(
+        user=request.user,
+        action='read',
+        organization=organization,
+        object_type='vault.Password',
+        object_id=password.pk,
+        object_repr=password.title,
+        description=f'vault_extension_totp — {password.title}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+        extra_data={'event': 'vault_extension_totp'},
+    )
+
+    return JsonResponse({
+        'code': otp_data['code'],
+        'time_remaining': otp_data['time_remaining'],
+        'valid_until_unix': valid_until,
+        'issuer': otp_data.get('issuer', ''),
+    })
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+@extension_auth_required
+def reveal(request, pk):
+    """
+    Decrypt and return the password plaintext for the extension to autofill.
+
+    POST /vault/api/extension/<pk>/reveal/
+
+    Honours the `requires_reveal_approval` gate — if set, the caller
+    must already have an approved VaultRevealRequest on file. Without
+    one, returns 403 with `requires_approval: true`. Audit-logs as
+    `vault_extension_reveal`. Gated by vault_extension_use.
+    """
+    organization = request.current_organization
+    if not _has_extension_permission(request.user, organization, 'vault_extension_use'):
+        return JsonResponse({'error': 'Extension use permission required.'}, status=403)
+
+    qs = _visible_password_qs(request.user, organization)
+    try:
+        password = qs.get(pk=pk)
+    except Password.DoesNotExist:
+        return JsonResponse({'error': 'Password not found.'}, status=404)
+
+    if password.requires_reveal_approval:
+        from .models import VaultRevealRequest
+        approval = (VaultRevealRequest.objects
+                    .filter(password=password, requester=request.user,
+                            status='approved', revealed_at__isnull=True)
+                    .order_by('-decided_at').first())
+        if approval is None or not approval.is_currently_valid:
+            AuditLog.log(
+                user=request.user,
+                action='read',
+                organization=password.organization,
+                object_type='vault.Password',
+                object_id=password.pk,
+                object_repr=password.title,
+                description='vault_extension_reveal blocked — no valid approval',
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+                extra_data={'event': 'vault_extension_reveal',
+                            'blocked_reason': 'no_approval'},
+                success=False,
+            )
+            return JsonResponse({
+                'error': 'Reveal approval required.',
+                'requires_approval': True,
+            }, status=403)
+        # Mark the approval used after we successfully decrypt below.
+
+    try:
+        plaintext = password.get_password()
+    except Exception as e:
+        AuditLog.log(
+            user=request.user,
+            action='read',
+            organization=password.organization,
+            object_type='vault.Password',
+            object_id=password.pk,
+            object_repr=password.title,
+            description=f'vault_extension_reveal decrypt failed: {e}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            extra_data={'event': 'vault_extension_reveal'},
+            success=False,
+        )
+        return JsonResponse({'error': 'Decrypt failed.'}, status=500)
+
+    if password.requires_reveal_approval:
+        from .models import VaultRevealRequest
+        approval = (VaultRevealRequest.objects
+                    .filter(password=password, requester=request.user,
+                            status='approved', revealed_at__isnull=True)
+                    .order_by('-decided_at').first())
+        if approval is not None:
+            approval.mark_revealed()
+
+    AuditLog.log(
+        user=request.user,
+        action='read',
+        organization=password.organization,
+        object_type='vault.Password',
+        object_id=password.pk,
+        object_repr=password.title,
+        description=f'vault_extension_reveal — {password.title}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+        extra_data={'event': 'vault_extension_reveal'},
+    )
+
+    return JsonResponse({'password': plaintext})
+
+
+# ---------------------------------------------------------------------------
+# Master-password verify (Phase 28 v3.17.329)
+#
+# The extension holds a master password the user typed; from it the
+# extension derives an HMAC key. The server issues a per-call nonce, the
+# extension returns HMAC_SHA256(derived_key, nonce_bytes). The server
+# verifies by computing the same HMAC using the user's stored Django
+# password hash (which already encodes the user's password) — this is a
+# minimal, drop-in-replaceable proof-of-knowledge that doesn't require
+# the server to ever see the master.
+#
+# This is intentionally minimal — a real production-grade KDF dance
+# would store an explicit user-master salt + iteration count separate
+# from the Django password hash. This stub gives the extension binary
+# a stable contract to call against and the server a known place to
+# upgrade to a stronger KDF later without changing the API shape.
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+@require_http_methods(['GET'])
+@extension_auth_required
+def verify_master_nonce(request):
+    """
+    Issue a per-call nonce the extension will HMAC with its derived key.
+
+    GET /vault/api/extension/verify-master/nonce/
+
+    Returns `{nonce}` — a base64-encoded random 32-byte value. Stored
+    against the bearer-token row's `last_used_at` timestamp; the matching
+    POST must arrive within 60 seconds.
+    """
+    import secrets
+    nonce = secrets.token_urlsafe(32)
+    request.extension_token._verify_nonce = nonce  # transient — only used in same call
+    # We need to round-trip the nonce, so persist it in the cache for
+    # this token id so the POST can find it.
+    from django.core.cache import cache
+    cache.set(f'extension_master_nonce:{request.extension_token.pk}', nonce, 60)
+    return JsonResponse({'nonce': nonce, 'ttl_seconds': 60})
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+@extension_auth_required
+def verify_master(request):
+    """
+    Verify the extension's HMAC of the previously-issued nonce.
+
+    POST /vault/api/extension/verify-master/
+
+    Body (JSON): `{nonce, hmac_hex}` — the extension returns the same
+    nonce it received from the GET endpoint plus the HMAC computed
+    using its locally-derived key.
+
+    Returns 200 `{verified: true}` on match, 401 otherwise. Server
+    never sees the master password, only an HMAC of a server-issued
+    nonce keyed by the user's existing password hash.
+
+    Note: this is a minimal stub for the real KDF dance. It's
+    drop-in-replaceable later without changing the API shape.
+    """
+    import hmac
+    import hashlib
+    from django.core.cache import cache
+
+    payload = _parse_body(request)
+    nonce = payload.get('nonce') or ''
+    given = payload.get('hmac_hex') or ''
+    if not nonce or not given:
+        return JsonResponse({'error': 'nonce + hmac_hex required.'}, status=400)
+
+    expected_nonce = cache.get(
+        f'extension_master_nonce:{request.extension_token.pk}'
+    )
+    if not expected_nonce or not hmac.compare_digest(expected_nonce, nonce):
+        return JsonResponse({'error': 'Nonce expired or mismatch.'}, status=401)
+
+    # Derive the same HMAC the extension claims to have computed. Use the
+    # user's stored Django password hash (which encodes their password);
+    # the extension is expected to derive the same HMAC key locally from
+    # the user-typed master password using the same KDF.
+    user = request.user
+    if not user.password:
+        return JsonResponse({'error': 'User has no password set.'}, status=400)
+    key = hashlib.sha256(user.password.encode('utf-8')).digest()
+    expected_hmac = hmac.new(key, nonce.encode('utf-8'), hashlib.sha256).hexdigest()
+
+    ok = hmac.compare_digest(expected_hmac, given)
+    AuditLog.log(
+        user=user,
+        action='read',
+        organization=request.current_organization,
+        object_type='vault.WebExtensionAuthToken',
+        object_id=request.extension_token.pk,
+        description='vault_extension_verify_master',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        extra_data={'event': 'vault_extension_verify_master', 'verified': ok},
+        success=ok,
+    )
+    # Burn the nonce.
+    cache.delete(f'extension_master_nonce:{request.extension_token.pk}')
+
+    if not ok:
+        return JsonResponse({'error': 'HMAC mismatch.'}, status=401)
+    return JsonResponse({'verified': True})

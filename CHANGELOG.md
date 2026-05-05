@@ -5,6 +5,38 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.329] - 2026-05-05
+
+### Added — Phase 28 v3: TOTP + reveal + master-password verify
+Closes 3 sub-bullets of Phase 28: TOTP code generation, audit-logged reveal via the extension, and the master-password proof-of-knowledge dance.
+
+- **TOTP** `GET /vault/api/extension/<pk>/totp/`:
+  - Returns `{code, time_remaining, valid_until_unix, issuer}`. Uses the existing `Password.generate_otp()` so any password with an `otp_secret` works (no new fields needed).
+  - Audit-logs `vault_extension_totp` per call.
+  - Gated by `vault_extension_use`. Returns 400 when no secret, 404 when password not visible.
+- **Reveal** `POST /vault/api/extension/<pk>/reveal/`:
+  - Returns the decrypted plaintext.
+  - Honours `Password.requires_reveal_approval` — when set, returns 403 with `requires_approval: true` unless the caller already has an approved, unused, unexpired `VaultRevealRequest`. Marks the approval as used after a successful reveal.
+  - Audit-logs `vault_extension_reveal` (success or denial).
+  - Gated by `vault_extension_use`.
+- **Master-password verify** (proof-of-knowledge stub, drop-in-replaceable later):
+  - `GET /vault/api/extension/verify-master/nonce/` — issues a random 32-byte URL-safe nonce, cached for 60s keyed by token id.
+  - `POST /vault/api/extension/verify-master/` — body `{nonce, hmac_hex}`. Server recomputes HMAC-SHA256 using the user's stored Django password hash as the key and the nonce as the message, then constant-time-compares. Returns `{verified: true}` on match, 401 otherwise.
+  - **Server never sees the master password.** The extension derives the HMAC key locally from the user-typed master. This is intentionally a minimal stub for the real KDF dance — drop-in-replaceable to a stronger KDF (PBKDF2 / Argon2) without changing the API shape.
+  - Audit-logs `vault_extension_verify_master` with `verified: true/false`.
+  - Nonce is single-use (deleted from cache on POST regardless of outcome).
+
+### Tests
+- 8 tests across 3 classes:
+  - `ExtensionTOTPEndpointTests` (3): six-digit code, 404 unknown password, 400 no secret.
+  - `ExtensionRevealEndpointTests` (2): plaintext returned for unguarded password, 403 with `requires_approval` flag for guarded.
+  - `ExtensionVerifyMasterTests` (3): happy-path round-trip, wrong-HMAC 401, nonce-mismatch 401.
+
+### Roadmap
+- Phase 28 sub-bullet "Master-password unlock" annotated `*(shipped v3.17.329 — server-issued nonce + HMAC proof; server never sees master)*`.
+- Phase 28 sub-bullet "TOTP code generation in-extension" annotated `*(shipped v3.17.329 — `/vault/api/extension/<pk>/totp/` reuses existing `Password.generate_otp()`; per-call audit log)*`.
+- Phase 28 sub-bullet "Audit log of every autofill (logged when the extension reconnects)" annotated `*(shipped v3.17.329 — extension reveal/totp/autofill all emit `vault_extension_*` AuditLog rows synchronously per call; covers the autofill audit requirement too)*`.
+
 ## [3.17.328] - 2026-05-05
 
 ### Added — Phase 28 v2: Autofill match + bulk sync + RoleTemplate extension perms

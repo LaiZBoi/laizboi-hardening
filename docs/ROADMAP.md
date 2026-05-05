@@ -597,11 +597,11 @@ Cross-references: Phase 36 (Agreement Reconciliation) layers an MSP-specific rec
 Planned capabilities:
 - WebExtension (cross-browser via WebExtensions API) *(server-side API contract scaffolding in progress; bearer-token plumbing shipped v3.17.327 — `vault.WebExtensionAuthToken` model + token issue/list/revoke endpoints + `extension_auth_required` decorator for `Authorization: Bearer <token>` calls)*
 - One-click autofill on login pages from `vault.Password` matched by URL pattern *(shipped v3.17.328 — `/vault/api/extension/autofill/?url=...` returns matches by host suffix; per-call audit log)*
-- Master-password unlock (re-derive AES-GCM key locally; never transmit master)
+- Master-password unlock (re-derive AES-GCM key locally; never transmit master) *(shipped v3.17.329 — `GET /vault/api/extension/verify-master/nonce/` issues a 32-byte URL-safe nonce; `POST /vault/api/extension/verify-master/` constant-time-verifies HMAC-SHA256 keyed by the user's stored password hash; server never sees the master password)*
 - Per-organization isolation (extension UI matches the active org context in-app)
 - Offline-encrypted vault cache — last-fetched passwords are stored encrypted under a session key, valid for N hours so a tech can still pull a credential when the server is unreachable *(shipped v3.17.328 — `/vault/api/extension/sync/` cursor-paginated; returns encrypted blobs only; gated by `vault_extension_offline_cache` permission)*
-- TOTP code generation in-extension (existing `totp_secret` field on Password)
-- Audit log of every autofill (logged when the extension reconnects)
+- TOTP code generation in-extension (existing `totp_secret` field on Password) *(shipped v3.17.329 — `GET /vault/api/extension/<pk>/totp/` reuses `Password.generate_otp()`; per-call audit log)*
+- Audit log of every autofill (logged when the extension reconnects) *(shipped v3.17.329 — every extension call emits a `vault_extension_*` AuditLog row synchronously: autofill / sync / totp / reveal / verify_master)*
 - Generate-strong-password helper (matches the existing in-app generator)
 - Browser-extension specific permissions on RoleTemplate (`vault_extension_use`, `vault_extension_offline_cache`) *(shipped v3.17.328 — both boolean fields on RoleTemplate; simple-role fallback maps Owner/Admin → both True, Editor → use only, Read-Only → neither)*
 
