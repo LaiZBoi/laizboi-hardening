@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.311] - 2026-05-05
+
+### Added — Phase 21 v13/v14 — Site check-in/out + mileage logging
+Closes 2 sub-bullets of Phase 21. Models per-ticket onsite duration evidence + per-tech trip distance for billing rollups.
+
+- **New `SiteVisit` model** (migration `psa.0053`) — fields: organization, ticket, technician, checked_in_at (auto), checked_out_at, duration_minutes, arrival_lat/lng, departure_lat/lng, notes.
+  - **`check_out(*, lat, lng, notes)` method** — stamps the closeout, computes `duration_minutes` from check-in delta. Idempotent.
+  - **`is_open` property** — True until checked out. Dispatcher dashboards can list "tech is currently onsite at X."
+- **New `MileageLog` model** (same migration) — fields: organization, ticket (nullable), technician, trip_date, miles (Decimal), is_auto Boolean, start/end lat+lng, purpose, notes.
+  - **`MileageLog.haversine_miles(lat1, lng1, lat2, lng2)` static helper** — great-circle distance in miles. Returns 0 when any coordinate is None.
+- **Distinct from generic Timeclock** — SiteVisit gives per-ticket evidence (billing line items, SLA forensics) while Timeclock tracks total work hours.
+
+### Tests
+- 7 tests across `SiteVisitTests` + `MileageLogTests` covering: open visit on create, `check_out()` computes duration + accepts geo + appends notes, check_out idempotent on already-closed, haversine SF→LA distance ≈347mi, haversine handles None gracefully, haversine zero-distance returns 0, log persistence with Decimal miles.
+
+### Roadmap
+- Phase 21 sub-bullet "Site check-in / check-out (Field Mode)" annotated `*(shipped v3.17.311 — `SiteVisit` model with check-in/out + geo capture + duration computation)*`.
+- Phase 21 sub-bullet "Mileage and trip logging" annotated `*(shipped v3.17.311 — `MileageLog` model + `haversine_miles()` static helper)*`.
+
 ## [3.17.310] - 2026-05-05
 
 ### Added — Phase 17 v11 — AI-assisted remediation suggestions (closes Phase 17)

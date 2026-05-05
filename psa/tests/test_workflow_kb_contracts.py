@@ -1465,6 +1465,99 @@ class InvoiceAutomationAutoPushTests(TestCase):
             source_contract=self.contract).count(), 1)
 
 
+class SiteVisitTests(TestCase):
+    """Phase 21 v13 (v3.17.311): site check-in / check-out lifecycle."""
+
+    def setUp(self):
+        from psa.models import (
+            Queue, TicketPriority, TicketType, TicketStatus, Ticket,
+        )
+        _setup_seed()
+        self.org = Organization.objects.create(name='SvCo', slug='sv-co')
+        self.user = User.objects.create_user('tech1', 't@x.com', 'pw')
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Onsite work',
+            queue=Queue.objects.first(),
+            priority=TicketPriority.objects.first(),
+            ticket_type=TicketType.objects.first(),
+            status=TicketStatus.objects.filter(slug='new').first()
+                or TicketStatus.objects.first(),
+        )
+
+    def test_check_in_creates_open_visit(self):
+        from psa.models import SiteVisit
+        v = SiteVisit.objects.create(
+            organization=self.org, ticket=self.ticket,
+            technician=self.user,
+            arrival_lat='37.7749', arrival_lng='-122.4194',
+        )
+        self.assertTrue(v.is_open)
+        self.assertIsNone(v.checked_out_at)
+
+    def test_check_out_computes_duration(self):
+        import time
+        from psa.models import SiteVisit
+        v = SiteVisit.objects.create(
+            organization=self.org, ticket=self.ticket,
+            technician=self.user,
+        )
+        # Force a known check-in time so duration is deterministic
+        from datetime import timedelta
+        from django.utils import timezone as _tz
+        v.checked_in_at = _tz.now() - timedelta(minutes=45)
+        v.save(update_fields=['checked_in_at'])
+        v.check_out(lat='37.7800', lng='-122.4100', notes='Done')
+        v.refresh_from_db()
+        self.assertFalse(v.is_open)
+        self.assertGreaterEqual(v.duration_minutes, 44)
+        self.assertLessEqual(v.duration_minutes, 46)
+        self.assertIn('Done', v.notes)
+
+    def test_check_out_idempotent(self):
+        from psa.models import SiteVisit
+        v = SiteVisit.objects.create(
+            organization=self.org, ticket=self.ticket, technician=self.user,
+        )
+        v.check_out()
+        result = v.check_out()
+        self.assertFalse(result)
+
+
+class MileageLogTests(TestCase):
+    """Phase 21 v14 (v3.17.311): MileageLog + haversine helper."""
+
+    def test_haversine_known_distance(self):
+        from psa.models import MileageLog
+        # Distance from SF to LA ≈ 347 miles
+        miles = MileageLog.haversine_miles(
+            37.7749, -122.4194,  # SF
+            34.0522, -118.2437,  # LA
+        )
+        self.assertGreater(miles, 340)
+        self.assertLess(miles, 360)
+
+    def test_haversine_handles_none(self):
+        from psa.models import MileageLog
+        self.assertEqual(MileageLog.haversine_miles(None, None, 1, 2), 0)
+        self.assertEqual(MileageLog.haversine_miles(1, 2, None, None), 0)
+
+    def test_haversine_zero_distance(self):
+        from psa.models import MileageLog
+        self.assertEqual(MileageLog.haversine_miles(1, 2, 1, 2), 0)
+
+    def test_log_persists(self):
+        from psa.models import MileageLog
+        from datetime import date
+        from decimal import Decimal as _D
+        org = Organization.objects.create(name='MlCo', slug='ml-co')
+        log = MileageLog.objects.create(
+            organization=org, trip_date=date.today(),
+            miles=_D('42.5'), is_auto=True, purpose='Site visit',
+        )
+        self.assertEqual(log.miles, _D('42.5'))
+        self.assertTrue(log.is_auto)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

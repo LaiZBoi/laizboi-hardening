@@ -4535,3 +4535,159 @@ class RecurringPurchaseTemplate(models.Model):
         self.next_run_at = self._advance(self.next_run_at, self.recurrence)
         self.save(update_fields=['last_run_at', 'next_run_at', 'updated_at'])
         return pr
+
+
+# ---------------------------------------------------------------------------
+# Phase 21 v13 (v3.17.311) — Site check-in / check-out (Field Mode).
+# ---------------------------------------------------------------------------
+
+class SiteVisit(models.Model):
+    """A tech's "I have arrived / I have left" record against an active
+    ticket. Distinct from the generic Timeclock because it captures
+    per-ticket onsite-duration evidence usable for billing line items
+    and SLA forensics.
+
+    Lifecycle:
+      open (checked in) → closed (checked out)
+    `duration_minutes` is computed at checkout. Open visits show on
+    the dispatcher dashboard as "tech is currently onsite at X."
+    """
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_site_visits',
+    )
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='site_visits',
+    )
+    technician = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_site_visits',
+    )
+
+    checked_in_at = models.DateTimeField(auto_now_add=True)
+    checked_out_at = models.DateTimeField(null=True, blank=True)
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+
+    # Geolocation captured from the PWA at check-in / check-out
+    arrival_lat = models.DecimalField(max_digits=10, decimal_places=7,
+                                        null=True, blank=True)
+    arrival_lng = models.DecimalField(max_digits=11, decimal_places=7,
+                                        null=True, blank=True)
+    departure_lat = models.DecimalField(max_digits=10, decimal_places=7,
+                                          null=True, blank=True)
+    departure_lng = models.DecimalField(max_digits=11, decimal_places=7,
+                                          null=True, blank=True)
+
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'psa_site_visits'
+        ordering = ['-checked_in_at']
+        indexes = [
+            models.Index(fields=['ticket', '-checked_in_at']),
+            models.Index(fields=['technician', '-checked_in_at']),
+            models.Index(fields=['organization', 'checked_out_at']),
+        ]
+
+    def __str__(self):
+        state = 'open' if self.checked_out_at is None else f'{self.duration_minutes}m'
+        return f'{self.technician} @ {self.ticket.ticket_number} ({state})'
+
+    @property
+    def is_open(self):
+        return self.checked_out_at is None
+
+    def check_out(self, *, lat=None, lng=None, notes=''):
+        """Mark the visit closed and compute `duration_minutes`."""
+        from django.utils import timezone as _tz
+        if self.checked_out_at:
+            return False  # already checked out
+        self.checked_out_at = _tz.now()
+        if lat is not None:
+            self.departure_lat = lat
+        if lng is not None:
+            self.departure_lng = lng
+        if notes:
+            self.notes = (self.notes + ('\n' if self.notes else '')
+                          + notes)[:5000]
+        delta = self.checked_out_at - self.checked_in_at
+        self.duration_minutes = max(0, int(delta.total_seconds() / 60))
+        self.save(update_fields=[
+            'checked_out_at', 'departure_lat', 'departure_lng',
+            'duration_minutes', 'notes',
+        ])
+        return True
+
+
+# ---------------------------------------------------------------------------
+# Phase 21 v14 (v3.17.311) — Mileage and trip logging.
+# ---------------------------------------------------------------------------
+
+class MileageLog(models.Model):
+    """Per-tech / per-ticket trip log. Auto-distance is computed by the
+    haversine formula against the previous SiteVisit's departure
+    coordinates when the new SiteVisit's arrival lands; manual entries
+    bypass the geo computation."""
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='psa_mileage_logs',
+    )
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mileage_logs',
+    )
+    technician = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='psa_mileage_logs',
+    )
+
+    trip_date = models.DateField()
+    miles = models.DecimalField(max_digits=8, decimal_places=2,
+                                  help_text='Distance in miles')
+    is_auto = models.BooleanField(
+        default=False,
+        help_text='True when computed from geofences; False when entered manually.',
+    )
+    start_lat = models.DecimalField(max_digits=10, decimal_places=7,
+                                      null=True, blank=True)
+    start_lng = models.DecimalField(max_digits=11, decimal_places=7,
+                                      null=True, blank=True)
+    end_lat = models.DecimalField(max_digits=10, decimal_places=7,
+                                    null=True, blank=True)
+    end_lng = models.DecimalField(max_digits=11, decimal_places=7,
+                                    null=True, blank=True)
+    purpose = models.CharField(
+        max_length=200, blank=True,
+        help_text='Optional label, e.g. "Onsite at ACME / Boston site"',
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'psa_mileage_logs'
+        ordering = ['-trip_date', '-created_at']
+        indexes = [
+            models.Index(fields=['technician', '-trip_date']),
+            models.Index(fields=['organization', '-trip_date']),
+        ]
+
+    def __str__(self):
+        kind = 'auto' if self.is_auto else 'manual'
+        return f'{self.miles} mi ({kind}) on {self.trip_date}'
+
+    @staticmethod
+    def haversine_miles(lat1, lng1, lat2, lng2):
+        """Great-circle distance between two lat/lng pairs, in miles.
+        Used by the auto-distance hook on SiteVisit check-in.
+        Returns 0 if any coordinate is None."""
+        from math import radians, sin, cos, asin, sqrt
+        if any(v is None for v in (lat1, lng1, lat2, lng2)):
+            return 0
+        lat1, lng1, lat2, lng2 = (float(lat1), float(lng1),
+                                    float(lat2), float(lng2))
+        R_miles = 3958.8
+        dlat = radians(lat2 - lat1)
+        dlng = radians(lng2 - lng1)
+        a = (sin(dlat / 2) ** 2 +
+             cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2)
+        return round(2 * R_miles * asin(sqrt(a)), 2)

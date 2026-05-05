@@ -460,8 +460,8 @@ Planned capabilities:
 - Voice-to-ticket workflows
 - Mobile dispatch routing (turn-by-turn from current GPS to next ticket)
 - Mobile asset lookup
-- **Site check-in / check-out (Field Mode)** — explicit "I have arrived" / "I have left" buttons against the active ticket, separate from the generic Timeclock — gives per-ticket onsite-duration evidence for billing
-- **Mileage and trip logging** — auto-distance from previous geofence to current geofence, plus manual override; rolls up into per-tech / per-org mileage reports
+- **Site check-in / check-out (Field Mode)** — explicit "I have arrived" / "I have left" buttons against the active ticket, separate from the generic Timeclock — gives per-ticket onsite-duration evidence for billing *(shipped v3.17.311 — `SiteVisit` model with arrival/departure lat+lng; `check_out()` stamps closeout + computes `duration_minutes`)*
+- **Mileage and trip logging** — auto-distance from previous geofence to current geofence, plus manual override; rolls up into per-tech / per-org mileage reports *(shipped v3.17.311 — `MileageLog` model with `is_auto` flag + start/end coords + `MileageLog.haversine_miles()` static helper for great-circle distance)*
 - **Quick asset edit from phone** — beyond lookup, lets a tech update serial / location / notes inline without leaving the ticket
 
 **Goal:** Improve field technician workflow efficiency and mobility.
