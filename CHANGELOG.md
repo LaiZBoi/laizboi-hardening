@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.284] - 2026-05-05
+
+### Fixed — GUI updater preserves error output (issue #128)
+The web-based "Apply Update" flow streamed every line of the update script to the in-memory `result['output']` list but only persisted the high-level "Update script exited with code N" string to AuditLog — discarding the actual migration traceback / dependency error / etc. that explains *why* the update failed. Reported by @kaboddy in [#128](https://github.com/agit8or1/clientst0r/issues/128) when a 167-patch jump (v3.17.116 → v3.17.283) failed at the migrations step and the GUI gave no clue which migration was at fault.
+
+- **`UpdateService.perform_update`** — on failure, captures the last 200 lines (capped at 50 KB) of script output into `AuditLog.extra_data.output_tail`. Successful runs are unchanged.
+- **System Updates page** — every `system_update_failed` row in the recent-updates table gets a new "View error log" button that toggles a `<pre>` block with the captured output. Same page, no extra clicks for superusers.
+- **Output is text-only** — no secrets are emitted by the update script, so storing the tail in the audit row is safe. The cap protects the audit table from runaway log floods.
+
+### Tests
+- 3 new tests in `core.tests.test_updater.UpdateServiceFailureCaptureTests` covering: failed-run output tail captured + searchable for traceback strings, 50 KB cap on noisy output, and successful runs not creating a failure audit row.
+
 ## [3.17.283] - 2026-05-05
 
 ### Added — Phase 18 v8/v9/v10 — Multi-location report (closes Phase 18)

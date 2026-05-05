@@ -515,7 +515,19 @@
                                         <span class="badge bg-secondary">{{ update.action }}</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ update.description }}</td>
+                                    <td>
+                                        {{ update.description }}
+                                        {% if update.action == 'system_update_failed' and update.extra_data.output_tail %}
+                                        <button type="button" class="btn btn-sm btn-outline-danger ms-2"
+                                                data-bs-toggle="collapse"
+                                                data-bs-target="#updateLog{{ update.id }}">
+                                            <i class="fas fa-bug"></i> View error log
+                                        </button>
+                                        <div class="collapse mt-2" id="updateLog{{ update.id }}">
+                                            <pre class="bg-dark text-light p-2 rounded small" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;">{{ update.extra_data.output_tail }}</pre>
+                                        </div>
+                                        {% endif %}
+                                    </td>
                                     <td>{{ update.username|default:"System" }}</td>
                                 </tr>
                                 {% endfor %}

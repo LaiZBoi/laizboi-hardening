@@ -444,6 +444,15 @@ class UpdateService:
             if progress_tracker:
                 progress_tracker.finish(success=False, error=error_msg)
 
+            # v3.17.284 (issue #128): persist the script's recent output
+            # into AuditLog.extra_data so superusers can see WHICH migration
+            # / step failed without SSHing in. Cap at last 200 lines + 50KB
+            # to keep the audit row reasonable.
+            recent_output = (result.get('output') or [])[-200:]
+            output_blob = '\n'.join(recent_output)
+            if len(output_blob) > 50_000:
+                output_blob = output_blob[-50_000:]
+
             # Log failure to audit trail
             AuditLog.objects.create(
                 action='system_update_failed',
@@ -455,6 +464,7 @@ class UpdateService:
                     'current_version': self.current_version,
                     'steps_completed': result['steps_completed'],
                     'error': str(e),
+                    'output_tail': output_blob,
                 }
             )
 
