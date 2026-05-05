@@ -76,7 +76,12 @@ class AssetViewSet(OrganizationScopedViewSet):
     # with `TypeError: 'Meta.fields' must not contain non-model field names`
     # until v3.17.193 caught it via the new api/ test suite.
     filterset_fields = ['asset_type', 'needs_reorder']
-    search_fields = ['name', 'serial_number', 'model', 'manufacturer']
+    # Phase 21 v3/v4 (v3.17.318): mac_address + ip_address join the
+    # search field set so a tech who scans a MAC or IP barcode/QR
+    # (or pastes one from a label scanner) finds the asset directly
+    # via /api/assets/?search=<scanned-value>.
+    search_fields = ['name', 'serial_number', 'model', 'manufacturer',
+                     'mac_address', 'ip_address']
     ordering_fields = ['name', 'created_at', 'updated_at']
     ordering = ['-created_at']
 

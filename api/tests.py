@@ -101,6 +101,44 @@ class OrganizationScopedListFilteringTests(TestCase):
         for row in rows:
             self.assertTrue(row['name'].startswith('A-asset-'))
 
+    def test_search_finds_by_mac_address(self):
+        """Phase 21 v3/v4 (v3.17.318): scanning a MAC barcode → search."""
+        Asset.objects.create(
+            organization=self.org_a, name='switch-01', asset_type='switch',
+            mac_address='00:11:22:33:44:55',
+        )
+        resp = self.client.get('/api/assets/?search=00:11:22:33:44:55')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        rows = data['results'] if isinstance(data, dict) and 'results' in data else data
+        names = [r['name'] for r in rows]
+        self.assertIn('switch-01', names)
+
+    def test_search_finds_by_ip_address(self):
+        """Phase 21 v3/v4 (v3.17.318): scanning an IP barcode → search."""
+        Asset.objects.create(
+            organization=self.org_a, name='router-99', asset_type='router',
+            ip_address='10.99.0.1',
+        )
+        resp = self.client.get('/api/assets/?search=10.99.0.1')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        rows = data['results'] if isinstance(data, dict) and 'results' in data else data
+        names = [r['name'] for r in rows]
+        self.assertIn('router-99', names)
+
+    def test_search_still_finds_by_serial(self):
+        """Sanity: pre-v3.17.318 search-by-serial still works."""
+        Asset.objects.create(
+            organization=self.org_a, name='sn-asset', asset_type='server',
+            serial_number='ABC-1234',
+        )
+        resp = self.client.get('/api/assets/?search=ABC-1234')
+        rows = resp.json()
+        rows = rows.get('results', rows) if isinstance(rows, dict) else rows
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['name'], 'sn-asset')
+
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class CrossTenantDetailIsolationTests(TestCase):

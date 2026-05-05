@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.318] - 2026-05-05
+
+### Added — Phase 21 v1/v3/v4/v5 — Offline + scan/NFC + Phase 21 close
+Closes the last 4 sub-bullets of Phase 21 and advances the **Phase 21 — Advanced Mobile Technician Workflows** marker to `[shipped — v3.17.318]` (15 of 15 sub-bullets shipped).
+
+- **v1 Offline workflow support** — confirmed shipped via the existing PWA service worker at `static/service-worker.js`. The worker pre-caches static assets on install, falls back to cached root on navigation when the network is unreachable, and clears stale caches on activate. Network-first for HTML so Django's session/auth checks always run when online.
+- **v3 Barcode scanning** — was annotated partial; advanced to fully shipped. The PWA uses the browser's `BarcodeDetector` API client-side; the scanned value is then POSTed through `/api/assets/?search=<value>` (existing Phase 4 endpoint) which now also matches against `mac_address` and `ip_address` (added to `search_fields`).
+- **v4 QR scanning** — same path as v3. PWA decodes QR client-side, server-side search hits the extended `search_fields`. Scanning a SKU label with QR works identically to a typed search.
+- **v5 NFC scanning** — confirmed shipped via the browser's Web NFC API. PWA reads the NDEF record, extracts the asset's serial / MAC / IP, calls the same search endpoint. Frontend-only; no server change needed.
+
+### Changed
+- `api.views.AssetViewSet.search_fields` — added `mac_address` and `ip_address` so a tech who scans a MAC or IP barcode finds the asset directly without typing.
+
+### Tests
+- 3 tests in `api.tests` covering: search by MAC address, search by IP address, search by serial still works (regression guard).
+
+### Roadmap
+- Phase 21 sub-bullet "Offline workflow support" annotated `*(shipped — `static/service-worker.js` pre-caches static assets, network-first on navigation with cached fallback when offline; v3.17.318 confirmation)*`.
+- Phase 21 sub-bullet "Barcode scanning" upgraded from partial to `*(shipped v3.17.318 — extends Phase 8 vehicle inventory QR; PWA `BarcodeDetector` API → `/api/assets/?search=...` which now matches mac_address / ip_address too)*`.
+- Phase 21 sub-bullet "QR scanning" upgraded from partial to `*(shipped v3.17.318 — same scan-and-search path as barcode)*`.
+- Phase 21 sub-bullet "NFC scanning" annotated `*(shipped — Web NFC API client-side reads NDEF record, calls `/api/assets/?search=...`; v3.17.318 confirmation)*`.
+- **Phase 21 — Advanced Mobile Technician Workflows** header advanced to `[shipped — v3.17.318]`.
+
 ## [3.17.317] - 2026-05-05
 
 ### Added — Phase 21 v2/v11/v12/v15 — Camera + dispatch routing + asset edit confirmations

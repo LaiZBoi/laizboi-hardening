@@ -443,16 +443,16 @@ Planned capabilities:
 
 **Goal:** Improve workflow accountability and operational governance.
 
-## Phase 21 — Advanced Mobile Technician Workflows **(L)**
+## Phase 21 — Advanced Mobile Technician Workflows **(L)** [shipped — v3.17.318]
 
 **Roadmap item:** Mobile Technician Workflow Expansion. Extends Phase 8 (mobile apps + GPS auto-time + Timeclock).
 
 Planned capabilities:
-- Offline workflow support (work without connectivity, sync on reconnect)
+- Offline workflow support (work without connectivity, sync on reconnect) *(shipped — `static/service-worker.js` pre-caches static assets, network-first on navigation with cached fallback when offline; v3.17.318 confirmation)*
 - Camera uploads (photo upload from the phone, attached to the ticket) *(shipped — `psa.TicketAttachment` model + existing upload endpoint accept image MIMEs; PWA uses HTML5 `<input capture="environment">`; v3.17.317 confirmation)*
-- Barcode scanning *(partial — vehicle inventory QR shipped)*
-- QR scanning *(partial — same; extends to client-asset QR scan)*
-- NFC scanning
+- Barcode scanning *(shipped v3.17.318 — extends Phase 8 vehicle inventory QR; PWA `BarcodeDetector` API → `/api/assets/?search=...` which now matches `mac_address` / `ip_address` too)*
+- QR scanning *(shipped v3.17.318 — same scan-and-search path as barcode)*
+- NFC scanning *(shipped — Web NFC API client-side reads NDEF record, calls `/api/assets/?search=...`; v3.17.318 confirmation)*
 - GPS time tracking *(shipped v3.17.315 — `TicketTimeEntry.start_lat/lng` + `end_lat/lng` Decimal fields captured by the PWA at timer start/stop)*
 - Technician signatures (canvas signature pad on completion) *(shipped v3.17.312 — `TicketSignature` model one-to-one with Ticket; base64 PNG data-URI storage + geo capture)*
 - Onsite checklist enforcement (must complete X before close) *(shipped v3.17.312 — `TicketChecklistItem` model + `Ticket.has_outstanding_checklist` property + sign-off-required transitions blocked while required items are incomplete)*
