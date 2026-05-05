@@ -230,6 +230,15 @@ class Asset(BaseModel):
                   'shared infrastructure consumed across multiple sites.',
     )
 
+    # Phase 17 v9 (v3.17.308): configuration monitoring flag. When
+    # True, `assets_capture_baselines` cron re-snapshots this asset on
+    # every tick so drift detection stays current. Off by default —
+    # captures are otherwise manual via the asset detail UI.
+    config_monitored = models.BooleanField(
+        default=False,
+        help_text='Auto-capture baselines on the daily cron when True.',
+    )
+
     # Metadata
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='assets_created')
@@ -386,6 +395,77 @@ class Asset(BaseModel):
             label=label, snapshot=snap, is_current=True,
             captured_by=user,
         )
+
+    def health_score(self):
+        """Phase 17 v10 (v3.17.308): composite operational health score
+        per asset. Returns a dict like:
+        ``{score, factors: {drift, vulnerabilities, lifecycle, firmware}}``.
+
+        Score is 0–100 where 100 is healthiest. Each factor contributes
+        a deduction:
+          - Drift: -25 if any baseline drift detected, else 0
+          - Vulnerabilities: -10 per critical, -5 per high, -2 per medium
+            affecting this asset (caps at -40)
+          - Lifecycle: -lifecycle_score_total/2 (worst-case -50)
+          - Firmware: -10 if `has_firmware_update()` is True
+
+        Result clamped to [0, 100]. Health-score reports rank assets
+        by ascending score so the worst-off get triaged first.
+        """
+        score = 100
+        factors = {}
+
+        # Drift component
+        drift = self.detect_drift()
+        if drift:
+            score -= 25
+            factors['drift'] = -25
+        else:
+            factors['drift'] = 0
+
+        # Vulnerabilities affecting this asset
+        from .models import Vulnerability
+        vulns_total = 0
+        for v in Vulnerability.objects.filter(is_active=True):
+            if not v.affected_pattern:
+                continue
+            # Cheap match: skip if not relevant to this asset's RMM software
+            from integrations.models import RMMSoftware
+            sw_qs = RMMSoftware.objects.filter(
+                organization=self.organization,
+                device__device_name=self.name,
+                name__icontains=v.affected_pattern,
+            )
+            if not sw_qs.exists():
+                continue
+            if v.severity == 'critical':
+                vulns_total -= 10
+            elif v.severity == 'high':
+                vulns_total -= 5
+            elif v.severity == 'medium':
+                vulns_total -= 2
+        vulns_total = max(vulns_total, -40)
+        score += vulns_total
+        factors['vulnerabilities'] = vulns_total
+
+        # Lifecycle component (reuse Phase 13 v6 score)
+        try:
+            lc = self.lifecycle_score()
+            lc_deduction = -int(lc.get('total', 0) / 2)
+            score += lc_deduction
+            factors['lifecycle'] = lc_deduction
+        except Exception:
+            factors['lifecycle'] = 0
+
+        # Firmware component
+        if self.has_firmware_update():
+            score -= 10
+            factors['firmware'] = -10
+        else:
+            factors['firmware'] = 0
+
+        score = max(0, min(100, score))
+        return {'score': score, 'factors': factors}
 
     def detect_drift(self):
         """Phase 17 v2 (v3.17.304): compare current asset state to the

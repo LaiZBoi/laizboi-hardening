@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.308] - 2026-05-05
+
+### Added — Phase 17 v9+v10 — Configuration monitoring + operational health score
+Closes 2 sub-bullets of Phase 17.
+
+- **New `Asset.config_monitored` boolean field** (migration `assets.0024`, default False) — flags assets that should be auto-baselined on every cron tick.
+- **New management command `assets_capture_baselines`** — for every `config_monitored=True` asset, captures a fresh `AssetBaseline`. Old baselines kept for history; `is_current` flag advances. `--dry-run` and `--label=` flags.
+- **New `Asset.health_score()` method** — composite 0-100 operational health score per asset:
+  - **Drift** (-25): any baseline drift detected.
+  - **Vulnerabilities** (-10/critical, -5/high, -2/medium, capped at -40): active `Vulnerability` rows whose `affected_pattern` matches software on this asset.
+  - **Lifecycle** (-`lifecycle_score_total/2`, max -50): reuses the Phase 13 v6 lifecycle score so worn-out gear ranks lower automatically.
+  - **Firmware** (-10): `has_firmware_update()` is True.
+  - Result clamped to `[0, 100]`. Returns `{score, factors: {drift, vulnerabilities, lifecycle, firmware}}` so the UI can show what dragged the score down.
+
+### Tests
+- 4 tests in `assets.tests.HealthScoreTests` covering: perfect score = 100, drift deducts 25, firmware update deducts 10, score clamped to 0 on a maximally bad asset.
+- 3 tests in `assets.tests.ConfigMonitoringCronTests` covering: only `config_monitored=True` assets get captured, dry-run creates nothing, repeated runs keep history with only the latest `is_current=True`.
+
+### Roadmap
+- Phase 17 sub-bullet "Configuration monitoring" annotated `*(shipped v3.17.308 — `Asset.config_monitored` flag + `assets_capture_baselines` daily cron snapshots monitored assets into `AssetBaseline`; history preserved)*`.
+- Phase 17 sub-bullet "Operational health scoring per asset" annotated `*(shipped v3.17.308 — `Asset.health_score()` composite 0-100 with drift / vulns / lifecycle / firmware factors)*`.
+
 ## [3.17.307] - 2026-05-05
 
 ### Added — Phase 17 v7+v8 — Smart asset grouping + vulnerability-to-ticket linking

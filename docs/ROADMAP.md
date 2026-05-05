@@ -380,8 +380,8 @@ Planned capabilities:
 - Patch correlation (this CVE matches these N assets) *(shipped v3.17.306 — `Vulnerability` model with cve_id + cvss_score + affected_pattern; `affected_assets()` walks `RMMSoftware → RMMDevice → Asset` (by name) to surface affected endpoints)*
 - Smart asset grouping (auto-cohort by role/version/location) *(shipped v3.17.307 — `AssetGroup` model with JSON criteria + computed `members()`; supports `asset_type` / `manufacturer__icontains` / `model__icontains` / `os_version__icontains` / `tags__contains`)*
 - Vulnerability-to-ticket linking *(shipped v3.17.307 — `Vulnerability.create_remediation_ticket()` spawns a PSA Ticket with severity-mapped priority (critical→P1) and an affected-asset list)*
-- Configuration monitoring
-- Operational health scoring per asset
+- Configuration monitoring *(shipped v3.17.308 — `Asset.config_monitored` flag drives the daily `assets_capture_baselines` cron that snapshots into `AssetBaseline`; old baselines retained for history)*
+- Operational health scoring per asset *(shipped v3.17.308 — `Asset.health_score()` composite 0-100; deductions for drift (-25), vulnerabilities (-10/-5/-2 by severity, cap -40), lifecycle (cap -50), firmware update (-10); returns factor breakdown for UI)*
 - Automated remediation suggestions (**OPTIONAL AI**)
 
 **Goal:** Improve infrastructure awareness and proactive operational management.

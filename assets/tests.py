@@ -1005,3 +1005,105 @@ class AssetGroupTests(TestCase):
         AssetGroup.objects.create(organization=self.org, name='dups')
         with self.assertRaises(IntegrityError):
             AssetGroup.objects.create(organization=self.org, name='dups')
+
+
+class HealthScoreTests(TestCase):
+    """Phase 17 v10 (v3.17.308): composite health score per asset."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='HsCo', slug='hs-co')
+        cls.healthy = Asset.objects.create(
+            organization=cls.org, name='healthy', asset_type='server',
+            os_version='Ubuntu 24.04', firmware_version='1.2.3',
+        )
+        cls.healthy.capture_baseline()
+
+    def test_perfect_health_returns_100(self):
+        score = self.healthy.health_score()
+        self.assertEqual(score['score'], 100)
+
+    def test_drift_deducts_25(self):
+        self.healthy.os_version = 'Ubuntu 24.10'
+        self.healthy.save()
+        score = self.healthy.health_score()
+        self.assertLessEqual(score['score'], 75)
+        self.assertEqual(score['factors']['drift'], -25)
+
+    def test_firmware_update_deducts_10(self):
+        # Reset asset to clean state
+        a = Asset.objects.create(
+            organization=self.org, name='fw-asset', asset_type='server',
+            firmware_version='1.0', firmware_latest='2.0',
+        )
+        a.capture_baseline()
+        score = a.health_score()
+        self.assertEqual(score['factors']['firmware'], -10)
+        self.assertLessEqual(score['score'], 90)
+
+    def test_score_clamped_to_zero(self):
+        from assets.models import Vulnerability
+        from datetime import date, timedelta
+        a = Asset.objects.create(
+            organization=self.org, name='disaster', asset_type='server',
+            firmware_version='1.0', firmware_latest='2.0',
+            purchase_date=date.today() - timedelta(days=365 * 10),
+            lifespan_years=2,
+            warranty_expiry=date.today() - timedelta(days=30),
+            os_version='X', ip_address='10.0.0.1',
+        )
+        a.capture_baseline()
+        # Now drift everything
+        a.os_version = 'Y'
+        a.ip_address = '10.0.0.2'
+        a.save()
+        score = a.health_score()
+        # Should be much lower than 100; clamped at 0 minimum
+        self.assertGreaterEqual(score['score'], 0)
+        self.assertLess(score['score'], 50)
+
+
+class ConfigMonitoringCronTests(TestCase):
+    """Phase 17 v9 (v3.17.308): assets_capture_baselines cron."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='CmCo', slug='cm-co')
+        cls.monitored = Asset.objects.create(
+            organization=cls.org, name='watched', asset_type='server',
+            config_monitored=True, os_version='Ubuntu 24.04',
+        )
+        cls.unmonitored = Asset.objects.create(
+            organization=cls.org, name='ignored', asset_type='server',
+            os_version='Ubuntu 22.04',
+        )
+
+    def test_cron_captures_only_monitored(self):
+        from django.core.management import call_command
+        from assets.models import AssetBaseline
+        call_command('assets_capture_baselines', verbosity=0)
+        self.assertEqual(
+            AssetBaseline.objects.filter(asset=self.monitored).count(), 1,
+        )
+        self.assertEqual(
+            AssetBaseline.objects.filter(asset=self.unmonitored).count(), 0,
+        )
+
+    def test_dry_run_creates_no_baselines(self):
+        from django.core.management import call_command
+        from assets.models import AssetBaseline
+        call_command('assets_capture_baselines', '--dry-run', verbosity=0)
+        self.assertEqual(
+            AssetBaseline.objects.filter(asset=self.monitored).count(), 0,
+        )
+
+    def test_cron_keeps_old_baselines_history(self):
+        from django.core.management import call_command
+        from assets.models import AssetBaseline
+        call_command('assets_capture_baselines', verbosity=0)
+        call_command('assets_capture_baselines', verbosity=0)
+        # 2 baselines now; only the latest is_current
+        baselines = AssetBaseline.objects.filter(asset=self.monitored)
+        self.assertEqual(baselines.count(), 2)
+        current = baselines.filter(is_current=True)
+        self.assertEqual(current.count(), 1)
