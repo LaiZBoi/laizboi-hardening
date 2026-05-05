@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.268] - 2026-05-05
+
+### Added — Phase 13 v8 Procurement Forecasting
+Closes the "Procurement forecasting from historical PR/PO data" sub-bullet of Phase 13. Reads the last 12 months of committed POs and projects the next 3 months of per-vendor spend using a 3-month moving average — consistent + exportable, roughly what a buyer would eyeball anyway.
+
+- **New report at `/reports/procurement-forecasting/`** — staff-only.
+- **Per-vendor table** — last 6 months of monthly spend + 3-month rolling average + 3-month forecast (avg × 3). Sorted by descending forecast.
+- **Overall view** — single-row monthly history + total forecast across all vendors.
+- **CSV export** — same per-vendor rows.
+- **Excludes draft / cancelled / void POs** — matches `procurement_summary` and `vendor_cost_history` scope.
+- **Reports home tile** added.
+
+### Tests
+- 4 tests in `reports.tests.ProcurementForecastingTests` covering forecast math (3 × $1000 PO history → $3000 forecast), draft exclusion, CSV export, and the staff-only ACL.
+
+### Roadmap
+Phase 13 sub-bullet "Procurement forecasting from historical PR/PO data" annotated `*(shipped v3.17.268)*`.
+
 ## [3.17.267] - 2026-05-04
 
 ### Added — Phase 27 v4 Tax Reconciliation

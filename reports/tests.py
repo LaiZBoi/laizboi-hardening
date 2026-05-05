@@ -1941,6 +1941,94 @@ class AssetLifecycleReportTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ProcurementForecastingTests(TestCase):
+    """Phase 13 v8 (v3.17.268) — procurement forecasting report."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import PurchaseOrder
+        from datetime import date, timedelta
+        from decimal import Decimal as _D
+
+        cls.org = Organization.objects.create(name='ForecastCo', slug='forecast-co')
+        cls.staff = User.objects.create_user('fc-staff', 'fs@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('fc-mem', 'fm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        # Vendor A: 3 POs over last 3 months @ $1000 each → 3-mo MA = $1000.
+        for n in range(3):
+            po = PurchaseOrder.objects.create(
+                organization=cls.org, po_number=f'PO-FC-{n:05d}',
+                vendor_name='ForecastCorp', title=f'Order {n}',
+                status='sent', total=_D('1000'),
+            )
+            # Push created_at backward to span 3 distinct months
+            po.created_at = po.created_at - timedelta(days=30 * n)
+            po.save(update_fields=['created_at'])
+
+        # Draft PO — should NOT factor into forecast.
+        PurchaseOrder.objects.create(
+            organization=cls.org, po_number='PO-FC-DRAFT',
+            vendor_name='ShouldNotShow', title='Draft',
+            status='draft', total=_D('999999'),
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_forecast_table(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/procurement-forecasting/')
+        self.assertEqual(r.status_code, 200)
+        body = r.content.decode('utf-8')
+        self.assertIn('ForecastCorp', body)
+        # Average should be $1000/month (rounded).
+        rows = {row['vendor']: row for row in r.context['rows']}
+        self.assertIn('ForecastCorp', rows)
+        self.assertEqual(rows['ForecastCorp']['avg_3mo'], 1000.0)
+        # Forecast next 3 months = avg * 3 = $3000.
+        self.assertEqual(rows['ForecastCorp']['forecast_total_3mo'], 3000.0)
+
+    def test_draft_excluded(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/procurement-forecasting/')
+        body = r.content.decode('utf-8')
+        self.assertNotIn('ShouldNotShow', body)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/procurement-forecasting/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('ForecastCorp', body)
+        # Forecast column header
+        self.assertIn('Forecast next', body)
+
+    def test_non_staff_blocked_with_404(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/procurement-forecasting/')
+        self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class TicketAgingReportTests(TestCase):
     """Phase 19 v1 (v3.17.257) — ticket aging analytics."""
 

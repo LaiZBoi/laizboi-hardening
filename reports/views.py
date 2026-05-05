@@ -3185,3 +3185,100 @@ def asset_lifecycle_report(request):
         'threshold': threshold,
         'total_count': len(rows),
     })
+
+
+@login_required
+def procurement_forecasting(request):
+    """
+    Phase 13 v8 (v3.17.268): procurement forecasting. Reads the last
+    12 months of committed POs (excluding draft / cancelled / void)
+    and projects the next 3 months of per-vendor spend using a
+    3-month moving average, which is roughly what a buyer would
+    eyeball anyway but consistent + exportable.
+
+    Tenant ACL: staff/superuser only — same gate as procurement_summary.
+    """
+    from psa.models import PurchaseOrder
+    from datetime import date as _date, timedelta as _td
+    from collections import defaultdict
+    from dateutil.relativedelta import relativedelta as _rd
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('Procurement reports are staff-only')
+
+    # 12 months back so we have enough data for a 3-month MA per vendor.
+    cutoff = _date.today() - _td(days=365)
+    qs = (PurchaseOrder.objects
+          .filter(created_at__date__gte=cutoff)
+          .exclude(status__in=['draft', 'cancelled', 'void']))
+
+    # vendor → {YYYY-MM: spend}
+    monthly_by_vendor = defaultdict(lambda: defaultdict(float))
+    overall_monthly = defaultdict(float)
+    for po in qs.values('vendor_name', 'created_at', 'total'):
+        vendor = po['vendor_name'] or '—'
+        key = po['created_at'].strftime('%Y-%m')
+        amt = float(po['total'] or 0)
+        monthly_by_vendor[vendor][key] += amt
+        overall_monthly[key] += amt
+
+    # Last 6 months of keys, in chronological order
+    today = _date.today().replace(day=1)
+    history_keys = []
+    cur = today - _rd(months=5)
+    for _ in range(6):
+        history_keys.append(cur.strftime('%Y-%m'))
+        cur += _rd(months=1)
+
+    # Forecast keys: next 3 months
+    forecast_keys = []
+    cur = today + _rd(months=1)
+    for _ in range(3):
+        forecast_keys.append(cur.strftime('%Y-%m'))
+        cur += _rd(months=1)
+
+    # Per-vendor forecast: 3-month MA over the last 3 months of history.
+    rows = []
+    for vendor, months in monthly_by_vendor.items():
+        history = [round(months.get(k, 0.0), 2) for k in history_keys]
+        last_three = [months.get(k, 0.0) for k in history_keys[-3:]]
+        forecast_per_month = sum(last_three) / 3.0 if last_three else 0.0
+        rows.append({
+            'vendor': vendor,
+            'history': list(zip(history_keys, history)),
+            'avg_3mo': round(forecast_per_month, 2),
+            'forecast_total_3mo': round(forecast_per_month * 3, 2),
+            'history_total': round(sum(history), 2),
+        })
+    rows.sort(key=lambda r: -r['forecast_total_3mo'])
+
+    overall_history = [round(overall_monthly.get(k, 0.0), 2) for k in history_keys]
+    overall_last_three = [overall_monthly.get(k, 0.0) for k in history_keys[-3:]]
+    overall_forecast = round(
+        (sum(overall_last_three) / 3.0) * 3 if overall_last_three else 0, 2,
+    )
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="procurement-forecasting.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Vendor'] + [f'Hist {k}' for k in history_keys]
+                   + ['3-mo avg', f'Forecast next 3-mo ({", ".join(forecast_keys)})'])
+        for r in rows:
+            w.writerow([r['vendor']] + [v for _k, v in r['history']]
+                       + [r['avg_3mo'], r['forecast_total_3mo']])
+        return resp
+
+    return render(request, 'reports/procurement_forecasting.html', {
+        'rows': rows,
+        'history_keys': history_keys,
+        'forecast_keys': forecast_keys,
+        'overall_history': list(zip(history_keys, overall_history)),
+        'overall_forecast': overall_forecast,
+        'total_vendors': len(rows),
+    })

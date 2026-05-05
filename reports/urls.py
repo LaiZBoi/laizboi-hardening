@@ -123,6 +123,9 @@ urlpatterns = [
     # v3.17.263 — Phase 13 v6 asset lifecycle scoring report.
     path('asset-lifecycle/',
          views.asset_lifecycle_report, name='asset_lifecycle_report'),
+    # v3.17.268 — Phase 13 v8 procurement forecasting report.
+    path('procurement-forecasting/',
+         views.procurement_forecasting, name='procurement_forecasting'),
     # Phase 26 v1 (v3.17.246) — Saved Queries / Custom Report Writer.
     path('saved-queries/', views.saved_query_list, name='saved_query_list'),
     path('saved-queries/new/', views.saved_query_form, name='saved_query_create'),

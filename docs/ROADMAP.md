@@ -300,7 +300,7 @@ Planned capabilities:
 - Margin analytics on resold hardware
 - RMA tracking (return / replace lifecycle) *(shipped v3.17.261 — `RMAReturn` model with explicit state machine: open → sent → received_by_vendor → replaced/refunded/closed; views at `/assets/rma/`; tenant-scoped)*
 - Asset lifecycle scoring (composite age × usage × warranty) *(shipped v3.17.263 — `Asset.lifecycle_score()` returns 0-100 breakdown {age, warranty, firmware}; report at `/reports/asset-lifecycle/` with `?threshold=` filter and CSV export)*
-- Procurement forecasting from historical PR/PO data
+- Procurement forecasting from historical PR/PO data *(shipped v3.17.268 — `/reports/procurement-forecasting/` projects per-vendor spend over the next 3 months using a 3-month moving average over the last 12 months of committed POs; CSV export; staff-only)*
 - Recurring purchasing templates *(shipped v3.17.266 — `RecurringPurchaseTemplate` with JSON line snapshot + recurrence (weekly/biweekly/monthly/quarterly/yearly); `spawn_pr()` creates a draft PR; daily `psa_run_recurring_purchases` cron with catch-up cap)*
 - Vendor cost history (price-at-time-of-PO trend) *(shipped v3.17.262 — `/reports/vendor-cost-history/` aggregates POLine items over last 730 days per `(vendor, sku, description)` with min/avg/max/last unit price; CSV export; staff-only)*
 - Procurement reporting *(shipped v3.17.258 — `/reports/procurement-summary/` per-vendor + per-month spend over last 365 days; CSV export; staff-only)*

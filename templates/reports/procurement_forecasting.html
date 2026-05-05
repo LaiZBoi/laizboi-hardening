@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Procurement Forecasting — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Procurement Forecasting</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-chart-area me-2"></i>Procurement Forecasting</h2>
+    <a href="?format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted">Per-vendor spend over the last 6 months and a 3-month forecast computed from the rolling 3-month average. Excludes draft / cancelled / void POs. Staff-only.</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Vendors with activity</div>
+                <div class="fs-4 fw-bold">{{ total_vendors }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-success">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Overall forecast — next 3 months ({{ forecast_keys|join:", " }})</div>
+                <div class="fs-4 fw-bold">${{ overall_forecast|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mt-3">Overall monthly spend (history)</h5>
+<div class="card mb-3">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light"><tr><th>Month</th><th class="text-end">Spend</th></tr></thead>
+        <tbody>
+        {% for month, amount in overall_history %}
+            <tr><td>{{ month }}</td><td class="text-end">${{ amount|floatformat:2 }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h5 class="mt-3">Per-vendor forecast</h5>
+{% if rows %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover small mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Vendor</th>
+                    {% for k in history_keys %}<th class="text-end">{{ k }}</th>{% endfor %}
+                    <th class="text-end">3-mo avg</th>
+                    <th class="text-end">Forecast next 3 mo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.vendor }}</td>
+                    {% for _k, v in r.history %}<td class="text-end">${{ v|floatformat:2 }}</td>{% endfor %}
+                    <td class="text-end">${{ r.avg_3mo|floatformat:2 }}</td>
+                    <td class="text-end"><strong>${{ r.forecast_total_3mo|floatformat:2 }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info small"><i class="fas fa-info-circle me-1"></i>No PO history in the last 12 months. Forecasts will appear once POs accumulate.</div>
+{% endif %}
+{% endblock %}
