@@ -2844,6 +2844,109 @@ def accounting_reconciliation(request):
 
 
 @login_required
+def ar_aging_report(request):
+    """
+    Phase 27 v5 (v3.17.269): AR aging tied to QBO. Buckets pushed-but-
+    unpaid invoices into 0-30 / 31-60 / 61-90 / 90+ day age groups by
+    client. Difference vs the existing `accounting_reconciliation`
+    report: this view is per-client + bucketed for collections work,
+    not invoice-by-invoice for diagnostics.
+
+    Tenant ACL: superuser/staff sees all; org members see only their
+    org's invoices.
+    """
+    from psa.models import Invoice
+    from datetime import date as _date
+    from decimal import Decimal as _D
+    from collections import defaultdict
+    from django.db.models import F, Q
+
+    qs = (Invoice.objects.select_related('client_org', 'organization')
+          .filter(pushed_to_accounting_at__isnull=False)
+          .filter(~Q(status='paid') & ~Q(status='void')
+                  & Q(amount_paid__lt=F('total'))))
+
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        qs = qs.filter(client_org_id__in=ids)
+
+    today = _date.today()
+    # client_pk → {bucket -> total, total: total, oldest_days: int, name: str}
+    by_client = defaultdict(lambda: {
+        'name': '', 'b_0_30': _D('0'), 'b_31_60': _D('0'),
+        'b_61_90': _D('0'), 'b_90_plus': _D('0'),
+        'total_balance': _D('0'), 'oldest_days': 0,
+        'invoice_count': 0, 'provider': '',
+    })
+
+    for inv in qs.values('client_org_id', 'client_org__name',
+                          'invoice_date', 'due_date',
+                          'total', 'amount_paid', 'accounting_provider'):
+        balance = (_D(str(inv['total'] or 0)) - _D(str(inv['amount_paid'] or 0)))
+        if balance <= 0:
+            continue
+        # Age from due_date when set, else invoice_date.
+        ref = inv['due_date'] or inv['invoice_date']
+        days = (today - ref).days
+        bucket = 'b_0_30'
+        if days > 90:
+            bucket = 'b_90_plus'
+        elif days > 60:
+            bucket = 'b_61_90'
+        elif days > 30:
+            bucket = 'b_31_60'
+        b = by_client[inv['client_org_id']]
+        b['name'] = inv['client_org__name']
+        b[bucket] += balance
+        b['total_balance'] += balance
+        b['invoice_count'] += 1
+        b['oldest_days'] = max(b['oldest_days'], days)
+        if not b['provider'] and inv['accounting_provider']:
+            b['provider'] = inv['accounting_provider']
+
+    rows = []
+    for client_id, b in by_client.items():
+        rows.append({'client_id': client_id, **b})
+    rows.sort(key=lambda r: -r['total_balance'])
+
+    totals = {
+        'b_0_30': sum(r['b_0_30'] for r in rows),
+        'b_31_60': sum(r['b_31_60'] for r in rows),
+        'b_61_90': sum(r['b_61_90'] for r in rows),
+        'b_90_plus': sum(r['b_90_plus'] for r in rows),
+        'total_balance': sum(r['total_balance'] for r in rows),
+        'invoice_count': sum(r['invoice_count'] for r in rows),
+        'client_count': len(rows),
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="ar-aging.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Client', 'Provider', 'Invoices', '0-30', '31-60',
+                    '61-90', '90+', 'Total', 'Oldest days'])
+        for r in rows:
+            w.writerow([r['name'], r['provider'], r['invoice_count'],
+                        r['b_0_30'], r['b_31_60'], r['b_61_90'],
+                        r['b_90_plus'], r['total_balance'], r['oldest_days']])
+        w.writerow(['TOTAL', '', totals['invoice_count'],
+                    totals['b_0_30'], totals['b_31_60'],
+                    totals['b_61_90'], totals['b_90_plus'],
+                    totals['total_balance'], ''])
+        return resp
+
+    return render(request, 'reports/ar_aging.html', {
+        'rows': rows,
+        'totals': totals,
+    })
+
+
+@login_required
 def ticket_aging_report(request):
     """
     Phase 19 v1 (v3.17.257): ticket aging analytics. Bucket open

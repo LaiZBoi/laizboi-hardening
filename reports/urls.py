@@ -111,6 +111,9 @@ urlpatterns = [
     # v3.17.255 — Phase 27 v1 accounting reconciliation.
     path('accounting-reconciliation/',
          views.accounting_reconciliation, name='accounting_reconciliation'),
+    # v3.17.269 — Phase 27 v5 AR aging tied to QBO.
+    path('ar-aging/',
+         views.ar_aging_report, name='ar_aging_report'),
     # v3.17.257 — Phase 19 v1 ticket aging analytics.
     path('ticket-aging/',
          views.ticket_aging_report, name='ticket_aging_report'),

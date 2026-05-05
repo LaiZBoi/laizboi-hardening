@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.269] - 2026-05-05
+
+### Added — Phase 27 v5 AR Aging tied to QBO
+Closes the "Accounts receivable aging tied directly back to QBO/Xero AR" sub-bullet of Phase 27. New per-client aging report focused exclusively on invoices that have been pushed to the accounting system, so collections work mirrors what QBO/Xero reports.
+
+- **New report at `/reports/ar-aging/`** — buckets pushed-but-unpaid invoices into 0-30 / 31-60 / 61-90 / 90+ day age groups by client. Age computed from `due_date` when set, else `invoice_date`.
+- **Per-client row** — invoice count, balance per bucket, total balance, oldest invoice age (days), source provider. 90+ day balance is colored red & bold.
+- **Totals row** plus 4 summary cards (clients with balance / total open invoices / total balance / 90+ day balance).
+- **CSV export** — same rows + TOTAL line.
+- **Tenant ACL** — superuser/staff sees all; org members see only their own client_org's invoices.
+- **Difference vs `accounting_reconciliation`**: that view is invoice-by-invoice for diagnostics; this one is per-client + bucketed for collections.
+- **Reports home tile** added.
+
+### Tests
+- 4 tests in `reports.tests.ARAgingReportTests` covering bucket math (100 → 0-30, 200 → 90+, 50 → 31-60), exclusion of paid + unpushed invoices, the membership-based ACL, and CSV export.
+
+### Roadmap
+Phase 27 sub-bullet "Accounts receivable aging tied directly back to QBO/Xero AR" annotated `*(shipped v3.17.269)*`.
+
 ## [3.17.268] - 2026-05-05
 
 ### Added — Phase 13 v8 Procurement Forecasting

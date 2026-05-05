@@ -2029,6 +2029,136 @@ class ProcurementForecastingTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ARAgingReportTests(TestCase):
+    """Phase 27 v5 (v3.17.269) — AR aging tied to QBO."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import Invoice
+        from datetime import date as _date, timedelta as _td
+        from decimal import Decimal as _D
+        from django.utils import timezone as _tz
+
+        cls.msp = Organization.objects.create(name='ARMsp', slug='ar-msp')
+        cls.client_a = Organization.objects.create(name='ARClientA', slug='ar-ca')
+        cls.client_b = Organization.objects.create(name='ARClientB', slug='ar-cb')
+        cls.staff = User.objects.create_user('ar-staff', 'as@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('ar-mem', 'am@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.client_a,
+                                   role=Role.OWNER, is_active=True)
+
+        today = _date.today()
+
+        # Client A: 100 due 10 days ago (0-30 bucket)
+        Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            title='A-fresh', invoice_date=today - _td(days=15),
+            due_date=today - _td(days=10),
+            total=_D('100'), amount_paid=_D('0'),
+            status='sent',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-A1',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        # Client A: 200 due 100 days ago (90+ bucket)
+        Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            title='A-old', invoice_date=today - _td(days=120),
+            due_date=today - _td(days=100),
+            total=_D('200'), amount_paid=_D('0'),
+            status='sent',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-A2',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        # Client B: 50 due 45 days ago (31-60 bucket)
+        Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_b,
+            title='B-mid', invoice_date=today - _td(days=60),
+            due_date=today - _td(days=45),
+            total=_D('50'), amount_paid=_D('0'),
+            status='sent',
+            accounting_provider='xero',
+            accounting_external_id='XERO-B1',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        # Fully paid — should NOT appear
+        Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            title='paid', invoice_date=today,
+            total=_D('99'), amount_paid=_D('99'),
+            status='paid',
+            accounting_provider='quickbooks_online',
+            accounting_external_id='QBO-PAID',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        # Not pushed — should NOT appear (we're tied to QBO)
+        Invoice.objects.create(
+            organization=cls.msp, client_org=cls.client_a,
+            title='not pushed', invoice_date=today - _td(days=10),
+            total=_D('77'), status='sent',
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_staff_sees_per_client_buckets(self):
+        from django.test import Client
+        from decimal import Decimal as _D
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/ar-aging/')
+        self.assertEqual(r.status_code, 200)
+        rows = {row['name']: row for row in r.context['rows']}
+        # Client A: $100 in 0-30, $200 in 90+, total $300, 2 invoices
+        self.assertEqual(rows['ARClientA']['b_0_30'], _D('100'))
+        self.assertEqual(rows['ARClientA']['b_90_plus'], _D('200'))
+        self.assertEqual(rows['ARClientA']['total_balance'], _D('300'))
+        self.assertEqual(rows['ARClientA']['invoice_count'], 2)
+        # Client B: $50 in 31-60
+        self.assertEqual(rows['ARClientB']['b_31_60'], _D('50'))
+        self.assertEqual(rows['ARClientB']['total_balance'], _D('50'))
+
+    def test_paid_and_unpushed_excluded(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/ar-aging/')
+        body = r.content.decode('utf-8')
+        # 'paid' invoice's title was 'paid' — make sure it's not on the page
+        self.assertNotIn('not pushed', body)
+
+    def test_member_sees_only_their_org(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.client_a)
+        r = c.get('/reports/ar-aging/')
+        rows = {row['name']: row for row in r.context['rows']}
+        self.assertIn('ARClientA', rows)
+        self.assertNotIn('ARClientB', rows)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/ar-aging/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('ARClientA', body)
+        self.assertIn('ARClientB', body)
+        self.assertIn('TOTAL', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class TicketAgingReportTests(TestCase):
     """Phase 19 v1 (v3.17.257) — ticket aging analytics."""
 
