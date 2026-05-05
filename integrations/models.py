@@ -1070,3 +1070,62 @@ class AccountingAuditLog(BaseModel):
     def __str__(self):
         ok = 'ok' if self.success else 'fail'
         return f'{self.provider_type}:{self.action} ({ok}) #{self.pk}'
+
+
+# ---------------------------------------------------------------------------
+# Phase 15 v8 (v3.17.296) — ACH / payment processor connections.
+# ---------------------------------------------------------------------------
+
+class PaymentConnection(BaseModel):
+    """Per-organization OAuth2 / API-key connection to an ACH / card
+    processor. Adapter stubs for Stripe + GoCardless ship today;
+    completing the OAuth dance + live `charge()` calls happens when
+    an MSP connects a real account.
+    """
+    PROVIDER_TYPES = [
+        ('stripe', 'Stripe (cards + ACH)'),
+        ('gocardless', 'GoCardless (Direct Debit / ACH)'),
+        ('manual', 'Manual / external (no automation)'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='payment_connections',
+    )
+    provider_type = models.CharField(max_length=40, choices=PROVIDER_TYPES,
+                                      default='manual')
+    name = models.CharField(max_length=200)
+    base_url = models.URLField(max_length=500, blank=True)
+    encrypted_credentials = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    sync_enabled = models.BooleanField(default=False,
+        help_text='Allow live charges (off by default — sandbox first).')
+    last_charge_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'payment_connections'
+        unique_together = [['organization', 'name']]
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.organization.slug}:{self.name} ({self.get_provider_type_display()})'
+
+    def set_credentials(self, credentials_dict):
+        encrypted = encrypt_dict(credentials_dict)
+        self.encrypted_credentials = json.dumps(encrypted)
+
+    def get_credentials(self):
+        if not self.encrypted_credentials:
+            return {}
+        try:
+            return decrypt_dict(json.loads(self.encrypted_credentials))
+        except Exception:
+            return {}
+
+    def update_credentials(self, **kwargs):
+        creds = self.get_credentials()
+        creds.update(kwargs)
+        self.set_credentials(creds)

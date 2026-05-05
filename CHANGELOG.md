@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.296] - 2026-05-05
+
+### Added — Phase 15 v8 — Payment processor scaffolding (Stripe + GoCardless)
+Closes the "ACH / payment integrations (Stripe ACH, GoCardless, etc.)" sub-bullet of Phase 15. Live OAuth flows + actual `charge()` calls land when an MSP connects a real account; this release lands the model + adapter pattern so the wire-up is a focused follow-up rather than a green-field push.
+
+- **New `integrations.PaymentConnection` model** (migration `integrations.0025`) — per-org row with provider type (`stripe` / `gocardless` / `manual`), name, base_url, encrypted_credentials, sync_enabled, last_charge_at, last_error. Same encryption + `OrganizationManager` pattern as `AccountingConnection`.
+- **New `integrations/providers/payment/` package** — `BasePaymentProvider` interface plus Stripe + GoCardless stubs.
+  - `BasePaymentProvider.test_connection()` — checks credentials look usable (api_key / access_token present).
+  - `BasePaymentProvider.charge(payment_intent)` — abstract; stubs document the expected request shape and return a clear "not yet implemented" marker rather than silently no-op'ing.
+- **PROVIDER_REGISTRY + `get_payment_provider(connection)`** — same lookup pattern as the accounting providers, ready to extend with real implementations.
+
+### Tests
+- 5 tests in `integrations.tests.PaymentConnectionScaffoldTests` covering: encrypted credential round-trip, provider resolution + DEFAULT_BASE_URL fill, `test_connection()` returns False without api_key / True with, stub `charge()` returns the documented "not yet implemented" marker, unknown provider returns None.
+
+### Roadmap
+Phase 15 sub-bullet "ACH / payment integrations (Stripe ACH, GoCardless, etc.)" annotated `*(shipped v3.17.296 — scaffold; live charge() implementation lands when an MSP connects a real account)*`.
+
 ## [3.17.295] - 2026-05-05
 
 ### Added — Phase 15 v6/v9 — Billing reconciliation + MRR forecasting reports

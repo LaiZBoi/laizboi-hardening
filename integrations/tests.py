@@ -818,3 +818,79 @@ class BidirectionalPaymentSyncTests(TestCase):
             call_command('accounting_sync_payments', '--dry-run', verbosity=0)
 
         self.assertEqual(Payment.objects.filter(invoice=self.invoice).count(), 0)
+
+
+class PaymentConnectionScaffoldTests(TestCase):
+    """Phase 15 v8 (v3.17.296): payment processor adapter stubs."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='PayCo')
+
+    def test_credential_round_trip(self):
+        from .models import PaymentConnection
+        conn = PaymentConnection.objects.create(
+            organization=self.org, provider_type='stripe',
+            name='Stripe-prod',
+        )
+        conn.set_credentials({'api_key': 'sk_live_xxx',
+                               'webhook_secret': 'whsec_yyy'})
+        conn.save()
+        creds = conn.get_credentials()
+        self.assertEqual(creds['api_key'], 'sk_live_xxx')
+        self.assertEqual(creds['webhook_secret'], 'whsec_yyy')
+        # Encrypted on disk — raw value not visible
+        self.assertNotIn('sk_live_xxx', conn.encrypted_credentials)
+
+    def test_provider_resolution(self):
+        from .models import PaymentConnection
+        from .providers.payment import get_payment_provider
+        from .providers.payment.stripe import StripeProvider
+        conn = PaymentConnection.objects.create(
+            organization=self.org, provider_type='stripe',
+            name='Stripe-test',
+        )
+        p = get_payment_provider(conn)
+        self.assertIsInstance(p, StripeProvider)
+        # __init__ fills connection.base_url from DEFAULT_BASE_URL
+        self.assertEqual(p.connection.base_url, 'https://api.stripe.com')
+
+    def test_test_connection_checks_for_api_key(self):
+        from .models import PaymentConnection
+        from .providers.payment import get_payment_provider
+        conn = PaymentConnection.objects.create(
+            organization=self.org, provider_type='stripe',
+            name='No-creds',
+        )
+        p = get_payment_provider(conn)
+        self.assertFalse(p.test_connection())
+        conn.set_credentials({'api_key': 'sk_xxx'})
+        conn.save()
+        # Re-create provider so it sees the updated creds
+        p2 = get_payment_provider(conn)
+        self.assertTrue(p2.test_connection())
+
+    def test_stub_charge_returns_unimplemented_marker(self):
+        from .models import PaymentConnection
+        from .providers.payment import get_payment_provider
+        from decimal import Decimal as _D
+        conn = PaymentConnection.objects.create(
+            organization=self.org, provider_type='stripe',
+            name='Stub-stripe',
+        )
+        conn.set_credentials({'api_key': 'sk_xxx'})
+        conn.save()
+        p = get_payment_provider(conn)
+        result = p.charge({'amount': _D('100'), 'currency': 'usd',
+                           'customer_token': 'cus_xx',
+                           'description': 'test'})
+        self.assertFalse(result['success'])
+        self.assertIn('not yet implemented', result['error'])
+
+    def test_unknown_provider_returns_none(self):
+        from .models import PaymentConnection
+        from .providers.payment import get_payment_provider
+        conn = PaymentConnection.objects.create(
+            organization=self.org, provider_type='manual',
+            name='Manual',
+        )
+        self.assertIsNone(get_payment_provider(conn))
