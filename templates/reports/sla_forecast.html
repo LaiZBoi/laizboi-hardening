@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}SLA Forecasting — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">SLA Forecasting</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-stopwatch me-2"></i>SLA Forecasting</h2>
+    <a href="?format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted small">Open tickets with a resolution SLA, ranked by % of the SLA window already elapsed. Triage breached + critical first.</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-secondary">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Open w/ SLA</div>
+                <div class="fs-4 fw-bold">{{ summary.total }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-danger">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Breached</div>
+                <div class="fs-4 fw-bold text-danger">{{ summary.breached }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Critical (&ge;85%)</div>
+                <div class="fs-4 fw-bold text-warning">{{ summary.critical }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">At Risk (&ge;60%)</div>
+                <div class="fs-4 fw-bold">{{ summary.at_risk }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if rows %}
+<div class="card">
+    <table class="table table-hover small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Risk</th>
+                <th>Ticket</th>
+                <th>Client</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Assigned</th>
+                <th>Due</th>
+                <th class="text-end">% elapsed</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in rows %}
+            <tr>
+                <td>
+                    {% if r.risk == 'breached' %}<span class="badge bg-danger">Breached</span>
+                    {% elif r.risk == 'critical' %}<span class="badge bg-warning text-dark">Critical</span>
+                    {% elif r.risk == 'at_risk' %}<span class="badge bg-info">At Risk</span>
+                    {% else %}<span class="badge bg-success">OK</span>{% endif %}
+                </td>
+                <td>#{{ r.ticket_id }} {{ r.subject|truncatechars:60 }}</td>
+                <td>{{ r.org_name }}</td>
+                <td>{{ r.priority }}</td>
+                <td>{{ r.status }}</td>
+                <td>{{ r.assigned_to }}</td>
+                <td>{{ r.resolution_due_at|date:"Y-m-d H:i" }}</td>
+                <td class="text-end"><strong>{{ r.pct_elapsed }}%</strong></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="text-muted small mt-2">Showing up to 500 rows. Use CSV export for full list.</p>
+{% else %}
+<div class="alert alert-success small"><i class="fas fa-check-circle me-1"></i>No open tickets with active SLA windows.</div>
+{% endif %}
+{% endblock %}

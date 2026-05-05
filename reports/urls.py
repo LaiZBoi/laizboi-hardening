@@ -135,6 +135,9 @@ urlpatterns = [
     # v3.17.257 — Phase 19 v1 ticket aging analytics.
     path('ticket-aging/',
          views.ticket_aging_report, name='ticket_aging_report'),
+    # v3.17.320 — Phase 19 v2 SLA forecasting (predict breach risk).
+    path('sla-forecast/',
+         views.sla_forecast_report, name='sla_forecast_report'),
     # v3.17.258 — Phase 13 v3 procurement summary report.
     path('procurement-summary/',
          views.procurement_summary, name='procurement_summary'),

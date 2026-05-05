@@ -3704,3 +3704,137 @@ class WallboardWidgetReorderTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(resp.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class SLAForecastReportTests(TestCase):
+    """Phase 19 v2 (v3.17.320) — SLA forecasting / breach risk."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from psa.models import (
+            Queue, Ticket, TicketPriority, TicketStatus, TicketType,
+        )
+        from datetime import timedelta as _td
+        from django.utils import timezone as _tz
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='SLACo', slug='sla-co')
+        cls.outsider = Organization.objects.create(name='Out', slug='sla-out')
+        cls.staff = User.objects.create_user('sla-staff', 'sl@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('sla-mem', 'sm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        queue = Queue.objects.first()
+        priority = TicketPriority.objects.first()
+        ttype = TicketType.objects.first()
+        new = TicketStatus.objects.filter(slug='new').first()
+        terminal = TicketStatus.objects.filter(is_terminal=True).first()
+
+        now = _tz.now()
+
+        def make(subject, age_hours, due_in_hours, status=new, org=None):
+            """Create a ticket with backdated created_at and forward
+            resolution_due_at. age_hours = how long ago it was created;
+            due_in_hours = how far ahead the SLA due is from NOW.
+            """
+            t = Ticket.objects.create(
+                organization=org or cls.org, subject=subject,
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=status,
+                resolution_due_at=now + _td(hours=due_in_hours),
+            )
+            Ticket.objects.filter(pk=t.pk).update(
+                created_at=now - _td(hours=age_hours),
+            )
+            return t
+
+        # Window length = age_hours + due_in_hours; pct = age / window.
+        # ok: 4h elapsed of 100h = 4%
+        cls.t_ok = make('ok', age_hours=4, due_in_hours=96)
+        # at_risk: 60h elapsed of 100h = 60%
+        cls.t_atrisk = make('atrisk', age_hours=60, due_in_hours=40)
+        # critical: 90h elapsed of 100h = 90%
+        cls.t_crit = make('critical', age_hours=90, due_in_hours=10)
+        # breached: due in the past
+        cls.t_brc = make('breached', age_hours=120, due_in_hours=-20)
+        # No SLA — should NOT count
+        Ticket.objects.create(
+            organization=cls.org, subject='no-sla',
+            queue=queue, priority=priority, ticket_type=ttype, status=new,
+        )
+        # Terminal — should NOT count
+        make('done', age_hours=10, due_in_hours=20, status=terminal)
+        # Cross-tenant — staff sees, member doesn't
+        cls.t_outsider = make('outsider', age_hours=4, due_in_hours=96,
+                              org=cls.outsider)
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_buckets_correctly(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/sla-forecast/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        # 5 SLA tickets total (ok×2 incl outsider, at_risk, critical, breached)
+        self.assertEqual(ctx['summary']['total'], 5)
+        self.assertEqual(ctx['summary']['breached'], 1)
+        self.assertEqual(ctx['summary']['critical'], 1)
+        self.assertEqual(ctx['summary']['at_risk'], 1)
+        self.assertEqual(ctx['summary']['ok'], 2)
+        self.assertEqual(ctx['summary']['risk_total'], 3)
+
+    def test_sort_breached_first(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/sla-forecast/')
+        rows = r.context['rows']
+        # First row should be the breached ticket.
+        self.assertEqual(rows[0]['risk'], 'breached')
+        self.assertEqual(rows[0]['subject'], 'breached')
+
+    def test_member_only_their_org(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/sla-forecast/')
+        ctx = r.context
+        # Outsider excluded — total = 4 instead of 5.
+        self.assertEqual(ctx['summary']['total'], 4)
+
+    def test_excludes_terminal_and_no_sla(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/sla-forecast/')
+        body = r.content.decode('utf-8')
+        # Tickets without SLA / terminal status must not appear.
+        self.assertNotIn('no-sla', body)
+        self.assertNotIn('>done<', body)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/sla-forecast/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('breached', body)
+        self.assertIn('% elapsed', body)
