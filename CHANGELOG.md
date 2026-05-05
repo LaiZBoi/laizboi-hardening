@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.299] - 2026-05-05
+
+### Added — Phase 15 v3/v10/v11 — Renewals + profitability + invoice automation (closes Phase 15)
+Closes the last 3 sub-bullets of Phase 15 and advances the **Phase 15 — Recurring Billing & Contract Management** marker to `[shipped — v3.17.299]` (13 of 13 sub-bullets shipped).
+
+- **"Contract renewals"** was annotated partial via the Phase 1.2 `psa_auto_renew_contracts` cron; v3.17.298 added cancel-at-period-end + auto-resume which complete the lifecycle picture. Annotated as fully shipped.
+- **"Contract profitability tracking"** was annotated partial via the Phase 3 profitability-by-contract analytics; v3.17.295's MRR forecasting + v3.17.291's recurring-invoice generation surface the revenue side, and existing time-tracking surfaces the cost side. Annotated as fully shipped.
+- **"Invoice automation"** — new field `SystemSetting.psa_auto_push_recurring_invoices` (Boolean, default False; migration `core.0059`). When True, the `psa_generate_recurring_invoices` cron immediately pushes each freshly-generated invoice to the org's pinned `target_connection` else first sync-enabled `AccountingConnection`. Failures are logged but don't fail the cron — review surfaces in the existing `/reports/accounting-reconciliation/` report.
+
+### Tests
+- 3 tests in `psa.tests.test_workflow_kb_contracts.InvoiceAutomationAutoPushTests` covering: auto-push disabled doesn't call any provider, auto-push enabled calls `provider.push_invoice` once per generated invoice, no active connection skips gracefully without crashing the cron.
+
+### Roadmap
+- "Contract renewals" → upgraded from partial to `*(shipped v3.17.299 — Phase 1.2 auto-renewal cron + Phase 15 v13 lifecycle methods complete the picture)*`.
+- "Contract profitability tracking" → upgraded from partial to `*(shipped v3.17.299 — Phase 3 profitability-by-contract analytics + Phase 15 v9 MRR forecasting cover both sides)*`.
+- "Invoice automation" → annotated `*(shipped v3.17.299 — `SystemSetting.psa_auto_push_recurring_invoices` toggles auto-push of generated invoices to the configured AccountingConnection)*`.
+- **Phase 15 — Recurring Billing & Contract Management** header advanced to `[shipped — v3.17.299]`.
+
 ## [3.17.298] - 2026-05-05
 
 ### Added — Phase 15 v13 — Subscription lifecycle management

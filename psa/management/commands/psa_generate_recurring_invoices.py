@@ -31,6 +31,14 @@ class Command(BaseCommand):
         cap = options['max_per_contract']
         today = date.today()
 
+        # Phase 15 v11 (v3.17.299): respect SystemSetting auto-push flag.
+        try:
+            from core.models import SystemSetting as _SS
+            ss = _SS.get_settings()
+            auto_push = bool(getattr(ss, 'psa_auto_push_recurring_invoices', False))
+        except Exception:
+            auto_push = False
+
         # Phase 15 v13: skip paused contracts (paused_at non-null)
         qs = Contract.objects.filter(
             status='active',
@@ -64,6 +72,13 @@ class Command(BaseCommand):
                         f'Generated {inv.invoice_number} for '
                         f'{contract.name} (period {contract.next_billing_date})'
                     ))
+                    # Phase 15 v11: optional auto-push to accounting
+                    if auto_push:
+                        try:
+                            self._auto_push(inv)
+                        except Exception as exc:
+                            self.stdout.write(self.style.WARNING(
+                                f'auto-push failed for {inv.invoice_number}: {exc}'))
                     nxt = Contract._advance_billing(contract.next_billing_date,
                                                      contract.billing_frequency)
                     contract.last_billed_at = today
@@ -77,3 +92,35 @@ class Command(BaseCommand):
             f'{"[dry] " if dry else ""}Processed {qs.count()} contract(s); '
             f'{spawned} invoice(s) generated.'
         ))
+
+    def _auto_push(self, invoice):
+        """Phase 15 v11 (v3.17.299): push a freshly-generated invoice
+        to the org's configured sync-enabled AccountingConnection.
+        Failures are logged but don't fail the cron — review the
+        accounting reconciliation report for stragglers.
+        """
+        from integrations.models import AccountingConnection
+        from integrations.providers.accounting import get_accounting_provider
+        # Pinned connection wins, else first sync-enabled on the org
+        conn = invoice.target_connection
+        if conn is None or not (conn.is_active and conn.sync_enabled):
+            conn = AccountingConnection.objects.filter(
+                organization=invoice.organization,
+                is_active=True, sync_enabled=True,
+            ).first()
+        if conn is None:
+            self.stdout.write(self.style.WARNING(
+                f'  no sync-enabled connection for {invoice.organization.name}; '
+                f'invoice {invoice.invoice_number} stays draft'))
+            return
+        provider = get_accounting_provider(conn)
+        if provider is None:
+            return
+        result = provider.push_invoice(invoice)
+        if result.get('success'):
+            self.stdout.write(self.style.SUCCESS(
+                f'  pushed {invoice.invoice_number} → {conn.provider_type} '
+                f'({result.get("invoice_id")})'))
+        else:
+            self.stdout.write(self.style.WARNING(
+                f'  push failed for {invoice.invoice_number}: {result.get("error")}'))

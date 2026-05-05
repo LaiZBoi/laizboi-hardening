@@ -1380,6 +1380,91 @@ class SubscriptionLifecycleTests(TestCase):
         self.assertFalse(self.contract.cancel_at_period_end)
 
 
+class InvoiceAutomationAutoPushTests(TestCase):
+    """Phase 15 v11 (v3.17.299): auto-push toggle drives
+    accounting-system push of freshly-generated recurring invoices."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from decimal import Decimal as _D
+        from psa.models import Contract
+        from integrations.models import AccountingConnection
+        _setup_seed()
+        self.msp = Organization.objects.create(name='AaPMsp', slug='aap-msp')
+        self.client_org = Organization.objects.create(name='AaPClient',
+                                                       slug='aap-client')
+        self.contract = Contract.objects.create(
+            organization=self.msp, client_org=self.client_org,
+            name='Auto-push test',
+            contract_type='retainer', status='active',
+            start_date=date.today() - timedelta(days=30),
+            recurring_amount=_D('100'),
+            billing_frequency='monthly',
+            next_billing_date=date.today() - timedelta(days=1),
+        )
+        self.conn = AccountingConnection.objects.create(
+            organization=self.msp, provider_type='quickbooks_online',
+            name='AAP-QBO', is_active=True, sync_enabled=True,
+        )
+
+    def test_auto_push_disabled_does_not_push(self):
+        from unittest import mock
+        from django.core.management import call_command
+        ss = SystemSetting.get_settings()
+        ss.psa_auto_push_recurring_invoices = False
+        ss.save()
+        captured = []
+
+        def fake_get_provider(conn):
+            captured.append(conn.name)
+            return mock.MagicMock()
+
+        with mock.patch(
+            'integrations.providers.accounting.get_accounting_provider',
+            side_effect=fake_get_provider,
+        ):
+            call_command('psa_generate_recurring_invoices', verbosity=0)
+        # No push attempted because auto_push was off.
+        self.assertEqual(captured, [])
+
+    def test_auto_push_enabled_calls_provider(self):
+        from unittest import mock
+        from django.core.management import call_command
+        ss = SystemSetting.get_settings()
+        ss.psa_auto_push_recurring_invoices = True
+        ss.save()
+        captured_invoices = []
+
+        def fake_get_provider(conn):
+            mp = mock.MagicMock()
+            def push_inv(invoice):
+                captured_invoices.append(invoice.invoice_number)
+                return {'success': True, 'invoice_id': 'QBO-FAKE'}
+            mp.push_invoice.side_effect = push_inv
+            return mp
+
+        with mock.patch(
+            'integrations.providers.accounting.get_accounting_provider',
+            side_effect=fake_get_provider,
+        ):
+            call_command('psa_generate_recurring_invoices', verbosity=0)
+        self.assertEqual(len(captured_invoices), 1)
+
+    def test_auto_push_enabled_but_no_active_connection_skips(self):
+        from django.core.management import call_command
+        ss = SystemSetting.get_settings()
+        ss.psa_auto_push_recurring_invoices = True
+        ss.save()
+        # Disable the connection — push should skip without crashing
+        self.conn.sync_enabled = False
+        self.conn.save()
+        call_command('psa_generate_recurring_invoices', verbosity=0)
+        # Cron should still have generated the invoice
+        from psa.models import Invoice
+        self.assertEqual(Invoice.objects.filter(
+            source_contract=self.contract).count(), 1)
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

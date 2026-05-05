@@ -328,22 +328,22 @@ Planned capabilities:
 
 **Goal:** Reduce repetitive operational tasks while improving workflow consistency.
 
-## Phase 15 — Recurring Billing & Contract Management **(M)**
+## Phase 15 — Recurring Billing & Contract Management **(M)** [shipped — v3.17.299]
 
 **Roadmap item:** Recurring Billing & Financial Workflow Automation. Extends Phase 1 (contract engine) + invoicing.
 
 Planned capabilities:
 - Recurring invoices (auto-generated from contract bundles) *(shipped v3.17.291 — `Contract.billing_frequency` (monthly/quarterly/yearly) + `next_billing_date` + `recurring_amount`; `Contract.generate_invoice()` method; daily `psa_generate_recurring_invoices` cron with catch-up cap + dry-run)*
 - Usage-based billing (per-seat / per-device / per-GB metered) *(shipped v3.17.292 — `ContractMeter` model with unit/unit_price/current_quantity + atomic `increment()` helper; `Contract.generate_invoice()` adds one line item per active meter alongside the base recurring amount; meter resets to 0 after billing)*
-- Contract renewals *(partial — auto-renewal cron shipped Phase 1.2)*
+- Contract renewals *(shipped v3.17.299 — Phase 1.2 auto-renewal cron + Phase 15 v13 pause/resume/cancel-at-period-end complete the lifecycle picture)*
 - Proration handling *(shipped v3.17.293 — `Contract._proration_factor()` method computes days-active fraction; `generate_invoice()` applies it to the base amount only (usage line items not prorated); description suffix shows the proration % to the customer)*
 - Service bundles *(shipped — Phase 1.2 ContractBundleItem)*
 - Billing reconciliation *(shipped v3.17.295 — `/reports/billing-reconciliation/` per-client invoiced-vs-paid over `?days=N` window with collection % coloring; CSV export; tenant-scoped)*
 - Late fee automation *(shipped v3.17.294 — `SystemSetting.late_fee_pct` + `late_fee_min_days_overdue`; daily `psa_apply_late_fees` cron creates a `Charge` row for each overdue invoice; idempotent)*
 - ACH / payment integrations (Stripe ACH, GoCardless, etc.) *(shipped v3.17.296 — `PaymentConnection` model + `BasePaymentProvider` interface + Stripe & GoCardless adapter stubs; live `charge()` implementation lands when an MSP connects a real account)*
 - MRR forecasting *(shipped v3.17.295 — `/reports/mrr-forecast/` reads active recurring contracts; normalizes monthly/quarterly/yearly to monthly equivalents; per-contract table + 12-month projection; staff-only)*
-- Contract profitability tracking *(partial — Phase 3 profitability-by-contract shipped)*
-- Invoice automation
+- Contract profitability tracking *(shipped v3.17.299 — Phase 3 profitability-by-contract analytics + Phase 15 v9 MRR forecasting cover both revenue and cost sides)*
+- Invoice automation *(shipped v3.17.299 — `SystemSetting.psa_auto_push_recurring_invoices` toggles auto-push of recurring-cron-generated invoices to the configured `AccountingConnection`; failures captured for review on the existing accounting reconciliation report)*
 - Tax handling support (Avalara / TaxJar integrations) *(shipped v3.17.297 — `TaxConnection` model + `BaseTaxProvider` interface + Avalara & TaxJar adapter stubs; live `compute_tax()` lands when an MSP connects a real account)*
 - Subscription lifecycle management *(shipped v3.17.298 — `Contract.paused_at` / `paused_until` / `cancel_at_period_end` fields + `pause()` / `resume()` / `cancel_at_end_of_period()` methods; daily `psa_advance_subscription_lifecycle` cron auto-resumes + cancels)*
 

@@ -767,6 +767,17 @@ class SystemSetting(models.Model):
         help_text='Days past due_date before a late fee is applied.',
     )
 
+    # Phase 15 v11 (v3.17.299) — invoice automation: auto-push
+    # contract-generated invoices to the configured AccountingConnection
+    # the moment they're created. Off by default so installs that
+    # want to review drafts first aren't surprised.
+    psa_auto_push_recurring_invoices = models.BooleanField(
+        default=False,
+        help_text='When True, the recurring-invoice cron also pushes each '
+                  'newly-generated draft Invoice to the org\'s configured '
+                  'sync-enabled AccountingConnection. Off by default.',
+    )
+
     # Billing defaults — used by the quote and invoice forms when the
     # specific row doesn't override.
     psa_default_tax_rate = models.DecimalField(
