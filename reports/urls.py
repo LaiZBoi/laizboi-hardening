@@ -129,6 +129,9 @@ urlpatterns = [
     # v3.17.268 — Phase 13 v8 procurement forecasting report.
     path('procurement-forecasting/',
          views.procurement_forecasting, name='procurement_forecasting'),
+    # v3.17.271 — Phase 13 v9 hardware-resale margin analytics.
+    path('hardware-margin/',
+         views.hardware_margin_report, name='hardware_margin_report'),
     # Phase 26 v1 (v3.17.246) — Saved Queries / Custom Report Writer.
     path('saved-queries/', views.saved_query_list, name='saved_query_list'),
     path('saved-queries/new/', views.saved_query_form, name='saved_query_create'),

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Hardware Resale Margin — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Hardware Margin</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-server me-2"></i>Hardware Resale Margin</h2>
+    <a href="?days={{ days }}&format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted">For each quote that produced both a PO (cost) and an Invoice (revenue), shows resale margin = revenue − cost. Match key: shared `source_quote` link. Quotes that only have one side are skipped (the report summarizes what the books can prove). Window: last {{ days }} days. Staff-only.</p>
+
+<form method="get" class="row g-2 mb-3 align-items-end">
+    <div class="col-md-3">
+        <label class="form-label small mb-1">Window (days)</label>
+        <input type="number" name="days" value="{{ days }}" min="7" max="3650" class="form-control form-control-sm">
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-sm btn-outline-secondary w-100">Update</button>
+    </div>
+</form>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Matched quotes</div>
+                <div class="fs-4 fw-bold">{{ totals.count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Total cost</div>
+                <div class="fs-4 fw-bold">${{ totals.cost|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Total revenue</div>
+                <div class="fs-4 fw-bold">${{ totals.revenue|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card {% if totals.margin > 0 %}border-success{% else %}border-danger{% endif %}">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Net margin</div>
+                <div class="fs-4 fw-bold">${{ totals.margin|floatformat:2 }} <small class="text-muted fs-6">({{ totals.margin_pct }}%)</small></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if rows %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover small mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Quote</th>
+                    <th>Title</th>
+                    <th>Client</th>
+                    <th>Vendor</th>
+                    <th class="text-end">Cost</th>
+                    <th class="text-end">Revenue</th>
+                    <th class="text-end">Margin</th>
+                    <th class="text-end">Margin %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td><a href="{% url 'psa:quote_detail' r.quote_id %}">{{ r.quote_number }}</a></td>
+                    <td>{{ r.title|truncatechars:40 }}</td>
+                    <td>{{ r.client|default:'—' }}</td>
+                    <td>{{ r.vendor|default:'—' }}</td>
+                    <td class="text-end">${{ r.cost|floatformat:2 }}</td>
+                    <td class="text-end">${{ r.revenue|floatformat:2 }}</td>
+                    <td class="text-end {% if r.margin >= 0 %}text-success{% else %}text-danger{% endif %}"><strong>${{ r.margin|floatformat:2 }}</strong></td>
+                    <td class="text-end">{{ r.margin_pct }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light fw-bold">
+                <tr>
+                    <td>TOTAL</td>
+                    <td colspan="3"></td>
+                    <td class="text-end">${{ totals.cost|floatformat:2 }}</td>
+                    <td class="text-end">${{ totals.revenue|floatformat:2 }}</td>
+                    <td class="text-end {% if totals.margin >= 0 %}text-success{% else %}text-danger{% endif %}">${{ totals.margin|floatformat:2 }}</td>
+                    <td class="text-end">{{ totals.margin_pct }}%</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info small"><i class="fas fa-info-circle me-1"></i>No quotes in the window have both a PO and an Invoice linked back. Margin can only be computed when both sides reference the same quote (set `source_quote` when creating the PO and the Invoice).</div>
+{% endif %}
+{% endblock %}

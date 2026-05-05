@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.271] - 2026-05-05
+
+### Added — Phase 13 v9 Hardware Resale Margin Analytics
+Closes the "Margin analytics on resold hardware" sub-bullet of Phase 13. Existing `psa_margin_analytics` covers labor margin per service-line; this report covers the *hardware* side: for each quote that produced both a PO (cost) and an Invoice (revenue), shows resale margin = revenue − cost.
+
+- **New report at `/reports/hardware-margin/`** — staff-only.
+- **Match key**: shared `source_quote_id` on both `PurchaseOrder` and `Invoice`. Quotes with only one side are skipped (the report summarizes what the books can prove).
+- **Per-quote row**: client, vendor, cost, revenue, margin (colored red/green), margin %, PO count.
+- **Window**: last `?days=N` (default 365). Excludes draft / cancelled / void POs and void invoices.
+- **Summary cards**: matched quote count, total cost, total revenue, blended net margin + margin %.
+- **CSV export** with TOTAL row.
+- **Reports home tile** added.
+
+### Tests
+- 5 tests in `reports.tests.HardwareMarginReportTests` covering matched-quote arithmetic ($1000 cost vs $1500 revenue → $500 / 33.3%), unmatched-quote exclusion, blended margin %, CSV export, and the staff-only ACL.
+
+### Roadmap
+Phase 13 sub-bullet "Margin analytics on resold hardware" annotated `*(shipped v3.17.271)*`.
+
 ## [3.17.270] - 2026-05-05
 
 ### Added — Phase 20 v4 Quote Approval Routing

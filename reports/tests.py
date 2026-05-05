@@ -2159,6 +2159,118 @@ class ARAgingReportTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class HardwareMarginReportTests(TestCase):
+    """Phase 13 v9 (v3.17.271) — hardware-resale margin."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import Quote, PurchaseOrder, Invoice
+        from datetime import date as _date
+        from decimal import Decimal as _D
+
+        cls.org = Organization.objects.create(name='HwMargCo', slug='hw-marg')
+        cls.client_org = Organization.objects.create(name='HwMargClient', slug='hw-marg-client')
+        cls.staff = User.objects.create_user('hw-staff', 'hs@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('hw-mem', 'hm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.client_org,
+                                   role=Role.OWNER, is_active=True)
+
+        cls.q_match = Quote.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            title='Switch refresh', status='accepted',
+        )
+        # PO — cost $1000
+        PurchaseOrder.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            po_number='PO-HM-1', vendor_name='Cisco',
+            title='Switches', status='received', total=_D('1000'),
+            source_quote=cls.q_match,
+        )
+        # Invoice — revenue $1500 → margin $500
+        Invoice.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            title='Switch refresh', invoice_date=_date.today(),
+            total=_D('1500'), status='paid', amount_paid=_D('1500'),
+            source_quote=cls.q_match,
+        )
+
+        # Quote with PO but NO invoice — should be filtered out
+        cls.q_po_only = Quote.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            title='Cables only', status='draft',
+        )
+        PurchaseOrder.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            po_number='PO-HM-2', vendor_name='Cables-R-Us',
+            title='Cables', status='sent', total=_D('200'),
+            source_quote=cls.q_po_only,
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_matched_quote_appears_with_correct_margin(self):
+        from django.test import Client
+        from decimal import Decimal as _D
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/hardware-margin/')
+        self.assertEqual(r.status_code, 200)
+        rows = r.context['rows']
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row['quote_id'], self.q_match.pk)
+        self.assertEqual(row['cost'], _D('1000'))
+        self.assertEqual(row['revenue'], _D('1500'))
+        self.assertEqual(row['margin'], _D('500'))
+        self.assertEqual(row['client'], 'HwMargClient')
+        self.assertEqual(row['vendor'], 'Cisco')
+
+    def test_unmatched_quote_excluded(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/hardware-margin/')
+        body = r.content.decode('utf-8')
+        # The PO-only quote should NOT show
+        self.assertNotIn('Cables only', body)
+
+    def test_blended_margin_pct(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/hardware-margin/')
+        # 500 / 1500 = 33.3%
+        self.assertEqual(r.context['totals']['margin_pct'], 33.3)
+
+    def test_csv_export_has_total_row(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/hardware-margin/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('Switch refresh', body)
+        self.assertIn('TOTAL', body)
+
+    def test_non_staff_blocked_with_404(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.client_org)
+        r = c.get('/reports/hardware-margin/')
+        self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class TicketAgingReportTests(TestCase):
     """Phase 19 v1 (v3.17.257) — ticket aging analytics."""
 

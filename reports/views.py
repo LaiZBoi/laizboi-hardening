@@ -3385,3 +3385,122 @@ def procurement_forecasting(request):
         'overall_forecast': overall_forecast,
         'total_vendors': len(rows),
     })
+
+
+@login_required
+def hardware_margin_report(request):
+    """
+    Phase 13 v9 (v3.17.271): hardware-resale margin analytics. For each
+    quote that produced both a PurchaseOrder (cost) and an Invoice
+    (revenue), compute the resale margin = invoice.total - po.total.
+
+    Match key: shared `source_quote_id` on both rows. Quotes without
+    both sides are skipped (the report only summarizes what the books
+    can prove). Window defaults to last 365 days, configurable via
+    `?days=`.
+
+    Tenant ACL: staff/superuser only — same gate as procurement_summary.
+    """
+    from psa.models import PurchaseOrder, Invoice
+    from datetime import date as _date, timedelta as _td
+    from decimal import Decimal as _D
+    from collections import defaultdict
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('Procurement reports are staff-only')
+
+    try:
+        days = max(7, int(request.GET.get('days') or 365))
+    except (TypeError, ValueError):
+        days = 365
+    cutoff = _date.today() - _td(days=days)
+
+    pos = (PurchaseOrder.objects
+           .filter(created_at__date__gte=cutoff,
+                   source_quote__isnull=False)
+           .exclude(status__in=['draft', 'cancelled', 'void']))
+    invs = (Invoice.objects
+            .filter(invoice_date__gte=cutoff,
+                    source_quote__isnull=False)
+            .exclude(status='void'))
+
+    # Group totals by source_quote
+    po_total_by_quote = defaultdict(lambda: _D('0'))
+    po_count_by_quote = defaultdict(int)
+    po_vendor_by_quote = {}
+    for po in pos.values('source_quote_id', 'vendor_name', 'total'):
+        po_total_by_quote[po['source_quote_id']] += _D(str(po['total'] or 0))
+        po_count_by_quote[po['source_quote_id']] += 1
+        if po['source_quote_id'] not in po_vendor_by_quote and po['vendor_name']:
+            po_vendor_by_quote[po['source_quote_id']] = po['vendor_name']
+
+    inv_total_by_quote = defaultdict(lambda: _D('0'))
+    inv_client_by_quote = {}
+    for inv in invs.values('source_quote_id', 'client_org__name', 'total'):
+        inv_total_by_quote[inv['source_quote_id']] += _D(str(inv['total'] or 0))
+        if inv['source_quote_id'] not in inv_client_by_quote and inv['client_org__name']:
+            inv_client_by_quote[inv['source_quote_id']] = inv['client_org__name']
+
+    # Match: keep only quotes that appear on BOTH sides
+    matched = set(po_total_by_quote.keys()) & set(inv_total_by_quote.keys())
+
+    rows = []
+    from psa.models import Quote
+    quote_meta = {q.pk: q for q in
+                   Quote.objects.filter(pk__in=matched).only(
+                       'pk', 'quote_number', 'title')}
+    for q_id in matched:
+        cost = po_total_by_quote[q_id]
+        revenue = inv_total_by_quote[q_id]
+        margin = revenue - cost
+        margin_pct = (float(margin) / float(revenue) * 100) if revenue else 0
+        q = quote_meta.get(q_id)
+        rows.append({
+            'quote_id': q_id,
+            'quote_number': q.quote_number if q else f'#{q_id}',
+            'title': q.title if q else '',
+            'client': inv_client_by_quote.get(q_id, ''),
+            'vendor': po_vendor_by_quote.get(q_id, ''),
+            'cost': cost,
+            'revenue': revenue,
+            'margin': margin,
+            'margin_pct': round(margin_pct, 1),
+            'po_count': po_count_by_quote[q_id],
+        })
+    rows.sort(key=lambda r: -float(r['margin']))
+
+    totals = {
+        'cost': sum(r['cost'] for r in rows),
+        'revenue': sum(r['revenue'] for r in rows),
+        'margin': sum(r['margin'] for r in rows),
+        'count': len(rows),
+    }
+    blended_pct = (float(totals['margin']) / float(totals['revenue']) * 100
+                    if totals['revenue'] else 0)
+    totals['margin_pct'] = round(blended_pct, 1)
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="hardware-margin.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Quote', 'Title', 'Client', 'Vendor',
+                    'Cost', 'Revenue', 'Margin', 'Margin %', 'POs'])
+        for r in rows:
+            w.writerow([r['quote_number'], r['title'], r['client'], r['vendor'],
+                        str(r['cost']), str(r['revenue']), str(r['margin']),
+                        r['margin_pct'], r['po_count']])
+        w.writerow(['TOTAL', '', '', '',
+                    str(totals['cost']), str(totals['revenue']),
+                    str(totals['margin']), totals['margin_pct'], ''])
+        return resp
+
+    return render(request, 'reports/hardware_margin.html', {
+        'rows': rows,
+        'totals': totals,
+        'days': days,
+    })
