@@ -3838,3 +3838,128 @@ class SLAForecastReportTests(TestCase):
         body = r.content.decode('utf-8')
         self.assertIn('breached', body)
         self.assertIn('% elapsed', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class QuoteConversionReportTests(TestCase):
+    """Phase 19 v3 (v3.17.321) — quote conversion tracking."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import Quote, Invoice
+        from datetime import timedelta as _td
+        from decimal import Decimal as _D
+        from django.utils import timezone as _tz
+
+        cls.org = Organization.objects.create(name='QuoCo', slug='quo-co')
+        cls.staff = User.objects.create_user('quo-staff', 'qs@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('quo-mem', 'qm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+        cls.rep1 = User.objects.create_user('rep1', 'r1@x.com', 'pw')
+        cls.rep2 = User.objects.create_user('rep2', 'r2@x.com', 'pw')
+
+        # 4 quotes from rep1: 2 sent, 1 accepted (no invoice), 1 accepted+invoiced
+        for i in range(2):
+            Quote.objects.create(organization=cls.org, client_org=cls.org,
+                                 title=f'r1-sent-{i}', status='sent',
+                                 created_by=cls.rep1, total=_D('1000'))
+        Quote.objects.create(organization=cls.org, client_org=cls.org,
+                             title='r1-accepted-noinv', status='accepted',
+                             created_by=cls.rep1, total=_D('2000'))
+        cls.q_conv = Quote.objects.create(
+            organization=cls.org, client_org=cls.org,
+            title='r1-converted', status='accepted',
+            created_by=cls.rep1, total=_D('3000'))
+        # Invoice tied to that quote
+        Invoice.objects.create(
+            organization=cls.org, client_org=cls.org,
+            invoice_number='INV-Q-1', title='Test',
+            invoice_date=_tz.now().date(),
+            due_date=_tz.now().date(),
+            total=_D('3000'), amount_paid=_D('0'),
+            status='sent', subtotal=_D('3000'), tax_amount=0,
+            currency='USD', source_quote=cls.q_conv,
+        )
+        # 2 quotes from rep2: 1 sent, 1 rejected
+        Quote.objects.create(organization=cls.org, client_org=cls.org,
+                             title='r2-sent', status='sent',
+                             created_by=cls.rep2, total=_D('500'))
+        Quote.objects.create(organization=cls.org, client_org=cls.org,
+                             title='r2-rejected', status='rejected',
+                             created_by=cls.rep2, total=_D('800'))
+
+        # Old quote outside window — should NOT count for default 90-day window
+        old = Quote.objects.create(organization=cls.org, client_org=cls.org,
+                                    title='ancient', status='accepted',
+                                    created_by=cls.rep1, total=_D('99999'))
+        Quote.objects.filter(pk=old.pk).update(
+            created_at=_tz.now() - _td(days=400))
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_summary_aggregates(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/quote-conversion/')
+        self.assertEqual(r.status_code, 200)
+        s = r.context['summary']
+        # 6 in-window quotes (excluding the ancient)
+        self.assertEqual(s['total_quotes'], 6)
+        # 2 accepted (both rep1)
+        self.assertEqual(s['total_accepted'], 2)
+        # 1 actually converted to invoice
+        self.assertEqual(s['total_converted'], 1)
+        self.assertEqual(s['total_invoiced_amount'], 3000)
+
+    def test_per_creator_rows(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/quote-conversion/')
+        rows = {row['creator']: row for row in r.context['rows']}
+        self.assertEqual(rows['rep1']['quotes'], 4)
+        self.assertEqual(rows['rep1']['accepted'], 2)
+        self.assertEqual(rows['rep1']['converted'], 1)
+        self.assertEqual(rows['rep2']['quotes'], 2)
+        self.assertEqual(rows['rep2']['accepted'], 0)
+
+    def test_window_via_days_param(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        # 365 days picks up the 400-day-old too? No — 400 > 365.
+        r = c.get('/reports/quote-conversion/?days=200')
+        self.assertEqual(r.context['summary']['total_quotes'], 6)
+        # max=365 cap; 1 day window keeps all 6 (created today)
+        r = c.get('/reports/quote-conversion/?days=1')
+        self.assertEqual(r.context['summary']['total_quotes'], 6)
+
+    def test_non_staff_blocked(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/quote-conversion/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/quote-conversion/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('rep1', body)
+        self.assertIn('rep2', body)
+        self.assertIn('TOTAL', body)

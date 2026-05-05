@@ -138,6 +138,9 @@ urlpatterns = [
     # v3.17.320 — Phase 19 v2 SLA forecasting (predict breach risk).
     path('sla-forecast/',
          views.sla_forecast_report, name='sla_forecast_report'),
+    # v3.17.321 — Phase 19 v3 quote conversion tracking.
+    path('quote-conversion/',
+         views.quote_conversion_report, name='quote_conversion_report'),
     # v3.17.258 — Phase 13 v3 procurement summary report.
     path('procurement-summary/',
          views.procurement_summary, name='procurement_summary'),

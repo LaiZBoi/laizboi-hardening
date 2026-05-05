@@ -413,7 +413,7 @@ Planned capabilities:
 - SLA forecasting (predict breach risk before it happens) *(shipped v3.17.320 — `/reports/sla-forecast/` ranks open tickets by % SLA window elapsed; ok/at_risk/critical/breached bands; CSV export)*
 - Ticket aging analytics *(shipped v3.17.257 — `/reports/ticket-aging/` 5-bucket breakdown + per-priority matrix + 7+ day aged-table + CSV export)*
 - Contract profitability *(shipped — Phase 3.2)*
-- Quote conversion tracking
+- Quote conversion tracking *(shipped v3.17.321 — `/reports/quote-conversion/` per-creator quote → accepted → invoiced funnel; configurable rolling window via `?days=`; CSV export)*
 - Customer health scoring *(shipped — Phase 3.6B)*
 - Executive dashboards *(shipped — Phase 3.6A scorecard)*
 - KPI dashboards

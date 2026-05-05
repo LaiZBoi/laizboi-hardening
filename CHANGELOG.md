@@ -139,6 +139,24 @@ First slice of **Phase 28 — Browser Extension + Offline Vault Access** server-
 - Phase 28 sub-bullet "Master-password unlock" left planned — that ships in v3.17.329.
 - Documented future endpoints in v3.17.331 contract spec.
 
+## [3.17.321] - 2026-05-05
+
+### Added — Phase 19 v3 — Quote conversion tracking
+Second of seven Phase 19 closeout releases. Adds `/reports/quote-conversion/` — a sales-pipeline report that turns the existing `Quote` + `Invoice.source_quote` link into per-creator (rep) quote-to-invoice conversion analytics.
+
+- **`reports.views.quote_conversion_report`** — counts quotes in a rolling window (default 90d, configurable via `?days=N`, capped 1–365), buckets each by status (`accepted`) and by whether an `Invoice.source_quote=` link exists, and emits per-`created_by` rows + an MSP-wide summary.
+- **Metrics surfaced**:
+  - `accept_pct` — quotes whose status reached `accepted` divided by quotes created in the window.
+  - `conversion_pct` — quotes that were ALSO subsequently invoiced (an accepted quote without an invoice still counts as accepted-not-converted, which is the actionable distinction for sales follow-up).
+  - Quoted vs. invoiced dollars per creator + a blended total.
+- **Template** `templates/reports/quote_conversion.html` — four summary cards, per-creator table, window-selector form.
+- **Tile** added to the Reports home grid.
+- **Tenant ACL**: staff/superuser only — sales metric is MSP-internal (matches `mrr_forecast_report` pattern).
+- **CSV export** at `?format=csv&days=N` — full per-creator dump + TOTAL row.
+
+### Tests
+`QuoteConversionReportTests` (5 tests): summary aggregates, per-creator row math, window-via-`?days=` param + outside-window exclusion, non-staff 404 gate, CSV export.
+
 ## [3.17.320] - 2026-05-05
 
 ### Added — Phase 19 v2 — SLA forecasting / breach risk

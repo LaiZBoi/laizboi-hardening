@@ -4104,3 +4104,136 @@ def sla_forecast_report(request):
         'rows': rows[:500],
         'summary': summary,
     })
+
+
+@login_required
+def quote_conversion_report(request):
+    """
+    Phase 19 v3 (v3.17.321): quote conversion tracking. For sales pipeline
+    visibility — within a configurable window (default 90 days), show:
+        * Total quotes created
+        * Quotes accepted (status=accepted)
+        * Quotes converted to invoice (linked via Invoice.source_quote)
+        * Acceptance rate, conversion rate
+        * Aggregated quoted-vs-invoiced dollars
+        * Per-creator (sales rep / source_user_role proxy) breakdown via
+          `created_by` user
+
+    Tenant ACL: staff/superuser only — sales metric is MSP-internal.
+    Window via `?days=N` (default 90, max 365). CSV export via `?format=csv`.
+    """
+    from psa.models import Quote, Invoice
+    from datetime import timedelta as _td
+    from decimal import Decimal as _D
+    from django.utils import timezone as _tz
+    from django.db.models import Sum
+    from collections import defaultdict
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('Quote conversion is staff-only')
+
+    try:
+        days = int(request.GET.get('days') or 90)
+    except (TypeError, ValueError):
+        days = 90
+    days = max(1, min(days, 365))
+    cutoff = _tz.now() - _td(days=days)
+
+    qs = (Quote.objects.filter(created_at__gte=cutoff)
+          .select_related('client_org', 'created_by'))
+
+    # Quotes converted = those with at least one Invoice that points back
+    # via Invoice.source_quote.
+    converted_quote_ids = set(Invoice.objects
+                              .filter(source_quote__created_at__gte=cutoff,
+                                      source_quote__isnull=False)
+                              .values_list('source_quote_id', flat=True))
+    invoiced_total_by_quote = defaultdict(_D)
+    for inv in (Invoice.objects.filter(source_quote_id__in=converted_quote_ids)
+                .values('source_quote_id', 'total')):
+        invoiced_total_by_quote[inv['source_quote_id']] += _D(str(inv['total'] or 0))
+
+    # Per-creator breakdown.
+    by_creator = defaultdict(lambda: {
+        'creator': '',
+        'quotes': 0,
+        'accepted': 0,
+        'converted': 0,
+        'quoted_total': _D('0'),
+        'invoiced_total': _D('0'),
+    })
+
+    total_quotes = 0
+    total_accepted = 0
+    total_converted = 0
+    total_quoted_amount = _D('0')
+    total_invoiced_amount = _D('0')
+
+    for q in qs:
+        creator_key = q.created_by.username if q.created_by else '—'
+        bucket = by_creator[creator_key]
+        bucket['creator'] = creator_key
+        bucket['quotes'] += 1
+        total_quotes += 1
+        bucket['quoted_total'] += _D(str(q.total or 0))
+        total_quoted_amount += _D(str(q.total or 0))
+        if q.status == 'accepted':
+            bucket['accepted'] += 1
+            total_accepted += 1
+        if q.id in converted_quote_ids:
+            bucket['converted'] += 1
+            total_converted += 1
+            invoiced = invoiced_total_by_quote.get(q.id, _D('0'))
+            bucket['invoiced_total'] += invoiced
+            total_invoiced_amount += invoiced
+
+    rows = []
+    for c, b in by_creator.items():
+        accept_pct = (100.0 * b['accepted'] / b['quotes']) if b['quotes'] else 0
+        conv_pct = (100.0 * b['converted'] / b['quotes']) if b['quotes'] else 0
+        rows.append({
+            **b,
+            'accept_pct': round(accept_pct, 1),
+            'conversion_pct': round(conv_pct, 1),
+        })
+    rows.sort(key=lambda r: -r['quotes'])
+
+    summary = {
+        'days': days,
+        'total_quotes': total_quotes,
+        'total_accepted': total_accepted,
+        'total_converted': total_converted,
+        'total_quoted_amount': total_quoted_amount,
+        'total_invoiced_amount': total_invoiced_amount,
+        'accept_pct': round(
+            100.0 * total_accepted / total_quotes, 1) if total_quotes else 0,
+        'conversion_pct': round(
+            100.0 * total_converted / total_quotes, 1) if total_quotes else 0,
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="quote-conversion.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Creator', 'Quotes', 'Accepted', 'Converted',
+                    'Accept %', 'Conv %', 'Quoted total', 'Invoiced total'])
+        for r in rows:
+            w.writerow([r['creator'], r['quotes'], r['accepted'], r['converted'],
+                        r['accept_pct'], r['conversion_pct'],
+                        str(r['quoted_total']), str(r['invoiced_total'])])
+        w.writerow(['TOTAL', summary['total_quotes'], summary['total_accepted'],
+                    summary['total_converted'], summary['accept_pct'],
+                    summary['conversion_pct'],
+                    str(summary['total_quoted_amount']),
+                    str(summary['total_invoiced_amount'])])
+        return resp
+
+    return render(request, 'reports/quote_conversion.html', {
+        'rows': rows,
+        'summary': summary,
+    })
