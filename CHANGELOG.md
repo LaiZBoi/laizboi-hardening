@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.279] - 2026-05-05
+
+### Added — Phase 27 v7 Multi-Entity / Multi-Book Invoice Routing
+Closes the "Multi-entity / multi-book support for MSPs operating multiple legal entities" sub-bullet of Phase 27. An MSP with multiple QBO/Xero books (US + UK, parent + subsidiary, etc.) can now pin each invoice to the right ledger.
+
+- **New `Invoice.target_connection`** FK to `integrations.AccountingConnection` (nullable; migration `psa.0044`).
+- **`invoice_push_to_accounting` view** uses the pinned connection when set; falls back to the first sync-enabled connection on the org (legacy behavior preserved).
+- **Pinned-but-inactive guard** — if the target connection is disabled or sync-disabled, push surfaces an error rather than silently falling back, so the routing intent isn't lost.
+- **Connection model already supports multiple per-org** — `unique_together [['organization', 'name']]` was already in place, so no schema change there.
+
+### Tests
+- 3 tests in `psa.tests.test_phase3_5_features.MultiEntityInvoiceRoutingTests` covering: pinned connection chosen on push, unpinned fallback to first sync-enabled, and the inactive-pinned-connection refusal.
+
+### Roadmap
+Phase 27 sub-bullet "Multi-entity / multi-book support" annotated `*(shipped v3.17.279)*`.
+
 ## [3.17.278] - 2026-05-05
 
 ### Added — Phase 27 v6 Per-Line GL Account Mapping

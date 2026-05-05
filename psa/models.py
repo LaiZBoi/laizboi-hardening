@@ -2233,6 +2233,18 @@ class Invoice(models.Model):
                   'local calculation) to detect drift.',
     )
 
+    # Phase 27 v7 (v3.17.279): multi-entity / multi-book routing. When
+    # set, the invoice push targets this specific AccountingConnection.
+    # When None, push falls back to the first sync-enabled connection
+    # on the organization (legacy behavior).
+    target_connection = models.ForeignKey(
+        'integrations.AccountingConnection',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='routed_invoices',
+        help_text='Pin the invoice to a specific accounting connection '
+                  '— required for orgs with multiple QBO/Xero books.',
+    )
+
     notes = models.TextField(blank=True)
     # Phase 36 v2 (v3.17.228): pre-invoice approval gate. When the invoice
     # exceeds a configured total threshold OR the source contract is over

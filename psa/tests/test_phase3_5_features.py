@@ -2273,3 +2273,112 @@ class OperationalSignoffTests(TestCase):
         t.save()  # no sign-off, but status doesn't require one
         t.refresh_from_db()
         self.assertEqual(t.status_id, plain_terminal.pk)
+
+
+class MultiEntityInvoiceRoutingTests(TestCase):
+    """Phase 27 v7 (v3.17.279): Invoice.target_connection routes pushes
+    to a specific AccountingConnection when set."""
+
+    def setUp(self):
+        from integrations.models import AccountingConnection
+        from psa.models import Invoice
+        from datetime import date
+        from decimal import Decimal as _D
+        _setup_seed()
+        self.org = Organization.objects.create(name='MEC', slug='mec-co')
+        self.client_org = Organization.objects.create(name='MECC', slug='mec-cc')
+        self.user = User.objects.create_user('me', 'me@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        ss = SystemSetting.get_settings()
+        ss.psa_enabled = True
+        ss.save()
+        Membership.objects.create(user=self.user, organization=self.org,
+                                   role=Role.OWNER, is_active=True)
+
+        # Two AccountingConnections — one entity per book.
+        self.conn_us = AccountingConnection.objects.create(
+            organization=self.org, provider_type='quickbooks_online',
+            name='US-Books', is_active=True, sync_enabled=True,
+        )
+        self.conn_uk = AccountingConnection.objects.create(
+            organization=self.org, provider_type='xero',
+            name='UK-Books', is_active=True, sync_enabled=True,
+        )
+        self.invoice = Invoice.objects.create(
+            organization=self.org, client_org=self.client_org,
+            title='Multi-entity test', invoice_date=date.today(),
+            total=_D('500'),
+        )
+
+    def test_pinned_connection_used_when_set(self):
+        from unittest import mock
+        self.invoice.target_connection = self.conn_uk
+        self.invoice.save(update_fields=['target_connection'])
+
+        c = Client()
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+        captured_conn = {}
+
+        def fake_get_provider(conn):
+            captured_conn['name'] = conn.name
+            mp = mock.MagicMock()
+            mp.push_invoice.return_value = {'success': True, 'invoice_id': 'X-1'}
+            return mp
+
+        with override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False), \
+             mock.patch('integrations.providers.accounting.get_accounting_provider',
+                         side_effect=fake_get_provider):
+            r = c.post(f'/psa/invoices/{self.invoice.pk}/push/')
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(captured_conn['name'], 'UK-Books')
+
+    def test_unpinned_falls_back_to_first_sync_enabled(self):
+        from unittest import mock
+        # invoice.target_connection is None
+        c = Client()
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+        captured_conn = {}
+
+        def fake_get_provider(conn):
+            captured_conn['name'] = conn.name
+            mp = mock.MagicMock()
+            mp.push_invoice.return_value = {'success': True, 'invoice_id': 'X-1'}
+            return mp
+
+        with override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False), \
+             mock.patch('integrations.providers.accounting.get_accounting_provider',
+                         side_effect=fake_get_provider):
+            r = c.post(f'/psa/invoices/{self.invoice.pk}/push/')
+        self.assertEqual(r.status_code, 302)
+        # Should pick the first sync-enabled connection on the org.
+        self.assertIn(captured_conn['name'], ('US-Books', 'UK-Books'))
+
+    def test_pinned_inactive_connection_blocks_push(self):
+        # Disable the pinned connection and confirm push refuses
+        self.invoice.target_connection = self.conn_uk
+        self.invoice.save(update_fields=['target_connection'])
+        self.conn_uk.is_active = False
+        self.conn_uk.save()
+
+        c = Client()
+        c.force_login(self.user)
+        s = c.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+        with override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False):
+            r = c.post(f'/psa/invoices/{self.invoice.pk}/push/')
+        self.assertEqual(r.status_code, 302)
+        # Invoice should NOT have been pushed (no accounting_external_id)
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.accounting_external_id, '')

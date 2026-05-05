@@ -581,7 +581,7 @@ Planned capabilities:
 - Accounts receivable aging tied directly back to QBO/Xero AR *(shipped v3.17.269 — `/reports/ar-aging/` per-client 0-30 / 31-60 / 61-90 / 90+ day buckets for pushed-but-unpaid invoices; CSV export; tenant-scoped)*
 - Bank-account reconciliation hooks (mark which payments matched which bank-deposit batches)
 - Refund / credit-memo workflows *(shipped v3.17.264 — `Invoice.is_credit_memo` + `credits_invoice` FK + `create_credit_memo()` method that copies/negates lines or creates a lump-sum credit; sequential `CN-YYYY-NNNNN` numbering; UI modal on invoice detail; POST-only view at `/psa/invoices/<pk>/credit-memo/`)*
-- Multi-entity / multi-book support for MSPs operating multiple legal entities
+- Multi-entity / multi-book support for MSPs operating multiple legal entities *(shipped v3.17.279 — `Invoice.target_connection` FK pins the invoice to a specific AccountingConnection; push picks pinned else falls back to first sync-enabled; inactive-pinned-connection refuses push)*
 - Audit trail of every accounting-system interaction *(shipped v3.17.260 — `AccountingAuditLog` writes one row per `push_invoice` / `record_payment` call across QBO + Xero providers; viewer at `/integrations/accounting/<pk>/audit-log/`. Stores truncated req/resp summaries — full payloads intentionally not stored to keep the log free of secrets/PII)*
 
 Dependencies: existing AccountingConnection pattern. Builds on Phase 15.

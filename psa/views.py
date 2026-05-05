@@ -3791,10 +3791,22 @@ def invoice_push_to_accounting(request, pk):
         )
         return redirect('psa:invoice_detail', pk=invoice.pk)
 
-    conn = AccountingConnection.objects.filter(
-        organization=invoice.organization,
-        is_active=True, sync_enabled=True,
-    ).first()
+    # Phase 27 v7 (v3.17.279): when the invoice is pinned to a specific
+    # connection (multi-entity / multi-book), use that. Otherwise fall
+    # back to the first sync-enabled connection on the org.
+    conn = invoice.target_connection
+    if conn is not None and not (conn.is_active and conn.sync_enabled):
+        messages.error(
+            request,
+            f'Pinned connection "{conn.name}" is inactive or sync-disabled. '
+            f'Edit it in Integrations or unpin the invoice.',
+        )
+        return redirect('psa:invoice_detail', pk=invoice.pk)
+    if conn is None:
+        conn = AccountingConnection.objects.filter(
+            organization=invoice.organization,
+            is_active=True, sync_enabled=True,
+        ).first()
     if conn is None:
         messages.error(request, 'No active accounting connection with sync enabled. Configure one in Integrations.')
         return redirect('psa:invoice_detail', pk=invoice.pk)
