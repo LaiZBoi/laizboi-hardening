@@ -4502,3 +4502,109 @@ class TrendsReportTests(TestCase):
         self.assertIn('# Trends', body)
         self.assertIn('# Capacity', body)
         self.assertIn('tech1', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class PDFExportTests(TestCase):
+    """Phase 19 v8 (v3.17.326) — PDF export on the four flagship reports."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from psa.models import (
+            Contract, Invoice, PurchaseOrder, Queue, Ticket, TicketPriority,
+            TicketStatus, TicketType,
+        )
+        from datetime import date as _date, timedelta as _td
+        from decimal import Decimal as _D
+        from django.utils import timezone as _tz
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+        cls.org = Organization.objects.create(name='PdfCo', slug='pdf-co')
+        cls.staff = User.objects.create_user('pdf-staff', 'ps@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('pdf-mem', 'pm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        # 1 PO for procurement summary
+        PurchaseOrder.objects.create(
+            organization=cls.org, po_number='PDF-PO-1',
+            vendor_name='PdfVendor', title='PdfTest',
+            status='sent', total=_D('1500'),
+        )
+        # 1 unpaid invoice for AR aging
+        Invoice.objects.create(
+            organization=cls.org, client_org=cls.org,
+            invoice_number='PDF-INV-1', title='PdfInv',
+            invoice_date=_date.today() - _td(days=10),
+            due_date=_date.today() - _td(days=5),
+            total=_D('800'), amount_paid=_D('0'),
+            status='sent', subtotal=_D('800'), tax_amount=0, currency='USD',
+            pushed_to_accounting_at=_tz.now(),
+        )
+        # 1 active monthly contract for MRR forecast
+        Contract.objects.create(
+            organization=cls.org, client_org=cls.org,
+            name='PdfContract',
+            start_date=_date.today() - _td(days=30),
+            status='active', billing_frequency='monthly',
+            recurring_amount=_D('200'),
+        )
+        # 1 open ticket for KPI dashboard
+        queue = Queue.objects.first()
+        priority = TicketPriority.objects.first()
+        ttype = TicketType.objects.first()
+        new = TicketStatus.objects.filter(slug='new').first()
+        Ticket.objects.create(
+            organization=cls.org, subject='pdf-open',
+            queue=queue, priority=priority, ticket_type=ttype, status=new,
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def _assert_pdf(self, resp, name):
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn(name, resp['Content-Disposition'])
+        # First 4 bytes of every valid PDF
+        self.assertTrue(resp.content.startswith(b'%PDF'))
+
+    def test_procurement_summary_pdf(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/procurement-summary/?format=pdf')
+        self._assert_pdf(r, 'procurement-summary.pdf')
+
+    def test_ar_aging_pdf(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/ar-aging/?format=pdf')
+        self._assert_pdf(r, 'ar-aging.pdf')
+
+    def test_mrr_forecast_pdf(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/mrr-forecast/?format=pdf')
+        self._assert_pdf(r, 'mrr-forecast.pdf')
+
+    def test_kpi_dashboard_pdf(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/kpi/?format=pdf')
+        self._assert_pdf(r, 'kpi-dashboard.pdf')

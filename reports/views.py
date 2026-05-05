@@ -2922,7 +2922,8 @@ def ar_aging_report(request):
         'client_count': len(rows),
     }
 
-    if (request.GET.get('format') or '').lower() == 'csv':
+    fmt = (request.GET.get('format') or '').lower()
+    if fmt == 'csv':
         import csv as _csv
         from django.http import HttpResponse as _HR
         resp = _HR(content_type='text/csv')
@@ -2939,6 +2940,40 @@ def ar_aging_report(request):
                     totals['b_61_90'], totals['b_90_plus'],
                     totals['total_balance'], ''])
         return resp
+    if fmt == 'pdf':
+        # v3.17.326 — Phase 19 v8 PDF export.
+        from .pdf_export import render_pdf
+        kpis = [
+            {'label': 'CLIENTS', 'value': str(totals['client_count'])},
+            {'label': 'INVOICES', 'value': str(totals['invoice_count'])},
+            {'label': 'TOTAL OUTSTANDING', 'value': f"${float(totals['total_balance']):,.2f}"},
+            {'label': '90+ DAYS', 'value': f"${float(totals['b_90_plus']):,.2f}"},
+        ]
+        body_rows = [[r['name'], r['provider'], str(r['invoice_count']),
+                      f"${float(r['b_0_30']):,.2f}",
+                      f"${float(r['b_31_60']):,.2f}",
+                      f"${float(r['b_61_90']):,.2f}",
+                      f"${float(r['b_90_plus']):,.2f}",
+                      f"${float(r['total_balance']):,.2f}",
+                      str(r['oldest_days'])]
+                     for r in rows]
+        body_rows.append(['TOTAL', '', str(totals['invoice_count']),
+                          f"${float(totals['b_0_30']):,.2f}",
+                          f"${float(totals['b_31_60']):,.2f}",
+                          f"${float(totals['b_61_90']):,.2f}",
+                          f"${float(totals['b_90_plus']):,.2f}",
+                          f"${float(totals['total_balance']):,.2f}", ''])
+        tables = [{'heading': 'AR aging by client',
+                   'header_row': ['Client', 'Provider', 'Inv',
+                                  '0-30', '31-60', '61-90', '90+',
+                                  'Total', 'Oldest d'],
+                   'body_rows': body_rows,
+                   'align_right_cols': [2, 3, 4, 5, 6, 7, 8]}]
+        return render_pdf(
+            title='Accounts Receivable Aging',
+            subtitle='Pushed-but-unpaid invoices, bucketed by age from due date.',
+            kpis=kpis, tables=tables,
+            filename='ar-aging.pdf')
 
     return render(request, 'reports/ar_aging.html', {
         'rows': rows,
@@ -3332,7 +3367,8 @@ def mrr_forecast_report(request):
         forecast.append({'month': target.strftime('%Y-%m'),
                           'projected_mrr': active_total})
 
-    if (request.GET.get('format') or '').lower() == 'csv':
+    fmt = (request.GET.get('format') or '').lower()
+    if fmt == 'csv':
         import csv as _csv
         from django.http import HttpResponse as _HR
         resp = _HR(content_type='text/csv')
@@ -3342,6 +3378,36 @@ def mrr_forecast_report(request):
         for f in forecast:
             w.writerow([f['month'], f['projected_mrr']])
         return resp
+    if fmt == 'pdf':
+        # v3.17.326 — Phase 19 v8 PDF export.
+        from .pdf_export import render_pdf
+        kpis = [
+            {'label': 'CURRENT MRR', 'value': f"${float(total_mrr):,.0f}"},
+            {'label': 'CURRENT ARR', 'value': f"${float(arr):,.0f}"},
+            {'label': 'CONTRACTS', 'value': str(len(monthly_by_contract))},
+        ]
+        contract_rows = [[r['client'], r['frequency'],
+                           f"${float(r['mrr']):,.2f}",
+                           r['next_billing_date'].isoformat()
+                           if r['next_billing_date'] else '—']
+                          for r in monthly_by_contract]
+        forecast_rows = [[f['month'], f"${float(f['projected_mrr']):,.2f}"]
+                          for f in forecast]
+        tables = [
+            {'heading': 'Active recurring contracts',
+             'header_row': ['Client', 'Frequency', 'MRR equiv', 'Next billing'],
+             'body_rows': contract_rows,
+             'align_right_cols': [2]},
+            {'heading': '12-month MRR projection',
+             'header_row': ['Month', 'Projected MRR'],
+             'body_rows': forecast_rows,
+             'align_right_cols': [1]},
+        ]
+        return render_pdf(
+            title='MRR Forecast',
+            subtitle='Active contracts normalized to monthly recurring revenue.',
+            kpis=kpis, tables=tables,
+            filename='mrr-forecast.pdf')
 
     return render(request, 'reports/mrr_forecast.html', {
         'rows': monthly_by_contract,
@@ -3576,7 +3642,8 @@ def procurement_summary(request):
         'window_days': 365,
     }
 
-    if (request.GET.get('format') or '').lower() == 'csv':
+    fmt = (request.GET.get('format') or '').lower()
+    if fmt == 'csv':
         import csv as _csv
         from django.http import HttpResponse as _HR
         resp = _HR(content_type='text/csv')
@@ -3587,6 +3654,32 @@ def procurement_summary(request):
             w.writerow([v['vendor_name'], v['po_count'],
                         float(v['total_spend'] or 0)])
         return resp
+    if fmt == 'pdf':
+        # v3.17.326 — Phase 19 v8 PDF export.
+        from .pdf_export import render_pdf
+        kpis = [
+            {'label': 'PO COUNT', 'value': str(summary['po_count'])},
+            {'label': 'TOTAL SPEND', 'value': f"${summary['total_spend']:,.2f}"},
+            {'label': 'VENDORS', 'value': str(summary['vendor_count'])},
+            {'label': 'WINDOW', 'value': f"{summary['window_days']}d"},
+        ]
+        tables = [
+            {'heading': 'By vendor',
+             'header_row': ['Vendor', 'PO count', 'Total spend'],
+             'body_rows': [[v['vendor_name'], str(v['po_count']),
+                            f"${float(v['total_spend'] or 0):,.2f}"]
+                           for v in by_vendor],
+             'align_right_cols': [1, 2]},
+            {'heading': 'Monthly spend trend',
+             'header_row': ['Month', 'Spend'],
+             'body_rows': [[m, f"${a:,.2f}"] for m, a in monthly_rows],
+             'align_right_cols': [1]},
+        ]
+        return render_pdf(
+            title='Procurement Summary',
+            subtitle='Last 365 days of committed POs (draft/cancelled/void excluded).',
+            kpis=kpis, tables=tables,
+            filename='procurement-summary.pdf')
 
     return render(request, 'reports/procurement_summary.html', {
         'by_vendor': by_vendor,
@@ -4341,7 +4434,8 @@ def kpi_dashboard(request):
         'is_staff_view': is_staff,
     }
 
-    if (request.GET.get('format') or '').lower() == 'csv':
+    fmt = (request.GET.get('format') or '').lower()
+    if fmt == 'csv':
         import csv as _csv
         from django.http import HttpResponse as _HR
         resp = _HR(content_type='text/csv')
@@ -4351,6 +4445,28 @@ def kpi_dashboard(request):
         for k, v in widgets.items():
             w.writerow([k, v])
         return resp
+    if fmt == 'pdf':
+        # v3.17.326 — Phase 19 v8 PDF export.
+        from .pdf_export import render_pdf
+        kpis = [
+            {'label': 'OPEN TICKETS', 'value': str(widgets['open_ticket_count'])},
+            {'label': 'MEAN OPEN AGE',
+             'value': f"{widgets['mean_open_ticket_age_hours']}h"},
+            {'label': 'CLOSED LAST 7d',
+             'value': str(widgets['weekly_closed_count'])},
+            {'label': 'SLA BREACHES (30d)',
+             'value': str(widgets['sla_breach_count_30d'])},
+        ]
+        if widgets['is_staff_view']:
+            kpis += [
+                {'label': 'MRR', 'value': f"${float(widgets['mrr_total']):,.0f}"},
+                {'label': 'ARR', 'value': f"${float(widgets['arr_total']):,.0f}"},
+            ]
+        return render_pdf(
+            title='KPI Dashboard',
+            subtitle='Live operational metrics snapshot.',
+            kpis=kpis, tables=[],
+            filename='kpi-dashboard.pdf')
 
     return render(request, 'reports/kpi_dashboard.html', {
         'widgets': widgets,

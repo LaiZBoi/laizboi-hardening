@@ -139,6 +139,28 @@ First slice of **Phase 28 — Browser Extension + Offline Vault Access** server-
 - Phase 28 sub-bullet "Master-password unlock" left planned — that ships in v3.17.329.
 - Documented future endpoints in v3.17.331 contract spec.
 
+## [3.17.326] - 2026-05-05
+
+### Added — Phase 19 v8 — PDF exports + Phase 19 close
+Final release of the seven-part Phase 19 closeout. Ships PDF rendering on the four most-used analytics reports and advances the **Phase 19 — Advanced Reporting & Analytics** marker to `[shipped — v3.17.326]` (all 13 sub-bullets shipped).
+
+- **`reports.pdf_export.render_pdf`** — generic structured-data PDF helper. Callers pass `title` + `subtitle` + a list of KPI cards + any number of tables; the helper produces a brand-styled letter-size PDF using the same ReportLab palette (`#2c3e50` / `#3498db` / `#7f8c8d`) used by `psa.pdf` so the reports feel like one product.
+- **`?format=pdf` wired on** four flagship reports:
+  - `/reports/procurement-summary/` — KPI cards (PO count, total spend, vendors, window) + per-vendor table + monthly trend.
+  - `/reports/ar-aging/` — KPI cards (clients, invoices, total outstanding, 90+ days) + per-client aging matrix incl. TOTAL row.
+  - `/reports/mrr-forecast/` — KPI cards (current MRR/ARR, contract count) + per-contract recurring detail + 12-month projection.
+  - `/reports/kpi/` — KPI cards (open tickets, mean age, weekly closed, SLA breaches; staff also gets MRR/ARR).
+- **Scheduled email delivery** — confirmed end-to-end via the existing `ScheduledReport` model + `run_scheduled_reports` cron (delivered earlier; still active). Schedules with `output_format='pdf'` now produce the new ReportLab PDFs through the existing `reports.generators` path; CSV / JSON / Excel still work as before.
+- **No new model required** — the scheduling surface area was already complete in the codebase, this release just makes PDF a real artifact instead of a placeholder.
+
+### Roadmap — Phase 19 advanced
+- Phase 19 header changed from `**(continuous)**` to `**(continuous)** [shipped — v3.17.326]` so the JSON feed at `/core/roadmap.json` reports the phase as `status: "shipped"`.
+- Final sub-bullet "Reporting exports" annotated `*(shipped v3.17.326 …)*`.
+- All seven previously-unshipped Phase 19 sub-bullets are now annotated with their ship version (320 SLA, 321 quote conversion, 322 KPI dashboard, 323 operational metrics, 324 workflow performance, 325 trend + capacity, 326 PDF + scheduled email).
+
+### Tests
+`PDFExportTests` (4 tests): `?format=pdf` returns 200 + `application/pdf` + `%PDF` magic bytes on procurement-summary, ar-aging, mrr-forecast, and KPI dashboard. CSV exports still pass as before.
+
 ## [3.17.325] - 2026-05-05
 
 ### Added — Phase 19 v7 — Trend analysis + capacity forecasting (combined)

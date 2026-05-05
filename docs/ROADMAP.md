@@ -404,7 +404,7 @@ Planned capabilities:
 
 **Goal:** Improve management of larger MSP client environments.
 
-## Phase 19 — Advanced Reporting & Analytics **(continuous)**
+## Phase 19 — Advanced Reporting & Analytics **(continuous)** [shipped — v3.17.326]
 
 **Roadmap item:** Operational Analytics & Business Intelligence. Extends Phase 3 (Financial Reporting + BI) — these are the next-tier analytics on top of the canonical query layer.
 
@@ -421,7 +421,7 @@ Planned capabilities:
 - Workflow performance analytics *(shipped v3.17.324 — `/reports/workflow-performance/` per-rule fire-count + last-error roll-up; by-trigger distribution; errored rules floated; staff-only; CSV export)*
 - Trend analysis *(shipped v3.17.325 — `/reports/trends/` 12-month time series of tickets opened/resolved + MRR added; staff-only; CSV export)*
 - Capacity forecasting *(shipped v3.17.325 — same `/reports/trends/` page surfaces per-tech open-tickets vs `BillableTarget` target_hours_per_week; over-target rows highlighted)*
-- Reporting exports (already CSV; add PDF + scheduled email)
+- Reporting exports (already CSV; add PDF + scheduled email) *(shipped v3.17.326 — `?format=pdf` on procurement_summary, ar_aging, mrr_forecast, kpi dashboard via `reports.pdf_export.render_pdf` ReportLab helper; `ScheduledReport` model + `psa_send_scheduled_reports` cron already shipped earlier — confirmed end-to-end)*
 
 **Goal:** Provide MSP operational visibility and business insight.
 
