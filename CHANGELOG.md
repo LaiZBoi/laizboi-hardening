@@ -118,6 +118,20 @@ First slice of **Phase 28 — Browser Extension + Offline Vault Access** server-
 - Phase 28 sub-bullet "Master-password unlock" left planned — that ships in v3.17.329.
 - Documented future endpoints in v3.17.331 contract spec.
 
+## [3.17.320] - 2026-05-05
+
+### Added — Phase 19 v2 — SLA forecasting / breach risk
+First of seven Phase 19 closeout releases. Adds `/reports/sla-forecast/` — predictive SLA breach risk on currently-open tickets BEFORE they breach, so dispatchers can intercept the queue rather than chase post-breach.
+
+- **`reports.views.sla_forecast_report`** — for every open (non-terminal) ticket with `resolution_due_at` set, computes `(now - created_at) / (resolution_due_at - created_at)` as the % of the SLA window already elapsed, and bins into four bands: `ok` (<60%), `at_risk` (60–84%), `critical` (85–99%), `breached` (>=100%). Sort is risk-first (breached → critical → at_risk → ok), then descending pct within each band, so the most urgent tickets land at the top of the table.
+- **Template** `templates/reports/sla_forecast.html` — risk badges, four summary cards, sortable triage table.
+- **Tile** added to the Reports home grid.
+- **Tenant ACL**: superuser/staff sees all open tickets across the MSP; org members see only the tickets in their own organizations.
+- **CSV export** at `?format=csv` — full row dump including ISO timestamps and the computed risk band.
+
+### Tests
+`SLAForecastReportTests` (5 tests): bucket counts across all four bands, breached-first sort order, member tenant scoping, exclusion of terminal + no-SLA tickets, CSV export.
+
 ## [3.17.319] - 2026-05-05
 
 ### Added — Roadmap page status badges + "Hide shipped" toggle

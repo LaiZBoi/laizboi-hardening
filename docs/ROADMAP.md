@@ -410,7 +410,7 @@ Planned capabilities:
 
 Planned capabilities:
 - Technician utilization reporting *(shipped — Phase 2.3 + 3.2)*
-- SLA forecasting (predict breach risk before it happens)
+- SLA forecasting (predict breach risk before it happens) *(shipped v3.17.320 — `/reports/sla-forecast/` ranks open tickets by % SLA window elapsed; ok/at_risk/critical/breached bands; CSV export)*
 - Ticket aging analytics *(shipped v3.17.257 — `/reports/ticket-aging/` 5-bucket breakdown + per-priority matrix + 7+ day aged-table + CSV export)*
 - Contract profitability *(shipped — Phase 3.2)*
 - Quote conversion tracking

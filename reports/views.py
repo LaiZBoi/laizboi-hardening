@@ -3999,3 +3999,108 @@ def hardware_margin_report(request):
         'totals': totals,
         'days': days,
     })
+
+
+@login_required
+def sla_forecast_report(request):
+    """
+    Phase 19 v2 (v3.17.320): SLA forecasting. Predicts breach risk on
+    open tickets BEFORE they breach. For each open ticket with
+    `resolution_due_at` set, compute % of the SLA window already
+    elapsed (now - created_at) / (due - created_at), classify into:
+        ok        — < 60% elapsed
+        at_risk   — 60–84% elapsed
+        critical  — 85–99% elapsed
+        breached  — already past due (>= 100%)
+    Sort by descending risk so dispatchers triage the riskiest tickets
+    first.
+
+    Tenant ACL: superuser/staff sees all; org members see only their orgs.
+    Optional `?format=csv` exports.
+    """
+    from psa.models import Ticket
+    from django.utils import timezone as _tz
+
+    qs = (Ticket.objects
+          .filter(status__is_terminal=False, resolution_due_at__isnull=False)
+          .select_related('organization', 'priority', 'status', 'queue',
+                          'assigned_to'))
+
+    if not (request.user.is_superuser or getattr(request, 'is_staff_user', False)):
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        qs = qs.filter(organization_id__in=ids)
+
+    now = _tz.now()
+    rows = []
+    bucket_counts = {'ok': 0, 'at_risk': 0, 'critical': 0, 'breached': 0}
+    for t in qs:
+        # Use the ticket's start time as the SLA window anchor.
+        anchor = t.created_at
+        due = t.resolution_due_at
+        if not anchor or not due or due <= anchor:
+            continue
+        total_seconds = (due - anchor).total_seconds()
+        elapsed_seconds = (now - anchor).total_seconds()
+        pct = (elapsed_seconds / total_seconds) * 100.0
+        if pct >= 100:
+            risk = 'breached'
+        elif pct >= 85:
+            risk = 'critical'
+        elif pct >= 60:
+            risk = 'at_risk'
+        else:
+            risk = 'ok'
+        bucket_counts[risk] += 1
+        rows.append({
+            'ticket': t,
+            'ticket_id': t.id,
+            'subject': t.subject,
+            'org_name': t.organization.name if t.organization else '',
+            'priority': getattr(t.priority, 'code', '') or '',
+            'status': getattr(t.status, 'name', '') or '',
+            'assigned_to': (t.assigned_to.username
+                            if t.assigned_to else '—'),
+            'created_at': anchor,
+            'resolution_due_at': due,
+            'pct_elapsed': round(pct, 1),
+            'risk': risk,
+        })
+
+    # Sort: breached first (highest pct), then critical, at_risk, ok.
+    risk_rank = {'breached': 0, 'critical': 1, 'at_risk': 2, 'ok': 3}
+    rows.sort(key=lambda r: (risk_rank[r['risk']], -r['pct_elapsed']))
+
+    summary = {
+        'total': len(rows),
+        'breached': bucket_counts['breached'],
+        'critical': bucket_counts['critical'],
+        'at_risk': bucket_counts['at_risk'],
+        'ok': bucket_counts['ok'],
+        'risk_total': (bucket_counts['breached']
+                       + bucket_counts['critical']
+                       + bucket_counts['at_risk']),
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="sla-forecast.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Ticket', 'Subject', 'Client', 'Priority', 'Status',
+                    'Assigned to', 'Created', 'Due', '% elapsed', 'Risk'])
+        for r in rows:
+            w.writerow([r['ticket_id'], r['subject'], r['org_name'],
+                        r['priority'], r['status'], r['assigned_to'],
+                        r['created_at'].isoformat() if r['created_at'] else '',
+                        r['resolution_due_at'].isoformat() if r['resolution_due_at'] else '',
+                        r['pct_elapsed'], r['risk']])
+        return resp
+
+    return render(request, 'reports/sla_forecast.html', {
+        'rows': rows[:500],
+        'summary': summary,
+    })
