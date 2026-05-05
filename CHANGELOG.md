@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.290] - 2026-05-05
+
+### Added — Phase 14 v13 — AI-assisted workflow suggestions (closes Phase 14)
+Closes the last sub-bullet of Phase 14 ("AI-assisted workflow suggestions") and advances the **Phase 14 — Visual Workflow Automation Engine** marker to `[shipped — v3.17.290]` (13 of 13 sub-bullets shipped).
+
+- **New `WorkflowSuggestion` model** (migration `psa.0049`) — `summary`, `rationale`, `suggested_payload` (JSONField with draft rule fields), `status` (`pending` / `accepted` / `dismissed`), `generated_at` / `decided_at` / `decided_by`, `accepted_rule` FK to materialized `WorkflowRule`.
+- **`WorkflowSuggestion.accept(user)`** — materializes the suggestion into a real `WorkflowRule` (idempotent — already-accepted returns the existing rule).
+- **`WorkflowSuggestion.dismiss(user)`** — marks dismissed without creating a rule.
+- **New management command `psa_generate_workflow_suggestions`** — heuristic engine today (LLM swap-in later via the same model + UI). Two patterns ship:
+  1. **Priority-route**: when ≥N tickets at a given priority were all assigned to the same tech in the last `--days`, suggest an auto-route rule.
+  2. **Tag-frequency**: high-frequency tags surfaced for review.
+  Gated by `SystemSetting.psa_ai_enabled` — runs no-op when False.
+- **New view + URL `/psa/rules/suggestions/`** — pending suggestion list with one-click Accept / Dismiss buttons. Accept redirects to the new rule's edit page so admins can tune. AI-disabled installs see a friendly "feature off" banner instead of the list.
+- **Audit-logged** — accepting a suggestion writes an AuditLog row pointing at the new rule with the suggestion summary in the description.
+
+### Tests
+- 5 tests in `psa.tests.test_workflow_kb_contracts.WorkflowSuggestionTests` covering: `accept()` materializes a rule, `accept()` is idempotent, `dismiss()` flips status, the command no-ops when `psa_ai_enabled=False`, the command generates a priority-route suggestion when the pattern threshold is met.
+
+### Roadmap
+- Phase 14 sub-bullet "AI-assisted workflow suggestions (**OPTIONAL AI**)" annotated `*(shipped v3.17.290)*`.
+- **Phase 14 — Visual Workflow Automation Engine** header advanced to `[shipped — v3.17.290]`.
+
 ## [3.17.289] - 2026-05-05
 
 ### Added — Phase 14 v6/v11 — State-based workflows + cross-module integration

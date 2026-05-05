@@ -867,6 +867,92 @@ class WorkflowStateBasedConfirmationTests(TestCase):
         self.assertIn('state-resolved', t.tags or [])
 
 
+class WorkflowSuggestionTests(TestCase):
+    """Phase 14 v13 (v3.17.290): WorkflowSuggestion + heuristic engine.
+    Gated by SystemSetting.psa_ai_enabled."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='SugCo', slug='sug-co')
+        self.user = User.objects.create_user('sug-user', 'sg@x.com', 'pw')
+
+    def test_accept_materializes_workflow_rule(self):
+        from psa.models import WorkflowSuggestion, WorkflowRule
+        s = WorkflowSuggestion.objects.create(
+            summary='Suggested',
+            suggested_payload={
+                'name': 'Accepted rule',
+                'trigger': 'ticket_created',
+                'conditions': {'priority': 'P1'},
+                'actions': [{'type': 'add_tag', 'tag': 'urgent'}],
+            },
+        )
+        rule = s.accept(user=self.user)
+        self.assertIsInstance(rule, WorkflowRule)
+        self.assertEqual(rule.trigger, 'ticket_created')
+        self.assertEqual(rule.actions, [{'type': 'add_tag', 'tag': 'urgent'}])
+        s.refresh_from_db()
+        self.assertEqual(s.status, 'accepted')
+        self.assertEqual(s.accepted_rule, rule)
+
+    def test_accept_idempotent(self):
+        from psa.models import WorkflowSuggestion
+        s = WorkflowSuggestion.objects.create(
+            summary='Sug',
+            suggested_payload={'name': 'X', 'trigger': 'ticket_created'},
+        )
+        rule1 = s.accept(user=self.user)
+        rule2 = s.accept(user=self.user)
+        self.assertEqual(rule1.pk, rule2.pk)
+
+    def test_dismiss_changes_status(self):
+        from psa.models import WorkflowSuggestion
+        s = WorkflowSuggestion.objects.create(summary='Sug')
+        s.dismiss(user=self.user)
+        s.refresh_from_db()
+        self.assertEqual(s.status, 'dismissed')
+
+    def test_command_no_op_when_ai_disabled(self):
+        from django.core.management import call_command
+        from psa.models import WorkflowSuggestion
+        ss = SystemSetting.get_settings()
+        ss.psa_ai_enabled = False
+        ss.save()
+        call_command('psa_generate_workflow_suggestions', verbosity=0)
+        self.assertEqual(WorkflowSuggestion.objects.count(), 0)
+
+    def test_command_generates_priority_route_suggestion(self):
+        from django.core.management import call_command
+        from psa.models import (
+            WorkflowSuggestion, Ticket, Queue, TicketPriority,
+            TicketType, TicketStatus,
+        )
+        ss = SystemSetting.get_settings()
+        ss.psa_ai_enabled = True
+        ss.save()
+        # Create 6 P1 tickets all assigned to the same user
+        queue = Queue.objects.first()
+        priority = TicketPriority.objects.filter(code='P1').first() \
+                    or TicketPriority.objects.first()
+        ttype = TicketType.objects.first()
+        status = TicketStatus.objects.first()
+        for i in range(6):
+            Ticket.objects.create(
+                organization=self.org, subject=f'P1 ticket {i}',
+                queue=queue, priority=priority, ticket_type=ttype,
+                status=status, assigned_to=self.user,
+            )
+        call_command('psa_generate_workflow_suggestions',
+                      '--min-count', '5', verbosity=0)
+        sugs = WorkflowSuggestion.objects.filter(status='pending')
+        self.assertGreaterEqual(sugs.count(), 1)
+        # Look for the priority-route suggestion
+        priority_sug = sugs.filter(summary__contains=priority.code).first()
+        self.assertIsNotNone(priority_sug)
+        self.assertEqual(priority_sug.suggested_payload['actions'][0]['type'],
+                          'assign_to')
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

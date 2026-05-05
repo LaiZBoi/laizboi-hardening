@@ -307,7 +307,7 @@ Planned capabilities:
 
 **Goal:** Improve operational procurement visibility and hardware lifecycle management.
 
-## Phase 14 — Visual Workflow Automation Engine **(L)**
+## Phase 14 — Visual Workflow Automation Engine **(L)** [shipped — v3.17.290]
 
 **Roadmap item:** Visual Workflow & Operational Automation Engine. Extends the workflow rules engine (v3.17.111) + visual rule builder (v3.17.112).
 
@@ -324,7 +324,7 @@ Planned capabilities:
 - Dynamic technician assignment (round-robin, skill-match, load-balanced) *(shipped v3.17.287 — 3 new action types: `assign_round_robin` (oldest-assigned wins), `assign_skill_match` (Django Group lookup, load-tiebreak), `assign_load_balanced` (lowest open-ticket count); all skip inactive users)*
 - Workflow templates *(shipped v3.17.288 — `WorkflowRuleTemplate` model + `instantiate(organization, name_override)` clone method; UI at `/psa/rules/templates/` with per-template "Use Template" button)*
 - Cross-module workflow integration (PSA ↔ procurement ↔ CRM) *(shipped v3.17.289 — `create_charge` action type lets workflow rules add billing rows; future actions for procurement/CRM cross-module land as the need arises)*
-- AI-assisted workflow suggestions (**OPTIONAL AI**)
+- AI-assisted workflow suggestions (**OPTIONAL AI**) *(shipped v3.17.290 — `WorkflowSuggestion` model + `psa_generate_workflow_suggestions` heuristic command (LLM-swap-in later) gated by `psa_ai_enabled`; review/accept/dismiss UI at `/psa/rules/suggestions/`)*
 
 **Goal:** Reduce repetitive operational tasks while improving workflow consistency.
 

@@ -92,6 +92,12 @@ urlpatterns = [
     path('rules/templates/<int:pk>/instantiate/',
          views.workflow_template_instantiate,
          name='workflow_template_instantiate'),
+    # Phase 14 v13 (v3.17.290): AI-assisted workflow suggestions
+    path('rules/suggestions/', views.workflow_suggestion_list,
+         name='workflow_suggestion_list'),
+    path('rules/suggestions/<int:pk>/decide/',
+         views.workflow_suggestion_decide,
+         name='workflow_suggestion_decide'),
     # Dispatch board
     path('dispatch/', views.dispatch_board, name='dispatch_board'),
     path('dispatch/assign/', views.dispatch_assign, name='dispatch_assign'),
