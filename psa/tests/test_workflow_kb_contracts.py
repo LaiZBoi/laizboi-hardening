@@ -692,6 +692,54 @@ class WorkflowDynamicAssignmentTests(TestCase):
         self.assertIsNone(t.assigned_to)
 
 
+class WorkflowTemplateTests(TestCase):
+    """Phase 14 v9 (v3.17.288): WorkflowRuleTemplate save-and-clone."""
+
+    def setUp(self):
+        _setup_seed()
+        self.org = Organization.objects.create(name='TplCo', slug='tpl-co')
+
+    def test_instantiate_creates_rule_with_template_payload(self):
+        from psa.models import WorkflowRuleTemplate, WorkflowRule
+        tpl = WorkflowRuleTemplate.objects.create(
+            name='P1 → page on-call',
+            category='sla',
+            trigger='ticket_created',
+            conditions={'priority': 'P1'},
+            actions=[{'type': 'add_tag', 'tag': 'urgent'}],
+            else_actions=[],
+        )
+        rule = tpl.instantiate(organization=self.org)
+        self.assertIsInstance(rule, WorkflowRule)
+        self.assertEqual(rule.organization, self.org)
+        self.assertEqual(rule.trigger, 'ticket_created')
+        self.assertEqual(rule.conditions, {'priority': 'P1'})
+        self.assertEqual(rule.actions, [{'type': 'add_tag', 'tag': 'urgent'}])
+        self.assertTrue(rule.is_active)
+
+    def test_instantiate_msp_wide_when_no_org(self):
+        from psa.models import WorkflowRuleTemplate
+        tpl = WorkflowRuleTemplate.objects.create(
+            name='Global tag',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'add_tag', 'tag': 'all'}],
+        )
+        rule = tpl.instantiate()
+        self.assertIsNone(rule.organization)
+
+    def test_instantiate_with_name_override(self):
+        from psa.models import WorkflowRuleTemplate
+        tpl = WorkflowRuleTemplate.objects.create(
+            name='Stock template',
+            trigger='ticket_created',
+            conditions={},
+            actions=[],
+        )
+        rule = tpl.instantiate(name_override='Custom name for ACME')
+        self.assertEqual(rule.name, 'Custom name for ACME')
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

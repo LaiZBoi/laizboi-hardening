@@ -322,7 +322,7 @@ Planned capabilities:
 - Scheduled automations
 - State-based workflows
 - Dynamic technician assignment (round-robin, skill-match, load-balanced) *(shipped v3.17.287 — 3 new action types: `assign_round_robin` (oldest-assigned wins), `assign_skill_match` (Django Group lookup, load-tiebreak), `assign_load_balanced` (lowest open-ticket count); all skip inactive users)*
-- Workflow templates
+- Workflow templates *(shipped v3.17.288 — `WorkflowRuleTemplate` model + `instantiate(organization, name_override)` clone method; UI at `/psa/rules/templates/` with per-template "Use Template" button)*
 - Cross-module workflow integration (PSA ↔ procurement ↔ CRM)
 - AI-assisted workflow suggestions (**OPTIONAL AI**)
 

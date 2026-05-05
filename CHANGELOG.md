@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.288] - 2026-05-05
+
+### Added — Phase 14 v9 — Workflow rule templates
+Closes the "Workflow templates" sub-bullet of Phase 14. MSP admins can save common rule patterns once and instantiate them onto any client org with one click — no copy-paste of conditions/actions JSON.
+
+- **New `WorkflowRuleTemplate` model** (migration `psa.0048`) with: name (unique), description, category (`routing` / `sla` / `notification` / `cleanup` / `other`), trigger, conditions, actions, else_actions, fire_once_per_ticket, is_built_in flag, created_by attribution.
+- **`WorkflowRuleTemplate.instantiate(*, organization=None, name_override=None, created_by=None)`** method — clones the template into a new active `WorkflowRule`. Optional org scope, optional rename for the target client.
+- **New view + URL `/psa/rules/templates/`** — staff-only list with a per-template form: pick org (or leave MSP-wide), optional name override, click "Use Template" → creates the rule and redirects to its edit page so admins can tune. Audit-logged.
+- **`is_built_in` flag** — distinguishes shipped-with-the-project templates from user-created ones, used by the UI to gate deletion (UI gate ships with future v10 polish).
+
+### Tests
+- 3 tests in `psa.tests.test_workflow_kb_contracts.WorkflowTemplateTests` covering: instantiation copies trigger/conditions/actions, blank-org instantiation creates an MSP-wide rule, name_override is respected.
+
+### Roadmap
+Phase 14 sub-bullet "Workflow templates" annotated `*(shipped v3.17.288)*`.
+
 ## [3.17.287] - 2026-05-05
 
 ### Added — Phase 14 v8 — Dynamic technician assignment

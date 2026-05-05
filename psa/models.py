@@ -2182,6 +2182,69 @@ class WorkflowRule(models.Model):
         return f'{self.name} ({self.get_trigger_display()})'
 
 
+class WorkflowRuleTemplate(models.Model):
+    """Phase 14 v9 (v3.17.288): saved-and-reusable workflow rule
+    template. An MSP admin can store a common rule (e.g. "P1 alert →
+    page on-call") once and instantiate it onto any client org with
+    one click — no need to copy-paste JSON conditions/actions.
+    """
+    CATEGORY_CHOICES = [
+        ('routing', 'Routing'),
+        ('sla', 'SLA / escalation'),
+        ('notification', 'Notification'),
+        ('cleanup', 'Cleanup / housekeeping'),
+        ('other', 'Other'),
+    ]
+
+    name = models.CharField(max_length=200, unique=True)
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES,
+                                default='other')
+    trigger = models.CharField(max_length=30,
+                                choices=WorkflowRule.TRIGGER_CHOICES)
+    conditions = models.JSONField(default=dict, blank=True)
+    actions = models.JSONField(default=list, blank=True)
+    else_actions = models.JSONField(default=list, blank=True)
+    fire_once_per_ticket = models.BooleanField(default=False)
+    is_built_in = models.BooleanField(
+        default=False,
+        help_text='Built-in templates ship with the project; user-created '
+                  'ones are False. Built-ins can\'t be deleted via the UI.',
+    )
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'psa_workflow_rule_templates'
+        ordering = ['category', 'name']
+
+    def __str__(self):
+        return f'{self.name} ({self.get_category_display()})'
+
+    def instantiate(self, *, organization=None, name_override=None,
+                     created_by=None):
+        """Create a `WorkflowRule` from this template, optionally
+        scoped to an organization. Returns the new rule. The new
+        rule's name defaults to the template name; passing
+        `name_override` lets you rename for the target org."""
+        return WorkflowRule.objects.create(
+            organization=organization,
+            name=(name_override or self.name)[:200],
+            description=self.description,
+            trigger=self.trigger,
+            conditions=self.conditions or {},
+            actions=self.actions or [],
+            else_actions=self.else_actions or [],
+            fire_once_per_ticket=self.fire_once_per_ticket,
+            is_active=True,
+            created_by=created_by,
+        )
+
+
 class WorkflowRuleFiring(models.Model):
     """Phase 14 v3 (v3.17.286): one row per (rule, ticket) to support
     `WorkflowRule.fire_once_per_ticket=True`. Used by SLA tick rules so

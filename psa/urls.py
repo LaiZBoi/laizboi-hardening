@@ -86,6 +86,12 @@ urlpatterns = [
     path('rules/new/', views.workflow_rule_form, name='workflow_rule_create'),
     path('rules/<int:pk>/edit/', views.workflow_rule_form, name='workflow_rule_edit'),
     path('rules/<int:pk>/delete/', views.workflow_rule_delete, name='workflow_rule_delete'),
+    # Phase 14 v9 (v3.17.288): workflow rule templates
+    path('rules/templates/', views.workflow_template_list,
+         name='workflow_template_list'),
+    path('rules/templates/<int:pk>/instantiate/',
+         views.workflow_template_instantiate,
+         name='workflow_template_instantiate'),
     # Dispatch board
     path('dispatch/', views.dispatch_board, name='dispatch_board'),
     path('dispatch/assign/', views.dispatch_assign, name='dispatch_assign'),

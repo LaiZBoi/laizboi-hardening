@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Workflow Templates{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'psa:workflow_rule_list' %}">Workflow Rules</a></li>
+        <li class="breadcrumb-item active">Templates</li>
+    </ol>
+</nav>
+
+<h1 class="mb-3">Workflow Rule Templates</h1>
+<p class="text-muted">Saved patterns you can clone onto any organization with one click. Edit the cloned rule afterwards to tune it for the target client.</p>
+
+{% if templates %}
+<div class="card">
+    <table class="table table-hover small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Trigger</th>
+                <th>Description</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for tpl in templates %}
+            <tr>
+                <td><strong>{{ tpl.name }}</strong>
+                    {% if tpl.is_built_in %}<span class="badge bg-info-subtle text-info ms-1">built-in</span>{% endif %}
+                </td>
+                <td><span class="badge bg-light text-dark">{{ tpl.get_category_display }}</span></td>
+                <td><code>{{ tpl.get_trigger_display }}</code></td>
+                <td class="text-muted">{{ tpl.description|truncatechars:80 }}</td>
+                <td class="text-nowrap">
+                    <form method="post" action="{% url 'psa:workflow_template_instantiate' tpl.pk %}" class="d-inline-block">
+                        {% csrf_token %}
+                        <select name="organization" class="form-select form-select-sm d-inline-block" style="width:auto">
+                            <option value="">— MSP-wide —</option>
+                            {% for org in organizations %}
+                                <option value="{{ org.pk }}">{{ org.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-sm btn-primary">
+                            <i class="fas fa-clone"></i> Use Template
+                        </button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No templates yet. Save useful workflow patterns as templates from the rule edit page.</div>
+{% endif %}
+{% endblock %}

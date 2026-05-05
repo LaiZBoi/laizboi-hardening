@@ -3110,6 +3110,55 @@ def workflow_rule_list(request):
 
 
 @login_required
+@require_psa_enabled
+def workflow_template_list(request):
+    """Phase 14 v9 (v3.17.288): list workflow rule templates and offer
+    one-click instantiation against the active org."""
+    from .models import WorkflowRuleTemplate
+    from core.models import Organization
+    qs = WorkflowRuleTemplate.objects.order_by('category', 'name')
+    return render(request, 'psa/workflow_template_list.html', {
+        'templates': qs,
+        'organizations': Organization.objects.filter(is_active=True)
+                          .order_by('name')[:500],
+    })
+
+
+@login_required
+@require_admin
+@require_psa_enabled
+@require_http_methods(['POST'])
+def workflow_template_instantiate(request, pk):
+    """Phase 14 v9 (v3.17.288): clone a template into a new
+    WorkflowRule. Optional `organization` POST field scopes it to a
+    specific client; blank = MSP-wide."""
+    from .models import WorkflowRuleTemplate
+    from core.models import Organization
+    template = get_object_or_404(WorkflowRuleTemplate, pk=pk)
+
+    org = None
+    org_id = request.POST.get('organization')
+    if org_id:
+        org = Organization.objects.filter(pk=org_id).first()
+
+    name_override = (request.POST.get('name') or '').strip() or None
+    rule = template.instantiate(
+        organization=org, name_override=name_override,
+        created_by=request.user,
+    )
+    AuditLog.log(
+        user=request.user, action='create',
+        organization=org or rule.organization,
+        object_type='psa.WorkflowRule', object_id=rule.pk,
+        object_repr=rule.name,
+        description=f'Instantiated rule from template "{template.name}"',
+        ip_address=_client_ip(request), path=request.path,
+    )
+    messages.success(request, f'Created rule "{rule.name}" from template.')
+    return redirect('psa:workflow_rule_edit', pk=rule.pk)
+
+
+@login_required
 @require_admin
 @require_psa_enabled
 @require_http_methods(['GET', 'POST'])
