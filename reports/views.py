@@ -3167,6 +3167,194 @@ def multi_location_report(request):
 
 
 @login_required
+def billing_reconciliation_report(request):
+    """
+    Phase 15 v6 (v3.17.295): per-client invoiced-vs-paid summary for a
+    window. Helps catch "we billed them $30k but only collected $22k"
+    drift before it grows.
+
+    Tenant ACL: superuser/staff sees all; org members see their own
+    client_org's invoices.
+    """
+    from psa.models import Invoice
+    from datetime import date, timedelta
+    from decimal import Decimal as _D
+    from collections import defaultdict
+
+    try:
+        days = max(7, int(request.GET.get('days') or 90))
+    except (TypeError, ValueError):
+        days = 90
+    cutoff = date.today() - timedelta(days=days)
+
+    qs = (Invoice.objects.select_related('client_org')
+          .filter(invoice_date__gte=cutoff)
+          .exclude(status='void'))
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        qs = qs.filter(client_org_id__in=ids)
+
+    # Per-client roll-up
+    rows_by_client = defaultdict(lambda: {
+        'name': '', 'invoiced': _D('0'), 'paid': _D('0'),
+        'outstanding': _D('0'), 'invoice_count': 0,
+    })
+    for inv in qs.values('client_org_id', 'client_org__name',
+                          'total', 'amount_paid'):
+        b = rows_by_client[inv['client_org_id']]
+        b['name'] = inv['client_org__name']
+        total = _D(str(inv['total'] or 0))
+        paid = _D(str(inv['amount_paid'] or 0))
+        b['invoiced'] += total
+        b['paid'] += paid
+        b['outstanding'] += (total - paid)
+        b['invoice_count'] += 1
+
+    rows = []
+    for client_id, b in rows_by_client.items():
+        rows.append({
+            'client_id': client_id,
+            'collection_pct': (
+                round(float(b['paid'] / b['invoiced'] * 100), 1)
+                if b['invoiced'] > 0 else 0
+            ),
+            **b,
+        })
+    rows.sort(key=lambda r: -r['outstanding'])
+
+    totals = {
+        'invoiced': sum(r['invoiced'] for r in rows),
+        'paid': sum(r['paid'] for r in rows),
+        'outstanding': sum(r['outstanding'] for r in rows),
+        'client_count': len(rows),
+    }
+    totals['collection_pct'] = (
+        round(float(totals['paid'] / totals['invoiced'] * 100), 1)
+        if totals['invoiced'] > 0 else 0
+    )
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="billing-reconciliation.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Client', 'Invoices', 'Invoiced', 'Paid', 'Outstanding',
+                    'Collection %'])
+        for r in rows:
+            w.writerow([r['name'], r['invoice_count'],
+                        r['invoiced'], r['paid'], r['outstanding'],
+                        r['collection_pct']])
+        w.writerow(['TOTAL', '',
+                    totals['invoiced'], totals['paid'],
+                    totals['outstanding'], totals['collection_pct']])
+        return resp
+
+    return render(request, 'reports/billing_reconciliation.html', {
+        'rows': rows,
+        'totals': totals,
+        'days': days,
+    })
+
+
+@login_required
+def mrr_forecast_report(request):
+    """
+    Phase 15 v9 (v3.17.295): monthly recurring revenue forecast.
+    Reads active contracts with billing_frequency != none, normalizes
+    each to a monthly equivalent, and projects the next 12 months.
+
+    Tenant ACL: staff/superuser only — MRR is an MSP-internal metric.
+    """
+    from psa.models import Contract
+    from datetime import date
+    from decimal import Decimal as _D
+    from collections import defaultdict
+    from dateutil.relativedelta import relativedelta as _rd
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('MRR forecast is staff-only')
+
+    # Normalize each contract's recurring revenue to monthly $$.
+    contracts = (Contract.objects
+                 .filter(status='active')
+                 .exclude(billing_frequency='none')
+                 .select_related('client_org'))
+
+    monthly_by_contract = []
+    for c in contracts:
+        amount = c.effective_recurring_amount
+        if amount <= 0:
+            continue
+        if c.billing_frequency == 'monthly':
+            mrr = amount
+        elif c.billing_frequency == 'quarterly':
+            mrr = (amount / _D('3')).quantize(_D('0.01'))
+        elif c.billing_frequency == 'yearly':
+            mrr = (amount / _D('12')).quantize(_D('0.01'))
+        else:
+            continue
+        monthly_by_contract.append({
+            'contract': c,
+            'client': c.client_org.name,
+            'mrr': mrr,
+            'frequency': c.billing_frequency,
+            'next_billing_date': c.next_billing_date,
+        })
+    monthly_by_contract.sort(key=lambda r: -r['mrr'])
+
+    total_mrr = sum(r['mrr'] for r in monthly_by_contract)
+    arr = (total_mrr * _D('12')).quantize(_D('0.01'))
+
+    # Forecast next 12 months — assume contracts with end_date past the
+    # forecast month drop out.
+    today = date.today().replace(day=1)
+    forecast = []
+    for i in range(12):
+        target = today + _rd(months=i)
+        active_total = _D('0')
+        for r in monthly_by_contract:
+            c = r['contract']
+            if c.end_date and c.end_date < target:
+                continue
+            if c.start_date and c.start_date > (target + _rd(months=1)):
+                continue
+            active_total += r['mrr']
+        forecast.append({'month': target.strftime('%Y-%m'),
+                          'projected_mrr': active_total})
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="mrr-forecast.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Month', 'Projected MRR'])
+        for f in forecast:
+            w.writerow([f['month'], f['projected_mrr']])
+        return resp
+
+    return render(request, 'reports/mrr_forecast.html', {
+        'rows': monthly_by_contract,
+        'forecast': forecast,
+        'totals': {
+            'mrr': total_mrr,
+            'arr': arr,
+            'contract_count': len(monthly_by_contract),
+        },
+    })
+
+
+@login_required
 def ticket_aging_report(request):
     """
     Phase 19 v1 (v3.17.257): ticket aging analytics. Bucket open

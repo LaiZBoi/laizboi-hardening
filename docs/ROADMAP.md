@@ -338,10 +338,10 @@ Planned capabilities:
 - Contract renewals *(partial — auto-renewal cron shipped Phase 1.2)*
 - Proration handling *(shipped v3.17.293 — `Contract._proration_factor()` method computes days-active fraction; `generate_invoice()` applies it to the base amount only (usage line items not prorated); description suffix shows the proration % to the customer)*
 - Service bundles *(shipped — Phase 1.2 ContractBundleItem)*
-- Billing reconciliation
+- Billing reconciliation *(shipped v3.17.295 — `/reports/billing-reconciliation/` per-client invoiced-vs-paid over `?days=N` window with collection % coloring; CSV export; tenant-scoped)*
 - Late fee automation *(shipped v3.17.294 — `SystemSetting.late_fee_pct` + `late_fee_min_days_overdue`; daily `psa_apply_late_fees` cron creates a `Charge` row for each overdue invoice; idempotent)*
 - ACH / payment integrations (Stripe ACH, GoCardless, etc.)
-- MRR forecasting
+- MRR forecasting *(shipped v3.17.295 — `/reports/mrr-forecast/` reads active recurring contracts; normalizes monthly/quarterly/yearly to monthly equivalents; per-contract table + 12-month projection; staff-only)*
 - Contract profitability tracking *(partial — Phase 3 profitability-by-contract shipped)*
 - Invoice automation
 - Tax handling support (Avalara / TaxJar integrations)

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Billing Reconciliation — Reports{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'reports:home' %}">Reports</a></li>
+        <li class="breadcrumb-item active">Billing Reconciliation</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0"><i class="fas fa-balance-scale me-2"></i>Billing Reconciliation</h2>
+    <a href="?days={{ days }}&format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-download me-1"></i>Export CSV
+    </a>
+</div>
+
+<p class="text-muted">Per-client invoiced-vs-paid summary over the last {{ days }} days. Catches drift between what we billed and what landed in the bank.</p>
+
+<form method="get" class="row g-2 mb-3 align-items-end">
+    <div class="col-md-3">
+        <label class="form-label small mb-1">Window (days)</label>
+        <input type="number" name="days" value="{{ days }}" min="7" max="3650" class="form-control form-control-sm">
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-sm btn-outline-secondary w-100">Update</button>
+    </div>
+</form>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Clients</div>
+                <div class="fs-4 fw-bold">{{ totals.client_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-secondary">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Invoiced</div>
+                <div class="fs-4 fw-bold">${{ totals.invoiced|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Paid</div>
+                <div class="fs-4 fw-bold">${{ totals.paid|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small text-uppercase">Outstanding · {{ totals.collection_pct }}% collected</div>
+                <div class="fs-4 fw-bold">${{ totals.outstanding|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if rows %}
+<div class="card">
+    <table class="table table-sm small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Client</th>
+                <th class="text-end">Invoices</th>
+                <th class="text-end">Invoiced</th>
+                <th class="text-end">Paid</th>
+                <th class="text-end">Outstanding</th>
+                <th class="text-end">Collection %</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in rows %}
+            <tr>
+                <td>{{ r.name }}</td>
+                <td class="text-end">{{ r.invoice_count }}</td>
+                <td class="text-end">${{ r.invoiced|floatformat:2 }}</td>
+                <td class="text-end">${{ r.paid|floatformat:2 }}</td>
+                <td class="text-end {% if r.outstanding > 0 %}text-warning{% endif %}">${{ r.outstanding|floatformat:2 }}</td>
+                <td class="text-end {% if r.collection_pct < 80 %}text-danger fw-bold{% elif r.collection_pct >= 95 %}text-success{% endif %}">{{ r.collection_pct }}%</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info"><i class="fas fa-info-circle"></i> No invoices in the window.</div>
+{% endif %}
+{% endblock %}

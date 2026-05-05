@@ -119,6 +119,12 @@ urlpatterns = [
          views.bank_reconciliation_report, name='bank_reconciliation_report'),
     path('bank-reconciliation/mark/',
          views.bank_reconciliation_mark, name='bank_reconciliation_mark'),
+    # v3.17.295 — Phase 15 v6/v9 billing reconciliation + MRR forecasting
+    path('billing-reconciliation/',
+         views.billing_reconciliation_report,
+         name='billing_reconciliation_report'),
+    path('mrr-forecast/',
+         views.mrr_forecast_report, name='mrr_forecast_report'),
     # v3.17.283 — Phase 18 v8/v9/v10 multi-location report.
     path('multi-location/',
          views.multi_location_report, name='multi_location_report'),

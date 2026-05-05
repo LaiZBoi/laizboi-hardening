@@ -2368,6 +2368,164 @@ class MultiLocationReportTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class BillingReconciliationReportTests(TestCase):
+    """Phase 15 v6 (v3.17.295): per-client invoiced-vs-paid summary."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import Invoice, InvoiceLineItem
+        from datetime import date as _date
+        from decimal import Decimal as _D
+        cls.org = Organization.objects.create(name='BrCo', slug='br-co')
+        cls.client_org = Organization.objects.create(name='BrClient', slug='br-client')
+        cls.staff = User.objects.create_user('br-staff', 'bs@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        # 3 invoices: 1 fully paid, 1 partial, 1 unpaid
+        for label, total, paid in [('Paid', '500', '500'),
+                                    ('Partial', '300', '100'),
+                                    ('Unpaid', '200', '0')]:
+            inv = Invoice.objects.create(
+                organization=cls.org, client_org=cls.client_org,
+                title=label, invoice_date=_date.today(),
+                status='sent',
+            )
+            InvoiceLineItem.objects.create(
+                invoice=inv, description='Service',
+                quantity=1, unit_price=_D(total),
+            )
+            inv.recompute_totals()
+            from psa.models import Payment
+            if _D(paid) > 0:
+                Payment.objects.create(
+                    invoice=inv, amount=_D(paid), paid_on=_date.today(),
+                    method='ach',
+                )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_per_client_totals(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/billing-reconciliation/')
+        self.assertEqual(r.status_code, 200)
+        rows = {row['name']: row for row in r.context['rows']}
+        self.assertIn('BrClient', rows)
+        from decimal import Decimal as _D
+        # Total invoiced: 500+300+200 = 1000
+        self.assertEqual(rows['BrClient']['invoiced'], _D('1000'))
+        # Paid: 500+100+0 = 600
+        self.assertEqual(rows['BrClient']['paid'], _D('600'))
+        # Outstanding: 400
+        self.assertEqual(rows['BrClient']['outstanding'], _D('400'))
+        # Collection %: 60.0
+        self.assertEqual(rows['BrClient']['collection_pct'], 60.0)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/billing-reconciliation/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('BrClient', body)
+        self.assertIn('TOTAL', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class MRRForecastReportTests(TestCase):
+    """Phase 15 v9 (v3.17.295): MRR + ARR projection."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization
+        from django.contrib.auth.models import User
+        from psa.models import Contract
+        from datetime import date as _date
+        from decimal import Decimal as _D
+        cls.org = Organization.objects.create(name='MrrCo', slug='mrr-co')
+        cls.client_org = Organization.objects.create(name='MrrClient',
+                                                      slug='mrr-client')
+        cls.staff = User.objects.create_user('mrr-staff', 'ms@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('mrr-mem', 'mm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.client_org,
+                                   role=Role.OWNER, is_active=True)
+        # Monthly $1000, quarterly $3000 (= $1000/mo), yearly $12000 (= $1000/mo)
+        Contract.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            name='Monthly-1k', contract_type='managed_services', status='active',
+            start_date=_date.today(), recurring_amount=_D('1000'),
+            billing_frequency='monthly',
+        )
+        Contract.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            name='Quarterly-3k', contract_type='managed_services', status='active',
+            start_date=_date.today(), recurring_amount=_D('3000'),
+            billing_frequency='quarterly',
+        )
+        Contract.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            name='Yearly-12k', contract_type='managed_services', status='active',
+            start_date=_date.today(), recurring_amount=_D('12000'),
+            billing_frequency='yearly',
+        )
+        # Excluded: inactive
+        Contract.objects.create(
+            organization=cls.org, client_org=cls.client_org,
+            name='Expired', contract_type='managed_services', status='expired',
+            start_date=_date.today(), recurring_amount=_D('99999'),
+            billing_frequency='monthly',
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_total_mrr_normalized(self):
+        from django.test import Client
+        from decimal import Decimal as _D
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/mrr-forecast/')
+        self.assertEqual(r.status_code, 200)
+        # 1000 + 3000/3 + 12000/12 = 1000 + 1000 + 1000 = 3000
+        self.assertEqual(r.context['totals']['mrr'], _D('3000.00'))
+        # ARR = MRR * 12 = 36000
+        self.assertEqual(r.context['totals']['arr'], _D('36000.00'))
+        self.assertEqual(r.context['totals']['contract_count'], 3)
+
+    def test_excludes_expired_contracts(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/mrr-forecast/')
+        names = [row['contract'].name for row in r.context['rows']]
+        self.assertNotIn('Expired', names)
+
+    def test_non_staff_blocked(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.client_org)
+        r = c.get('/reports/mrr-forecast/')
+        self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
 class HardwareMarginReportTests(TestCase):
     """Phase 13 v9 (v3.17.271) — hardware-resale margin."""
 

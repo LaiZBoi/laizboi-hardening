@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.295] - 2026-05-05
+
+### Added — Phase 15 v6/v9 — Billing reconciliation + MRR forecasting reports
+Closes 2 sub-bullets of Phase 15 in one focused release.
+
+- **New report at `/reports/billing-reconciliation/`** — per-client invoiced-vs-paid summary over a `?days=N` window (default 90 days). Surfaces drift between what was billed and what was collected; collection % is colored red <80%, green ≥95%. CSV export. Tenant-scoped.
+- **New report at `/reports/mrr-forecast/`** — staff-only. Reads active contracts with `billing_frequency != 'none'`, normalizes each to a monthly equivalent (`monthly = amount`, `quarterly = amount/3`, `yearly = amount/12`), shows per-contract breakdown + 12-month projection. Forecast assumes contracts with `end_date` past the target month drop out. CSV export.
+- **Reports home tiles** added for both.
+
+### Tests
+- 2 tests in `reports.tests.BillingReconciliationReportTests` covering the per-client roll-up math (1000 invoiced, 600 paid, 400 outstanding, 60% collection) and CSV export.
+- 3 tests in `reports.tests.MRRForecastReportTests` covering the normalized MRR math (1000 monthly + 3000/3 quarterly + 12000/12 yearly = 3000 MRR / 36000 ARR), exclusion of expired contracts, the staff-only ACL.
+
+### Roadmap
+- Phase 15 sub-bullet "Billing reconciliation" annotated `*(shipped v3.17.295)*`.
+- Phase 15 sub-bullet "MRR forecasting" annotated `*(shipped v3.17.295)*`.
+
 ## [3.17.294] - 2026-05-05
 
 ### Added — Phase 15 v7 — Late fee automation
