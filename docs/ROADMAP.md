@@ -313,9 +313,9 @@ Planned capabilities:
 
 Planned capabilities:
 - Visual workflow builder *(partial — visual rule builder shipped v3.17.112)*
-- Conditional workflow routing (branching based on ticket fields)
+- Conditional workflow routing (branching based on ticket fields) *(shipped v3.17.285 — `WorkflowRule.else_actions` JSONField runs when `conditions` evaluate false; engine picks branch and counts both as fires)*
 - SLA-driven automation
-- Ticket orchestration (multi-step automated sequences)
+- Ticket orchestration (multi-step automated sequences) *(shipped v3.17.285 — new `fire_rule` action type chains by name within the same org / MSP-wide scope; sub-rule's else_actions also honored)*
 - Approval chains (extends Phase 6.1 CAB pattern)
 - Trigger / action workflows
 - Escalation logic (auto-escalate after N hours unanswered)

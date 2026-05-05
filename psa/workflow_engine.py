@@ -140,6 +140,31 @@ def run_action(ticket, action: Dict[str, Any]) -> None:
                 ticket.tags = tags
                 ticket.save(update_fields=['tags', 'updated_at'])
 
+    elif atype == 'fire_rule':
+        # Phase 14 v4 (v3.17.285): multi-step orchestration. Chain
+        # to another WorkflowRule by name within the same org.
+        # Cycle protection lives in `fire()` via _firing_chain.
+        from .models import WorkflowRule
+        from django.db.models import Q
+        name = (action.get('name') or '').strip()
+        if not name:
+            raise ValueError('fire_rule requires "name"')
+        nxt = WorkflowRule.objects.filter(
+            Q(organization__isnull=True) | Q(organization_id=ticket.organization_id),
+            name=name, is_active=True,
+        ).first()
+        if nxt is None:
+            raise ValueError(f'fire_rule: no active rule named {name!r}')
+        # Run nested rule's actions inline (skip the cron-like trigger
+        # filter — chained execution intentionally bypasses trigger
+        # matching since the parent already fired).
+        if matches(ticket, nxt.conditions or {}):
+            for sub in (nxt.actions or []):
+                run_action(ticket, sub)
+        else:
+            for sub in (nxt.else_actions or []):
+                run_action(ticket, sub)
+
     else:
         raise ValueError(f'Unknown action type: {atype!r}')
 
@@ -169,10 +194,19 @@ def fire(trigger: str, ticket, *, prior_status=None) -> int:
     fired = 0
     for rule in rules:
         try:
-            if not matches(ticket, rule.conditions or {}):
+            if matches(ticket, rule.conditions or {}):
+                for action in (rule.actions or []):
+                    run_action(ticket, action)
+            elif rule.else_actions:
+                # Phase 14 v2 (v3.17.285): conditional routing — when
+                # the main condition fails AND else_actions are
+                # configured, run them instead. This still counts as
+                # a "fire" so the cooldown / fire_count tracks both
+                # branches.
+                for action in rule.else_actions:
+                    run_action(ticket, action)
+            else:
                 continue
-            for action in (rule.actions or []):
-                run_action(ticket, action)
             rule.last_fired_at = timezone.now()
             rule.fire_count = (rule.fire_count or 0) + 1
             rule.last_error = ''

@@ -2134,6 +2134,12 @@ class WorkflowRule(models.Model):
     trigger = models.CharField(max_length=30, choices=TRIGGER_CHOICES)
     conditions = models.JSONField(default=dict, blank=True)
     actions = models.JSONField(default=list, blank=True)
+    # Phase 14 v2 (v3.17.285): conditional routing — if `conditions`
+    # evaluate FALSE, run `else_actions` instead of `actions`. Empty
+    # else_actions = no-op when condition fails (legacy behavior).
+    else_actions = models.JSONField(default=list, blank=True,
+        help_text='Actions to run when conditions evaluate false. '
+                  'Empty = no-op when conditions fail.')
 
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0,

@@ -283,6 +283,137 @@ class WorkflowRuleMSPWideTests(TestCase):
         self.assertNotIn('client-a-only', t_b.tags or [])
 
 
+class WorkflowConditionalRoutingTests(TestCase):
+    """Phase 14 v2/v4 (v3.17.285): else_actions branching + fire_rule chaining."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='WfBranch', slug='wf-branch')
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority_p1 = TicketPriority.objects.filter(code='P1').first() \
+                           or TicketPriority.objects.first()
+        self.priority_p3 = TicketPriority.objects.filter(code='P3').first() \
+                           or TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first()
+
+    def _make_ticket(self, *, priority=None, subject='T'):
+        from psa.models import Ticket
+        return Ticket.objects.create(
+            organization=self.org, subject=subject,
+            queue=self.queue, priority=priority or self.priority_p1,
+            ticket_type=self.ttype, status=self.status,
+        )
+
+    def test_else_actions_run_when_condition_false(self):
+        from psa.models import Ticket, WorkflowRule
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Branch on P1',
+            trigger='ticket_created',
+            conditions={'priority': 'P1'},
+            actions=[{'type': 'add_tag', 'tag': 'high-prio'}],
+            else_actions=[{'type': 'add_tag', 'tag': 'normal-prio'}],
+            is_active=True,
+        )
+        t_p1 = self._make_ticket(priority=self.priority_p1, subject='P1')
+        t_p3 = self._make_ticket(priority=self.priority_p3, subject='P3')
+        t_p1.refresh_from_db(); t_p3.refresh_from_db()
+        self.assertIn('high-prio', t_p1.tags or [])
+        self.assertNotIn('normal-prio', t_p1.tags or [])
+        # P3 → else branch
+        if self.priority_p3.code != 'P1':  # only check if P3 is distinct
+            self.assertIn('normal-prio', t_p3.tags or [])
+            self.assertNotIn('high-prio', t_p3.tags or [])
+
+    def test_no_else_actions_means_noop_when_false(self):
+        from psa.models import Ticket, WorkflowRule
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Tag P1 only',
+            trigger='ticket_created',
+            conditions={'priority': 'P1'},
+            actions=[{'type': 'add_tag', 'tag': 'high'}],
+            else_actions=[],  # legacy behavior
+            is_active=True,
+        )
+        if self.priority_p3.code != 'P1':
+            t_p3 = self._make_ticket(priority=self.priority_p3, subject='P3')
+            t_p3.refresh_from_db()
+            self.assertNotIn('high', t_p3.tags or [])
+
+    def test_fire_rule_action_chains_to_named_rule(self):
+        """Phase 14 v4: orchestration via fire_rule action."""
+        from psa.models import Ticket, WorkflowRule
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Sub-tagger',
+            trigger='ticket_created',  # trigger is informational here
+            conditions={},
+            actions=[{'type': 'add_tag', 'tag': 'orchestrated'}],
+            is_active=True,
+        )
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Parent',
+            trigger='ticket_created',
+            conditions={},
+            actions=[
+                {'type': 'add_tag', 'tag': 'parent-ran'},
+                {'type': 'fire_rule', 'name': 'Sub-tagger'},
+            ],
+            is_active=True,
+        )
+        t = self._make_ticket()
+        t.refresh_from_db()
+        self.assertIn('parent-ran', t.tags or [])
+        self.assertIn('orchestrated', t.tags or [])
+
+    def test_fire_rule_unknown_name_raises(self):
+        from psa.models import Ticket, WorkflowRule
+        rule = WorkflowRule.objects.create(
+            organization=None,
+            name='Bad parent',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'fire_rule', 'name': 'no-such-rule'}],
+            is_active=True,
+        )
+        # Creating the ticket fires the rule; engine catches the
+        # ValueError and stores it on `last_error` instead of raising.
+        self._make_ticket()
+        rule.refresh_from_db()
+        self.assertIn('no-such-rule', rule.last_error or '')
+
+    def test_fire_rule_respects_subrule_else_actions(self):
+        from psa.models import Ticket, WorkflowRule
+        # Sub-rule branches on P1
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Branching sub',
+            trigger='ticket_created',
+            conditions={'priority': 'P1'},
+            actions=[{'type': 'add_tag', 'tag': 'sub-true'}],
+            else_actions=[{'type': 'add_tag', 'tag': 'sub-false'}],
+            is_active=True,
+        )
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Parent for branching sub',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'fire_rule', 'name': 'Branching sub'}],
+            is_active=True,
+        )
+        if self.priority_p3.code != 'P1':
+            t = self._make_ticket(priority=self.priority_p3)
+            t.refresh_from_db()
+            self.assertIn('sub-false', t.tags or [])
+            self.assertNotIn('sub-true', t.tags or [])
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

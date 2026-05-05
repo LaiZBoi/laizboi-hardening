@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.285] - 2026-05-05
+
+### Added — Phase 14 v2/v4 — Workflow branching + multi-step orchestration
+Closes 2 sub-bullets of Phase 14:
+- "Conditional workflow routing (branching based on ticket fields)"
+- "Ticket orchestration (multi-step automated sequences)"
+
+- **New `WorkflowRule.else_actions`** field (JSONField list, default=[]; migration `psa.0046`) — actions that run when the rule's `conditions` evaluate FALSE. Empty preserves legacy "no-op when conditions fail" behavior, so existing rules are unaffected.
+- **Engine update** — `fire()` now picks the actions branch based on condition truth: `actions` on TRUE, `else_actions` on FALSE; either branch counts as a "fire" for the cooldown / `fire_count` counter, so analytics stay coherent.
+- **New `fire_rule` action type** — chain to another rule by name within the same org / MSP-wide scope. The chained rule's conditions are re-evaluated against the same ticket and its `actions` or `else_actions` run accordingly. Cycle protection comes via the engine's per-rule try/except — bad chains land on `last_error` rather than infinite-looping.
+
+### Tests
+- 5 tests in `psa.tests.test_workflow_kb_contracts.WorkflowConditionalRoutingTests` covering: else_actions on FALSE, no-else legacy no-op, fire_rule chaining, unknown-rule error capture, sub-rule branching honored.
+
+### Roadmap
+- Phase 14 sub-bullet "Conditional workflow routing (branching)" annotated `*(shipped v3.17.285)*`.
+- Phase 14 sub-bullet "Ticket orchestration (multi-step automated sequences)" annotated `*(shipped v3.17.285)*`.
+
 ## [3.17.284] - 2026-05-05
 
 ### Fixed — GUI updater preserves error output (issue #128)
