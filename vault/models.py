@@ -857,3 +857,117 @@ class VaultRevealRequest(models.Model):
     def mark_revealed(self):
         self.revealed_at = timezone.now()
         self.save(update_fields=['revealed_at'])
+
+
+# ---------------------------------------------------------------------------
+# WebExtensionAuthToken (Phase 28 — v3.17.327) — short-lived bearer tokens
+# scoped to browser-extension sessions. Extensions never carry the user's
+# Django session cookie; they exchange the user's password for a token via
+# the Settings UI, then send `Authorization: Bearer <token>` on every API
+# call. Tokens are revocable, expire automatically, and carry an optional
+# organization pin for cross-org-aware extensions.
+# ---------------------------------------------------------------------------
+
+
+class WebExtensionAuthToken(models.Model):
+    """
+    Bearer-auth token issued to a browser-extension installation. One user
+    can have multiple tokens (e.g. Chrome on Mac + Firefox on a different
+    machine); each is independently revocable.
+
+    Fields:
+      * user            — owning user (membership scope is resolved at call
+                          time via the standard org middleware).
+      * organization    — optional pin; when set, the token only resolves
+                          requests whose `X-Organization-Id` header matches
+                          (or is omitted, in which case the pinned org is
+                          used). When None, the extension can switch orgs
+                          freely (still constrained by user memberships).
+      * token           — opaque secret (`secrets.token_urlsafe(32)`). The
+                          stored value IS the bearer token; we don't hash
+                          because the token is single-use-revocable, has a
+                          short TTL, and is returned only at issue time.
+      * label           — user-supplied free text ("Chrome on Mac"). Helps
+                          the user identify which extension to revoke.
+      * created_at      — issue timestamp.
+      * last_used_at    — bumped on every authenticated extension call so
+                          the user can see "last seen 5 minutes ago".
+      * expires_at      — hard expiry. Tokens past this point cannot
+                          authenticate even if not explicitly revoked.
+      * revoked_at      — explicit revocation timestamp. Once set, the
+                          token is permanently dead.
+    """
+    DEFAULT_TTL_DAYS = 30
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE,
+        related_name='extension_tokens',
+    )
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='extension_tokens',
+        help_text='Optional organization pin. NULL = token honours the '
+                  'X-Organization-Id header per request.',
+    )
+    token = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        help_text='Opaque bearer secret returned to the extension at issue.',
+    )
+    label = models.CharField(
+        max_length=120, blank=True,
+        help_text='User-friendly label (e.g. "Chrome on Mac").',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(
+        help_text='Hard expiry. Tokens past this point cannot authenticate.',
+    )
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'vault_webextension_tokens'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.user.username} — {self.label or "extension"}'
+
+    @classmethod
+    def issue(cls, *, user, organization=None, label='', ttl_days=None):
+        """
+        Issue a new token. Returns the (unsaved-token-string, model_row)
+        tuple so the view can return the secret to the client exactly once.
+        """
+        import secrets
+        from datetime import timedelta as _td
+        ttl = ttl_days or cls.DEFAULT_TTL_DAYS
+        token_str = secrets.token_urlsafe(32)
+        row = cls.objects.create(
+            user=user,
+            organization=organization,
+            token=token_str,
+            label=(label or '')[:120],
+            expires_at=timezone.now() + _td(days=ttl),
+        )
+        return token_str, row
+
+    def revoke(self):
+        if self.revoked_at is None:
+            self.revoked_at = timezone.now()
+            self.save(update_fields=['revoked_at'])
+
+    @property
+    def is_active(self) -> bool:
+        if self.revoked_at is not None:
+            return False
+        if self.expires_at and self.expires_at <= timezone.now():
+            return False
+        return True
+
+    def touch(self):
+        """Bump last_used_at to now. Cheap single-field save."""
+        self.last_used_at = timezone.now()
+        self.save(update_fields=['last_used_at'])

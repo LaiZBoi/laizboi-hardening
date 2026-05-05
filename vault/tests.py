@@ -570,3 +570,170 @@ class VaultClientLevelApprovalTests(TestCase):
         self.assertEqual(r.status_code, 403)
         req.refresh_from_db()
         self.assertEqual(req.status, 'pending')
+
+
+# ===========================================================================
+# Phase 28 — Browser extension API
+# ===========================================================================
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class WebExtensionAuthTokenModelTests(TestCase):
+    """v3.17.327 — token issue/expiry/revoke."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='ExtCo', slug='ext-co-tok')
+        cls.user = User.objects.create_user('ext_user', 'e@x.com', 'pw')
+
+    def test_issue_returns_secret_string_and_row(self):
+        from vault.models import WebExtensionAuthToken
+        secret, row = WebExtensionAuthToken.issue(
+            user=self.user, label='Chrome on Mac',
+        )
+        self.assertEqual(row.token, secret)
+        self.assertGreater(len(secret), 30)
+        self.assertEqual(row.label, 'Chrome on Mac')
+        self.assertTrue(row.is_active)
+
+    def test_revoke_makes_token_inactive(self):
+        from vault.models import WebExtensionAuthToken
+        _, row = WebExtensionAuthToken.issue(user=self.user)
+        row.revoke()
+        self.assertFalse(row.is_active)
+        self.assertIsNotNone(row.revoked_at)
+
+    def test_expired_token_inactive(self):
+        from datetime import timedelta
+        from vault.models import WebExtensionAuthToken
+        _, row = WebExtensionAuthToken.issue(user=self.user, ttl_days=1)
+        row.expires_at = timezone.now() - timedelta(seconds=1)
+        row.save(update_fields=['expires_at'])
+        self.assertFalse(row.is_active)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionAuthDecoratorTests(TestCase):
+    """v3.17.327 — extension_auth_required decorator."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='ExtCo', slug='ext-co-dec')
+        cls.user = User.objects.create_user('ext_user2', 'e2@x.com', 'pw')
+
+    def setUp(self):
+        from vault.models import WebExtensionAuthToken
+        self.secret, self.row = WebExtensionAuthToken.issue(
+            user=self.user, organization=self.org, label='Chrome',
+        )
+        self.rf = RequestFactory()
+
+    def _wrap_passthrough(self):
+        from vault.extension_auth import extension_auth_required
+
+        @extension_auth_required
+        def _view(request):
+            from django.http import JsonResponse as JR
+            return JR({
+                'user': request.user.username,
+                'org': request.current_organization.id if request.current_organization else None,
+            })
+        return _view
+
+    def test_valid_token_resolves_user_and_org(self):
+        view = self._wrap_passthrough()
+        req = self.rf.get('/api/vault/extension/x/',
+                          HTTP_AUTHORIZATION=f'Bearer {self.secret}')
+        resp = view(req)
+        self.assertEqual(resp.status_code, 200)
+        import json as _json
+        data = _json.loads(resp.content)
+        self.assertEqual(data['user'], 'ext_user2')
+        self.assertEqual(data['org'], self.org.id)
+
+    def test_missing_header_401(self):
+        view = self._wrap_passthrough()
+        req = self.rf.get('/api/vault/extension/x/')
+        resp = view(req)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_revoked_token_401(self):
+        self.row.revoke()
+        view = self._wrap_passthrough()
+        req = self.rf.get('/api/vault/extension/x/',
+                          HTTP_AUTHORIZATION=f'Bearer {self.secret}')
+        resp = view(req)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_expired_token_401(self):
+        from datetime import timedelta
+        self.row.expires_at = timezone.now() - timedelta(seconds=1)
+        self.row.save(update_fields=['expires_at'])
+        view = self._wrap_passthrough()
+        req = self.rf.get('/api/vault/extension/x/',
+                          HTTP_AUTHORIZATION=f'Bearer {self.secret}')
+        resp = view(req)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_org_id_header_overrides_token_pin(self):
+        other_org = Organization.objects.create(name='OtherCo', slug='ext-co-other')
+        # Give the user membership in the other org so access is allowed.
+        from accounts.models import Membership, Role
+        Membership.objects.create(
+            user=self.user, organization=other_org, role=Role.READONLY, is_active=True,
+        )
+        view = self._wrap_passthrough()
+        req = self.rf.get('/api/vault/extension/x/',
+                          HTTP_AUTHORIZATION=f'Bearer {self.secret}',
+                          HTTP_X_ORGANIZATION_ID=str(other_org.id))
+        resp = view(req)
+        self.assertEqual(resp.status_code, 200)
+        import json as _json
+        data = _json.loads(resp.content)
+        self.assertEqual(data['org'], other_org.id)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class ExtensionTokenLifecycleEndpointTests(TestCase):
+    """v3.17.327 — token issue / list / revoke endpoints (session-authed)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user('ext_user3', 'e3@x.com', 'pw')
+
+    def setUp(self):
+        self.c = Client()
+        self.c.force_login(self.user)
+
+    def test_issue_returns_token_once(self):
+        r = self.c.post('/vault/api/extension/tokens/issue/',
+                        data={'label': 'Firefox'})
+        self.assertEqual(r.status_code, 201)
+        body = r.json()
+        self.assertIn('token', body)
+        self.assertEqual(body['label'], 'Firefox')
+
+    def test_list_excludes_secret(self):
+        # Issue first, then list.
+        self.c.post('/vault/api/extension/tokens/issue/', data={'label': 'A'})
+        r = self.c.get('/vault/api/extension/tokens/')
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(len(data['tokens']), 1)
+        self.assertNotIn('token', data['tokens'][0])
+
+    def test_revoke_marks_revoked(self):
+        r1 = self.c.post('/vault/api/extension/tokens/issue/', data={})
+        token_id = r1.json()['id']
+        r2 = self.c.delete(f'/vault/api/extension/tokens/{token_id}/revoke/')
+        self.assertEqual(r2.status_code, 200)
+        self.assertTrue(r2.json()['revoked'])
+
+    def test_other_user_cannot_revoke(self):
+        r1 = self.c.post('/vault/api/extension/tokens/issue/', data={})
+        token_id = r1.json()['id']
+        intruder = User.objects.create_user('intruder', 'i@x.com', 'pw')
+        c2 = Client()
+        c2.force_login(intruder)
+        r2 = c2.delete(f'/vault/api/extension/tokens/{token_id}/revoke/')
+        self.assertEqual(r2.status_code, 403)

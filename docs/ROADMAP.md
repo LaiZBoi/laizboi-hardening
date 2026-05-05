@@ -590,12 +590,12 @@ Dependencies: existing AccountingConnection pattern. Builds on Phase 15.
 
 Cross-references: Phase 36 (Agreement Reconciliation) layers an MSP-specific reconciliation flow — included-vs-billable labor, over/under-served clients, pre-invoice approval — on top of the GL-level reconciliation this phase covers.
 
-## Phase 28 — Browser Extension + Offline Vault Access **(L)**
+## Phase 28 — Browser Extension + Offline Vault Access **(L)** [in progress]
 
 **Roadmap item:** Chrome / Firefox / Edge extension for password autofill from the vault, plus an offline-capable PWA mode for read-access to the vault.
 
 Planned capabilities:
-- WebExtension (cross-browser via WebExtensions API)
+- WebExtension (cross-browser via WebExtensions API) *(server-side API contract scaffolding in progress; bearer-token plumbing shipped v3.17.327 — `vault.WebExtensionAuthToken` model + token issue/list/revoke endpoints + `extension_auth_required` decorator for `Authorization: Bearer <token>` calls)*
 - One-click autofill on login pages from `vault.Password` matched by URL pattern
 - Master-password unlock (re-derive AES-GCM key locally; never transmit master)
 - Per-organization isolation (extension UI matches the active org context in-app)

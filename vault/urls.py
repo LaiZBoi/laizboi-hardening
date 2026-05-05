@@ -2,11 +2,16 @@
 Vault URL configuration
 """
 from django.urls import path
-from . import views
+from . import views, extension_views
 
 app_name = 'vault'
 
 urlpatterns = [
+    # Browser extension API (Phase 28)
+    # Token lifecycle — session-authed (used from Settings UI)
+    path('api/extension/tokens/', extension_views.token_list, name='extension_token_list'),
+    path('api/extension/tokens/issue/', extension_views.token_issue, name='extension_token_issue'),
+    path('api/extension/tokens/<int:pk>/revoke/', extension_views.token_revoke, name='extension_token_revoke'),
     path('', views.password_list, name='password_list'),
     path('datatables/', views.password_list_datatables, name='password_list_datatables'),
     path('create/', views.password_create, name='password_create'),

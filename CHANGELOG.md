@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.327] - 2026-05-05
+
+### Added — Phase 28 server-side scaffolding kickoff: WebExtensionAuthToken
+First slice of **Phase 28 — Browser Extension + Offline Vault Access** server-side. The browser-extension binary itself (Chrome / Firefox / Edge `.crx` package, store submission) is a separate codebase; this release ships the bearer-token plumbing it will use to authenticate against the Django API.
+
+- **New model** `vault.WebExtensionAuthToken` — fields: `user`, optional pinned `organization`, opaque `token` (`secrets.token_urlsafe(32)`), user-friendly `label`, `created_at`, `last_used_at`, `expires_at`, `revoked_at`. `is_active` property returns False once expired or revoked. `WebExtensionAuthToken.issue(user=, organization=, label=, ttl_days=)` returns the `(secret_str, row)` tuple — the secret is surfaced exactly once at issue time.
+- **Migration** `vault/migrations/0014_webextensionauthtoken.py` — creates the table with `(user, -created_at)` and `(expires_at)` indexes.
+- **Token-lifecycle endpoints** (session-authed — the user has to be logged into the app to issue or revoke):
+  - `POST /vault/api/extension/tokens/issue/` → creates a token, returns `{id, token, label, organization_id, expires_at, created_at}`. Audit-logs `create` on `vault.WebExtensionAuthToken`.
+  - `GET /vault/api/extension/tokens/` → lists the calling user's tokens, **excludes** the secret material (only metadata + `is_active`).
+  - `DELETE /vault/api/extension/tokens/<pk>/revoke/` (also accepts POST) → marks `revoked_at`. Owner-only (or superuser). Audit-logs `delete`.
+- **`extension_auth_required` decorator** in `vault/extension_auth.py` — extension API calls send `Authorization: Bearer <token>`; the decorator resolves the token, attaches `request.user` + `request.extension_token` + `request.current_organization`, bumps `last_used_at`. Refuses 401 on missing / invalid / expired / revoked tokens. The org-context resolution honours the `X-Organization-Id` header per request, falling back to the token's pinned organization.
+
+### Tests
+- 12 tests in `vault.tests`: `WebExtensionAuthTokenModelTests` (3), `ExtensionAuthDecoratorTests` (5), `ExtensionTokenLifecycleEndpointTests` (4). Covers issue / revoke / expiry / 401 paths / org-id-header override / cross-user revoke 403.
+
+### Roadmap
+- Phase 28 sub-bullet "Master-password unlock" left planned — that ships in v3.17.329.
+- Documented future endpoints in v3.17.331 contract spec.
+
 ## [3.17.319] - 2026-05-05
 
 ### Added — Roadmap page status badges + "Hide shipped" toggle
