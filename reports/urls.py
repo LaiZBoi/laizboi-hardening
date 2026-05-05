@@ -144,6 +144,9 @@ urlpatterns = [
     # v3.17.322 — Phase 19 v4 KPI dashboard (composable widget grid).
     path('kpi/',
          views.kpi_dashboard, name='kpi_dashboard'),
+    # v3.17.323 — Phase 19 v5 operational metrics (MTTR / FTR / queue depth).
+    path('operational-metrics/',
+         views.operational_metrics_report, name='operational_metrics_report'),
     # v3.17.258 — Phase 13 v3 procurement summary report.
     path('procurement-summary/',
          views.procurement_summary, name='procurement_summary'),

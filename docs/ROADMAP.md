@@ -417,7 +417,7 @@ Planned capabilities:
 - Customer health scoring *(shipped — Phase 3.6B)*
 - Executive dashboards *(shipped — Phase 3.6A scorecard)*
 - KPI dashboards *(shipped v3.17.322 — `/reports/kpi/` live widget grid: open tickets, mean age, weekly closed, 30d SLA breaches, MRR/ARR; tenant-scoped; CSV export)*
-- Operational metrics
+- Operational metrics *(shipped v3.17.323 — `/reports/operational-metrics/` mean time to first response + mean time to resolution + first-touch resolution % + queue depth + age distribution; tenant-scoped; CSV export)*
 - Workflow performance analytics
 - Trend analysis
 - Capacity forecasting

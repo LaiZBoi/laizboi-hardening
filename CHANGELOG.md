@@ -139,6 +139,26 @@ First slice of **Phase 28 — Browser Extension + Offline Vault Access** server-
 - Phase 28 sub-bullet "Master-password unlock" left planned — that ships in v3.17.329.
 - Documented future endpoints in v3.17.331 contract spec.
 
+## [3.17.323] - 2026-05-05
+
+### Added — Phase 19 v5 — Operational metrics
+Fourth of seven Phase 19 closeout releases. Adds `/reports/operational-metrics/` — per-window aggregates that drive ops-team performance reviews.
+
+- **`reports.views.operational_metrics_report`** — four headline numbers + two distributions:
+  - **Mean time to first response** — avg of `(first_response_at - created_at)` over tickets that received their first response in the window.
+  - **Mean time to resolution** — avg of `(resolved_at - created_at)` over tickets resolved in the window.
+  - **First-touch resolution rate** — % of resolved-this-window tickets with at most one non-system comment (the resolution itself). Approximation tuned for ops dashboards; exact "no back-and-forth" definitions vary, this one matches the ITIL FTR convention.
+  - **Queue depth distribution** — current open ticket count per queue, sorted by depth.
+  - **Age distribution** — current open tickets bucketed 0-24h / 24-72h / 3-7d / 7-30d / 30+d.
+- **Tenant ACL**: superuser/staff sees MSP-wide; org members see only their organizations.
+- **Window**: `?days=N` (default 30, capped 1–365).
+- **Template** `templates/reports/operational_metrics.html` — four KPI cards + two side-by-side distribution tables.
+- **Tile** added to the Reports home grid.
+- **CSV export** at `?format=csv&days=N` — flat metric rows + per-queue + per-bucket sections.
+
+### Tests
+`OperationalMetricsReportTests` (5 tests): MTTR (response + resolution) windowed averages, first-touch resolution math, queue-depth + age-bucket totals, member tenant scoping, CSV export.
+
 ## [3.17.322] - 2026-05-05
 
 ### Added — Phase 19 v4 — KPI dashboard

@@ -4106,3 +4106,145 @@ class KPIDashboardTests(TestCase):
         body = r.content.decode('utf-8')
         self.assertIn('open_ticket_count', body)
         self.assertIn('mrr_total', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class OperationalMetricsReportTests(TestCase):
+    """Phase 19 v5 (v3.17.323) — operational metrics."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from psa.models import (
+            Queue, Ticket, TicketComment, TicketPriority, TicketStatus,
+            TicketType,
+        )
+        from datetime import timedelta as _td
+        from django.utils import timezone as _tz
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+
+        cls.org = Organization.objects.create(name='OpsCo', slug='ops-co')
+        cls.outsider = Organization.objects.create(name='Out', slug='ops-out')
+        cls.staff = User.objects.create_user('ops-staff', 'os@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('ops-mem', 'om@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+
+        queue = Queue.objects.first()
+        priority = TicketPriority.objects.first()
+        ttype = TicketType.objects.first()
+        new = TicketStatus.objects.filter(slug='new').first()
+        terminal = TicketStatus.objects.filter(is_terminal=True).first()
+
+        now = _tz.now()
+
+        # Resolved-in-window with first response — 2 hour response, 8 hour resolution
+        t1 = Ticket.objects.create(
+            organization=cls.org, subject='res-2h-fr',
+            queue=queue, priority=priority, ticket_type=ttype, status=terminal,
+            first_response_at=now - _td(hours=22),
+            resolved_at=now - _td(hours=16),
+        )
+        Ticket.objects.filter(pk=t1.pk).update(
+            created_at=now - _td(hours=24))
+        # 0 non-system comments → first-touch
+        cls.t1 = t1
+
+        # Resolved with 4h response, 12h resolution, 3 non-system comments → NOT first-touch
+        t2 = Ticket.objects.create(
+            organization=cls.org, subject='res-multi-comments',
+            queue=queue, priority=priority, ticket_type=ttype, status=terminal,
+            first_response_at=now - _td(hours=20),
+            resolved_at=now - _td(hours=12),
+        )
+        Ticket.objects.filter(pk=t2.pk).update(
+            created_at=now - _td(hours=24))
+        for i in range(3):
+            TicketComment.objects.create(ticket=t2, body=f'comment {i}',
+                                          is_system=False)
+        cls.t2 = t2
+
+        # 2 currently open in window
+        for i in range(2):
+            Ticket.objects.create(
+                organization=cls.org, subject=f'open-{i}',
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=new,
+            )
+
+        # 1 outsider open
+        Ticket.objects.create(
+            organization=cls.outsider, subject='outsider-open',
+            queue=queue, priority=priority, ticket_type=ttype, status=new,
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_mttr_calculations(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/operational-metrics/')
+        self.assertEqual(r.status_code, 200)
+        s = r.context['summary']
+        # 2 first responses, avg should land between 2h and 4h.
+        self.assertEqual(s['fr_count'], 2)
+        self.assertGreaterEqual(s['mttr_response_hours'], 2)
+        self.assertLessEqual(s['mttr_response_hours'], 4)
+        # 2 resolutions
+        self.assertEqual(s['res_count'], 2)
+        # avg resolution is between 8h and 12h
+        self.assertGreaterEqual(s['mttr_resolution_hours'], 8)
+        self.assertLessEqual(s['mttr_resolution_hours'], 12)
+
+    def test_first_touch_resolution(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/operational-metrics/')
+        s = r.context['summary']
+        # 1 of 2 resolutions = first-touch (the 0-comment one)
+        self.assertEqual(s['ftr_count'], 1)
+        self.assertEqual(s['ftr_pct'], 50.0)
+
+    def test_queue_depth_and_age_buckets(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/operational-metrics/')
+        # 2 open from OpsCo + 1 outsider = 3 open for staff
+        self.assertEqual(r.context['summary']['open_count'], 3)
+        # All in 0-24h bucket since just created
+        self.assertEqual(r.context['age_buckets']['0-24h'], 3)
+
+    def test_member_scoped(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/operational-metrics/')
+        # Member sees only OpsCo: 2 open + 2 resolved = different counts
+        self.assertEqual(r.context['summary']['open_count'], 2)
+        self.assertEqual(r.context['summary']['res_count'], 2)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/operational-metrics/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('Mean time to first response', body)
+        self.assertIn('First-touch resolution', body)

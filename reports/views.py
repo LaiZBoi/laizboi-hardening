@@ -4355,3 +4355,156 @@ def kpi_dashboard(request):
     return render(request, 'reports/kpi_dashboard.html', {
         'widgets': widgets,
     })
+
+
+@login_required
+def operational_metrics_report(request):
+    """
+    Phase 19 v5 (v3.17.323): operational metrics. Per-window aggregates
+    that drive ops-team performance reviews:
+
+      * Mean time to first response — avg of (first_response_at - created_at)
+        on tickets that received their first response within the window
+      * Mean time to resolution — avg of (resolved_at - created_at) on
+        tickets resolved within the window
+      * First-touch resolution rate — % of resolved-this-window tickets
+        whose ONLY non-system comment was the resolution itself (i.e.
+        no back-and-forth)
+      * Queue depth distribution — current open count per queue
+      * Age distribution — same buckets as ticket-aging report
+
+    Tenant ACL: superuser/staff sees all; org members see only their orgs.
+    Window via `?days=N` (default 30, capped 1–365).
+    """
+    from psa.models import Ticket, TicketComment, Queue
+    from datetime import timedelta as _td
+    from django.utils import timezone as _tz
+    from collections import defaultdict
+    from django.db.models import Count, Q
+
+    try:
+        days = int(request.GET.get('days') or 30)
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 365))
+
+    now = _tz.now()
+    cutoff = now - _td(days=days)
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    org_filter = Q()
+    if not is_staff:
+        ids = []
+        if hasattr(request.user, 'memberships'):
+            ids = list(request.user.memberships.filter(is_active=True)
+                                  .values_list('organization_id', flat=True))
+        org_filter = Q(organization_id__in=ids)
+
+    # Mean time to first response
+    fr_qs = Ticket.objects.filter(org_filter, first_response_at__isnull=False,
+                                   first_response_at__gte=cutoff)
+    total_fr_seconds = 0
+    fr_count = 0
+    for created, fr in fr_qs.values_list('created_at', 'first_response_at'):
+        if created and fr and fr >= created:
+            total_fr_seconds += (fr - created).total_seconds()
+            fr_count += 1
+    mttr_response_hours = round(total_fr_seconds / fr_count / 3600.0, 2) if fr_count else 0
+
+    # Mean time to resolution
+    res_qs = Ticket.objects.filter(org_filter, resolved_at__isnull=False,
+                                    resolved_at__gte=cutoff)
+    total_res_seconds = 0
+    res_count = 0
+    res_ticket_ids = []
+    for tid, created, res in res_qs.values_list('id', 'created_at', 'resolved_at'):
+        if created and res and res >= created:
+            total_res_seconds += (res - created).total_seconds()
+            res_count += 1
+            res_ticket_ids.append(tid)
+    mttr_resolution_hours = round(total_res_seconds / res_count / 3600.0, 2) if res_count else 0
+
+    # First-touch resolution: of tickets resolved in the window, those that
+    # had at most ONE non-system, non-internal "outbound" comment (the
+    # resolution comment itself). Approximate by counting non-system
+    # comments per resolved ticket — <=1 = first-touch.
+    ftr_count = 0
+    if res_ticket_ids:
+        comment_counts = (TicketComment.objects
+                          .filter(ticket_id__in=res_ticket_ids, is_system=False)
+                          .values('ticket_id')
+                          .annotate(c=Count('id')))
+        # Map ticket_id -> count
+        cmap = {row['ticket_id']: row['c'] for row in comment_counts}
+        for tid in res_ticket_ids:
+            # 0 or 1 non-system comments = first-touch
+            if cmap.get(tid, 0) <= 1:
+                ftr_count += 1
+    ftr_pct = round(100.0 * ftr_count / res_count, 1) if res_count else 0
+
+    # Queue depth distribution (current open)
+    qdepth = (Ticket.objects.filter(org_filter, status__is_terminal=False)
+              .values('queue__name')
+              .annotate(c=Count('id')).order_by('-c'))
+    queue_rows = [{'queue': r['queue__name'] or '—', 'open': r['c']}
+                  for r in qdepth]
+
+    # Age distribution buckets (current open)
+    open_qs = Ticket.objects.filter(org_filter, status__is_terminal=False)
+    age_buckets = {'0-24h': 0, '24-72h': 0, '3-7d': 0, '7-30d': 0, '30+d': 0}
+    for ct in open_qs.values_list('created_at', flat=True):
+        if not ct:
+            continue
+        age_h = (now - ct).total_seconds() / 3600.0
+        if age_h < 24:
+            age_buckets['0-24h'] += 1
+        elif age_h < 72:
+            age_buckets['24-72h'] += 1
+        elif age_h < 24 * 7:
+            age_buckets['3-7d'] += 1
+        elif age_h < 24 * 30:
+            age_buckets['7-30d'] += 1
+        else:
+            age_buckets['30+d'] += 1
+
+    summary = {
+        'days': days,
+        'mttr_response_hours': mttr_response_hours,
+        'mttr_resolution_hours': mttr_resolution_hours,
+        'fr_count': fr_count,
+        'res_count': res_count,
+        'ftr_count': ftr_count,
+        'ftr_pct': ftr_pct,
+        'open_count': sum(age_buckets.values()),
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="operational-metrics.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['Metric', 'Value'])
+        w.writerow(['Window days', days])
+        w.writerow(['Mean time to first response (h)', mttr_response_hours])
+        w.writerow(['Mean time to resolution (h)', mttr_resolution_hours])
+        w.writerow(['First responses counted', fr_count])
+        w.writerow(['Resolutions counted', res_count])
+        w.writerow(['First-touch resolution count', ftr_count])
+        w.writerow(['First-touch resolution %', ftr_pct])
+        w.writerow([])
+        w.writerow(['Queue', 'Open'])
+        for q in queue_rows:
+            w.writerow([q['queue'], q['open']])
+        w.writerow([])
+        w.writerow(['Age bucket', 'Open'])
+        for k, v in age_buckets.items():
+            w.writerow([k, v])
+        return resp
+
+    return render(request, 'reports/operational_metrics.html', {
+        'summary': summary,
+        'queue_rows': queue_rows,
+        'age_buckets': age_buckets,
+    })
