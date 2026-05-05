@@ -3132,6 +3132,80 @@ def distributor_pricing(request, pk):
     return render(request, 'integrations/distributor_pricing.html', {'item': item})
 
 
+@login_required
+@user_passes_test(lambda u: u.is_superuser or u.is_staff)
+def distributor_stock_check(request):
+    """
+    Phase 13 v10 (v3.17.272): query live stock for a SKU across ALL
+    active DistributorConnection rows in one shot. Each adapter
+    already implements `check_stock(sku)`; this view fans out, captures
+    timing, and renders a comparison table so a buyer can pick the
+    cheapest in-stock distributor for the same part.
+    """
+    from .models import DistributorConnection
+    from .providers.distributors import get_distributor_provider
+    import time as _time
+
+    sku = (request.GET.get('sku') or '').strip()
+    results = []
+
+    if sku:
+        connections = (DistributorConnection.objects
+                       .filter(is_active=True)
+                       .order_by('name'))
+        for conn in connections:
+            provider = get_distributor_provider(conn)
+            if provider is None:
+                results.append({
+                    'connection': conn,
+                    'ok': False,
+                    'error': 'no provider for this type',
+                    'qty': None, 'unit_price': None, 'elapsed_ms': 0,
+                })
+                continue
+            t0 = _time.monotonic()
+            try:
+                stock = provider.check_stock(sku)
+                pricing = {}
+                try:
+                    pricing = provider.get_pricing(sku, qty=1) or {}
+                except Exception:
+                    pricing = {}
+                elapsed_ms = int((_time.monotonic() - t0) * 1000)
+                if 'error' in stock:
+                    results.append({
+                        'connection': conn,
+                        'ok': False,
+                        'error': stock.get('error'),
+                        'qty': None, 'unit_price': None,
+                        'elapsed_ms': elapsed_ms,
+                    })
+                else:
+                    results.append({
+                        'connection': conn,
+                        'ok': True,
+                        'qty': stock.get('total_qty'),
+                        'unit_price': pricing.get('unit_price'),
+                        'currency': pricing.get('currency') or 'USD',
+                        'elapsed_ms': elapsed_ms,
+                        'error': '',
+                    })
+            except Exception as exc:
+                results.append({
+                    'connection': conn,
+                    'ok': False,
+                    'error': str(exc)[:300],
+                    'qty': None, 'unit_price': None,
+                    'elapsed_ms': int((_time.monotonic() - t0) * 1000),
+                })
+
+    return render(request, 'integrations/distributor_stock_check.html', {
+        'sku': sku,
+        'results': results,
+        'has_query': bool(sku),
+    })
+
+
 @csrf_exempt
 @require_http_methods(['POST'])
 def distributor_webhook(request, token):

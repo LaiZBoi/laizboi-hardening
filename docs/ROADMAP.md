@@ -287,14 +287,14 @@ Planned capabilities:
 
 **Goal:** Improve client interaction visibility and communication consistency.
 
-## Phase 13 — Procurement & Lifecycle Management **(M)** [in progress]
+## Phase 13 — Procurement & Lifecycle Management **(M)** [shipped — v3.17.272]
 
 **Roadmap item:** Advanced Procurement & Asset Lifecycle Management. Extends Phase 4 (Procurement) + the asset lifespan tracking already shipped.
 
 Planned capabilities:
 - Serial lifecycle tracking *(partial — serial capture shipped v3.17.149)*
 - Warranty expiration tracking *(shipped v3.17.254 — `assets_warranty_alerts` management command emails per-org digests with 7-day per-asset cooldown; configurable warning window via `--days N`)*
-- Vendor inventory checks (live stock from distributor APIs)
+- Vendor inventory checks (live stock from distributor APIs) *(shipped v3.17.272 — `/integrations/distributors/stock-check/` fans out `?sku=` to every active DistributorConnection's `check_stock()` + `get_pricing()` so a buyer can compare live qty + unit price across Ingram / Pax8 / SYNNEX in one shot)*
 - Procurement approval workflows *(shipped — Phase 4.1 PR/PO)*
 - Purchase receiving workflows *(shipped — Phase 4.2)*
 - Margin analytics on resold hardware *(shipped v3.17.271 — `/reports/hardware-margin/` joins POs and Invoices by `source_quote_id` to compute resale margin = revenue − cost; per-quote rows + blended summary; CSV export; staff-only)*

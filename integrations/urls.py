@@ -87,6 +87,9 @@ urlpatterns = [
     path('distributors/<int:pk>/delete/', views.distributor_delete, name='distributor_delete'),
     path('distributors/<int:pk>/test/', views.distributor_test, name='distributor_test'),
     path('distributors/<int:pk>/pricing/', views.distributor_pricing, name='distributor_pricing'),
+    # Phase 13 v10 (v3.17.272): cross-distributor stock check.
+    path('distributors/stock-check/', views.distributor_stock_check,
+         name='distributor_stock_check'),
     # Webhook receiver — opaque token in path, signature verified inside.
     path('distributors/webhooks/<str:token>/', views.distributor_webhook,
          name='distributor_webhook'),

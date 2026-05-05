@@ -492,3 +492,87 @@ class AccountingAuditLogTests(TestCase):
         self.assertFalse(row.success)
         self.assertIn('no creds', row.error_message)
         self.assertEqual(row.resource_id, '99')
+
+
+@override_settings(MIDDLEWARE=_AUDIT_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class DistributorStockCheckTests(TestCase):
+    """Phase 13 v10 (v3.17.272): cross-distributor stock check view."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        self.org = Organization.objects.create(name='StockCo')
+        self.user = User.objects.create_user(
+            username='stock_admin', email='sa@x.com', password='pw',
+            is_staff=True, is_superuser=True,
+        )
+        # Active connection that we'll mock provider behavior for
+        self.conn = DistributorConnection.objects.create(
+            organization=self.org, provider_type='ingram_xvantage',
+            name='Ingram-test', is_active=True,
+        )
+        # Disabled connection — should be skipped by the view
+        DistributorConnection.objects.create(
+            organization=self.org, provider_type='pax8',
+            name='Pax8-disabled', is_active=False,
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+        s = self.client.session
+        s['2fa_prompted'] = True
+        s['current_organization_id'] = self.org.id
+        s.save()
+
+    def test_no_query_renders_empty_form(self):
+        r = self.client.get('/integrations/distributors/stock-check/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context['has_query'], False)
+        self.assertEqual(r.context['results'], [])
+
+    def test_query_calls_only_active_providers(self):
+        from unittest import mock
+
+        def fake_get_provider(conn):
+            mp = mock.MagicMock()
+            mp.check_stock.return_value = {'sku': 'X', 'total_qty': 42}
+            mp.get_pricing.return_value = {'sku': 'X', 'unit_price': 9.99,
+                                            'currency': 'USD', 'available_qty': 42}
+            return mp
+
+        with mock.patch('integrations.providers.distributors.get_distributor_provider',
+                         side_effect=fake_get_provider):
+            r = self.client.get('/integrations/distributors/stock-check/?sku=X')
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.context['has_query'])
+        # Only the active connection should be queried.
+        self.assertEqual(len(r.context['results']), 1)
+        row = r.context['results'][0]
+        self.assertEqual(row['connection'].name, 'Ingram-test')
+        self.assertTrue(row['ok'])
+        self.assertEqual(row['qty'], 42)
+        self.assertEqual(row['unit_price'], 9.99)
+
+    def test_provider_error_captured(self):
+        from unittest import mock
+
+        def fake_get_provider(conn):
+            mp = mock.MagicMock()
+            mp.check_stock.return_value = {'error': 'unauthorized'}
+            return mp
+
+        with mock.patch('integrations.providers.distributors.get_distributor_provider',
+                         side_effect=fake_get_provider):
+            r = self.client.get('/integrations/distributors/stock-check/?sku=BAD')
+        row = r.context['results'][0]
+        self.assertFalse(row['ok'])
+        self.assertEqual(row['error'], 'unauthorized')
+        self.assertIsNone(row['qty'])
+
+    def test_unknown_provider_handled(self):
+        from unittest import mock
+        with mock.patch('integrations.providers.distributors.get_distributor_provider',
+                         return_value=None):
+            r = self.client.get('/integrations/distributors/stock-check/?sku=Z')
+        row = r.context['results'][0]
+        self.assertFalse(row['ok'])
+        self.assertIn('no provider', row['error'])

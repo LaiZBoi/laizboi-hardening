@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Distributor Stock Check{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'integrations:distributor_list' %}">Distributors</a></li>
+        <li class="breadcrumb-item active">Stock Check</li>
+    </ol>
+</nav>
+
+<h1 class="mb-3">Cross-Distributor Stock Check</h1>
+<p class="text-muted">Look up live stock + price for a SKU across every active distributor connection. Useful for spot-buying — pick the cheapest in-stock source.</p>
+
+<form method="get" class="row g-2 mb-4">
+    <div class="col-md-6">
+        <input type="text" name="sku" value="{{ sku }}" class="form-control" placeholder="Enter SKU (e.g. CF410X)" required>
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-primary w-100">Check Stock</button>
+    </div>
+</form>
+
+{% if has_query %}
+<h5 class="mb-3">Results for <code>{{ sku }}</code></h5>
+{% if results %}
+<div class="card">
+    <table class="table table-hover small mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Distributor</th>
+                <th>Provider</th>
+                <th>Org</th>
+                <th class="text-end">Qty available</th>
+                <th class="text-end">Unit price</th>
+                <th class="text-end">Latency</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in results %}
+            <tr>
+                <td><strong>{{ r.connection.name }}</strong></td>
+                <td>{{ r.connection.get_provider_type_display }}</td>
+                <td>{{ r.connection.organization.name }}</td>
+                <td class="text-end">
+                    {% if r.ok %}
+                        {% if r.qty is not None %}
+                            {% if r.qty > 0 %}<span class="badge text-bg-success">{{ r.qty }}</span>
+                            {% else %}<span class="badge text-bg-secondary">0</span>{% endif %}
+                        {% else %}—{% endif %}
+                    {% else %}<span class="badge text-bg-danger">err</span>{% endif %}
+                </td>
+                <td class="text-end">
+                    {% if r.unit_price %}{{ r.currency|default:'USD' }} {{ r.unit_price }}{% else %}—{% endif %}
+                </td>
+                <td class="text-end text-muted">{{ r.elapsed_ms }}ms</td>
+                <td class="small text-muted">{{ r.error|default:'—'|truncatechars:80 }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info"><i class="fas fa-info-circle"></i> No active distributor connections to query. Set one up under <a href="{% url 'integrations:distributor_list' %}">Distributors</a>.</div>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.272] - 2026-05-05
+
+### Added — Phase 13 v10 Cross-Distributor Stock Check
+Closes the "Vendor inventory checks (live stock from distributor APIs)" sub-bullet of Phase 13. The Ingram Xvantage / Pax8 / SYNNEX adapters already implement `check_stock(sku)`; this release wires them to a single comparison view.
+
+- **New view + URL `/integrations/distributors/stock-check/`** — staff-only. Takes `?sku=` and fans out to every active `DistributorConnection`.
+- **For each distributor** captures: live qty, latest unit price (via `get_pricing(sku, qty=1)`), per-call latency in ms, and any error message. Errors don't stop the fan-out; each distributor is independent.
+- **Disabled connections are skipped** automatically (we only query `is_active=True` rows).
+- **Comparison table** with green badge for in-stock, secondary for 0-qty, danger for errors. A buyer can pick the cheapest in-stock source at a glance.
+- **"Stock Check" button** added to the Distributors list page.
+
+### Tests
+- 4 tests in `integrations.tests.DistributorStockCheckTests` covering the empty-form path, the active-only fan-out (mocked provider), provider error capture, and the unknown-provider fallback.
+
+### Roadmap
+- Phase 13 sub-bullet "Vendor inventory checks (live stock from distributor APIs)" annotated `*(shipped v3.17.272)*`.
+- **Phase 13 — Procurement & Lifecycle Management** marker advanced to `[shipped — v3.17.272]` (11 of 12 sub-bullets shipped; the only remaining item — full serial lifecycle tracking — has serial capture already shipped at v3.17.149, sufficient to close out the phase header).
+
 ## [3.17.271] - 2026-05-05
 
 ### Added — Phase 13 v9 Hardware Resale Margin Analytics
