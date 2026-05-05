@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.319] - 2026-05-05
+
+### Added — Roadmap page status badges + "Hide shipped" toggle
+Reported by user: Phase 21 was marked `[shipped — v3.17.318]` in the markdown but visually still appears identical to in-progress phases on the rendered roadmap page (which dumps the markdown verbatim). The `[shipped — vN.N.N]` bracket reads as plain heading text and is easy to miss.
+
+- **Server-side post-processing of rendered HTML** (`core.views.roadmap`): every `<h2>` whose text contains `Phase ` gets a `data-phase-status` attribute (`shipped` / `complete` / `in-progress` / `planned`) and a status badge `<span>` injected at the front. The classifier reads the same `[bracket]` markers the JSON feed parses, so the visual treatment stays in sync with the structured status.
+- **Phase-section grouping JS** (`templates/core/roadmap.html`): walks the rendered DOM and wraps each phase-heading-plus-its-content in a `<section data-phase-status="...">`, so the whole block can be hidden as a unit instead of just the heading.
+- **"Hide shipped & complete phases" toggle** at the top of the roadmap page. Default ON (focuses the user on what's left). Choice persists in `localStorage` across page visits. Counter shows current totals (shipped / in progress / planned) regardless of filter state.
+- **Status badge styling**: green pill for shipped+complete, yellow for in-progress, gray for planned. Shipped headings are slightly dimmed (`opacity: 0.65`) for further visual contrast.
+- **Public website note**: The marketing website at `clientst0r.mspreboot.com` pulls the markdown from GitHub raw and renders it without this app's CSS / JS, so the badges + toggle don't apply there. To distinguish shipped phases on the public site, either pull from the JSON feed at `/core/roadmap.json` (status field tells you per-phase) or apply equivalent CSS classes in the website's renderer.
+
+### Tests
+None — pure presentation layer, manual verification on the rendered page.
+
 ## [3.17.318] - 2026-05-05
 
 ### Added — Phase 21 v1/v3/v4/v5 — Offline + scan/NFC + Phase 21 close

@@ -40,8 +40,16 @@ def roadmap(request):
     Public roadmap page rendered from `docs/ROADMAP.md`. No login required —
     same as /core/about/. Markdown is rendered server-side so the file
     stays the single source of truth (also visible on GitHub at /docs/ROADMAP.md).
+
+    v3.17.319: phase H2 headings get `data-phase-status` attributes
+    (`shipped` / `complete` / `in-progress` / `planned`) so the page
+    template can visually distinguish them — green badges + muted
+    colors for shipped/complete, an in-progress badge, etc. Plus a
+    "Hide shipped phases" toggle in the page UI so users can focus on
+    what's left.
     """
     import os
+    import re as _re
     from pathlib import Path
     from django.conf import settings
     from markdown import markdown
@@ -52,6 +60,47 @@ def roadmap(request):
     except OSError:
         raw = '# Roadmap\n\nThe roadmap file could not be loaded.'
     html = markdown(raw, extensions=['extra', 'tables', 'sane_lists', 'toc'])
+
+    # Tag each Phase H2 with its status so CSS can style + so the
+    # toggle JS can hide shipped ones.
+    def _classify(match):
+        h2_open, content, h2_close = match.group(1), match.group(2), match.group(3)
+        # Look at the whole H2 inner text for status hints
+        text = _re.sub(r'<[^>]+>', '', content).lower()
+        status = 'planned'
+        if '[complete]' in text or '— complete' in text:
+            status = 'complete'
+        elif 'shipped' in text:  # `[shipped — vN.N.N]` or `**— shipped**`
+            status = 'shipped'
+        elif '[in progress]' in text or '[in-progress]' in text:
+            status = 'in-progress'
+        # Only tag if this looks like a Phase heading
+        if 'phase ' not in text:
+            return match.group(0)
+        # Inject the data attribute + a status badge span before the
+        # status bracket so screen readers + visual users get the same
+        # signal.
+        badge_map = {
+            'shipped':     '<span class="phase-badge phase-shipped">Shipped</span>',
+            'complete':    '<span class="phase-badge phase-complete">Complete</span>',
+            'in-progress': '<span class="phase-badge phase-inprogress">In progress</span>',
+            'planned':     '<span class="phase-badge phase-planned">Planned</span>',
+        }
+        badge = badge_map[status]
+        new_open = h2_open.replace(
+            '<h2',
+            f'<h2 data-phase-status="{status}"',
+            1,
+        )
+        return f'{new_open}{badge}{content}{h2_close}'
+
+    html = _re.sub(
+        r'(<h2[^>]*>)(.*?)(</h2>)',
+        _classify,
+        html,
+        flags=_re.DOTALL,
+    )
+
     return render(request, 'core/roadmap.html', {
         'roadmap_html': html,
         'roadmap_source_url': 'https://github.com/agit8or1/clientst0r/blob/main/docs/ROADMAP.md',

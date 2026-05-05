@@ -16,6 +16,54 @@
 [data-bs-theme="dark"] .roadmap-content code { background: rgba(255,255,255,0.08); }
 .roadmap-content blockquote { border-left: 3px solid var(--bs-primary); padding-left: 1rem; color: var(--bs-secondary-color); }
 .roadmap-content hr { margin: 1.5rem 0; border-color: var(--bs-border-color, rgba(0,0,0,.1)); }
+
+/* v3.17.319 — phase status badges + dim shipped phase content */
+.phase-badge {
+    display: inline-block;
+    font-size: .65rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-right: .5rem;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.phase-badge.phase-shipped, .phase-badge.phase-complete {
+    background: var(--bs-success-bg-subtle, #d1e7dd);
+    color: var(--bs-success-text, #0f5132);
+}
+.phase-badge.phase-inprogress {
+    background: var(--bs-warning-bg-subtle, #fff3cd);
+    color: var(--bs-warning-text, #664d03);
+}
+.phase-badge.phase-planned {
+    background: var(--bs-secondary-bg-subtle, #e9ecef);
+    color: var(--bs-secondary-text, #495057);
+}
+/* Shipped phases: dim the heading + content (anything between this h2
+   and the next h2). The +~ general sibling combinator dims everything
+   after a shipped h2 until the next h2 resets via specificity. */
+.roadmap-content h2[data-phase-status="shipped"],
+.roadmap-content h2[data-phase-status="complete"] {
+    opacity: 0.65;
+}
+.roadmap-content.hide-shipped h2[data-phase-status="shipped"],
+.roadmap-content.hide-shipped h2[data-phase-status="complete"] {
+    display: none;
+}
+.roadmap-content.hide-shipped h2[data-phase-status="shipped"] ~ *:not(h2),
+.roadmap-content.hide-shipped h2[data-phase-status="complete"] ~ *:not(h2) {
+    /* fall back to JS-driven hiding because pure CSS can't easily
+       hide "everything until the next h2" — the toggle JS does it. */
+}
+.phase-toggle-bar {
+    background: var(--bs-tertiary-bg, rgba(0,0,0,0.04));
+    border-radius: 6px;
+    padding: .5rem .75rem;
+    margin-bottom: 1rem;
+    font-size: .85rem;
+}
 </style>
 {% endblock %}
 
@@ -34,11 +82,85 @@
     for what's already landed in your installed version.
 </div>
 
+<div class="phase-toggle-bar roadmap-content d-flex align-items-center gap-3">
+    <span><i class="fas fa-filter me-1"></i> View:</span>
+    <div class="form-check form-check-inline mb-0">
+        <input class="form-check-input" type="checkbox" id="hideShippedPhases" checked>
+        <label class="form-check-label" for="hideShippedPhases">
+            Hide shipped &amp; complete phases
+        </label>
+    </div>
+    <span class="text-muted small ms-auto">
+        <span id="phaseShippedCount">0</span> shipped
+        · <span id="phaseInProgressCount">0</span> in progress
+        · <span id="phasePlannedCount">0</span> planned
+    </span>
+</div>
+
 <div class="card roadmap-content">
     <div class="card-body">
-        <div class="roadmap-content">
+        <div class="roadmap-content" id="roadmapContent">
             {{ roadmap_html|safe }}
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    var content = document.getElementById('roadmapContent');
+    var toggle = document.getElementById('hideShippedPhases');
+    if (!content || !toggle) return;
+
+    // Walk every Phase H2 and group it with the nodes that follow until
+    // the next Phase H2. We'll wrap each group in a <section> so the
+    // toggle can hide the whole block, not just the heading.
+    var headings = content.querySelectorAll('h2[data-phase-status]');
+    headings.forEach(function(h2) {
+        var section = document.createElement('section');
+        section.className = 'phase-section phase-status-' + h2.getAttribute('data-phase-status');
+        section.setAttribute('data-phase-status', h2.getAttribute('data-phase-status'));
+        var parent = h2.parentNode;
+        parent.insertBefore(section, h2);
+        var node = h2;
+        while (node && !(node.tagName === 'H2' && node !== h2 && node.hasAttribute('data-phase-status'))) {
+            var next = node.nextSibling;
+            section.appendChild(node);
+            node = next;
+        }
+    });
+
+    // Count by status for the small summary badge
+    var counts = {shipped: 0, complete: 0, 'in-progress': 0, planned: 0};
+    content.querySelectorAll('section.phase-section').forEach(function(s) {
+        var st = s.getAttribute('data-phase-status');
+        if (counts[st] !== undefined) counts[st] += 1;
+    });
+    var byId = function(id) { return document.getElementById(id); };
+    if (byId('phaseShippedCount')) byId('phaseShippedCount').textContent = counts.shipped + counts.complete;
+    if (byId('phaseInProgressCount')) byId('phaseInProgressCount').textContent = counts['in-progress'];
+    if (byId('phasePlannedCount')) byId('phasePlannedCount').textContent = counts.planned;
+
+    function applyFilter() {
+        var hide = toggle.checked;
+        content.querySelectorAll('section.phase-section').forEach(function(s) {
+            var st = s.getAttribute('data-phase-status');
+            if (hide && (st === 'shipped' || st === 'complete')) {
+                s.style.display = 'none';
+            } else {
+                s.style.display = '';
+            }
+        });
+    }
+    toggle.addEventListener('change', applyFilter);
+    // Persist preference across visits
+    try {
+        var saved = localStorage.getItem('roadmapHideShipped');
+        if (saved !== null) toggle.checked = saved === '1';
+    } catch (e) {}
+    toggle.addEventListener('change', function() {
+        try { localStorage.setItem('roadmapHideShipped', toggle.checked ? '1' : '0'); } catch (e) {}
+    });
+    applyFilter();
+})();
+</script>
 {% endblock %}
