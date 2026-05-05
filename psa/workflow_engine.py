@@ -241,6 +241,41 @@ def run_action(ticket, action: Dict[str, Any]) -> None:
         ticket.assigned_to = ranked.first()
         ticket.save(update_fields=['assigned_to', 'updated_at'])
 
+    elif atype == 'create_charge':
+        # Phase 14 v11 (v3.17.289): cross-module — when a ticket workflow
+        # decides to bill the client (e.g. after-hours emergency, expedited
+        # part), record a one-off Charge against the ticket's organization.
+        from datetime import date as _d
+        from decimal import Decimal as _D
+        from .models import Charge as _C
+        try:
+            amount = _D(str(action.get('amount') or '0'))
+        except Exception:
+            raise ValueError('create_charge: invalid "amount"')
+        if amount <= 0:
+            raise ValueError('create_charge: "amount" must be positive')
+        description = (action.get('description') or
+                        f'Auto-charge for ticket {ticket.ticket_number}')[:300]
+        is_credit = bool(action.get('is_credit'))
+        # The MSP tenant that owns the workflow rule = ticket.organization;
+        # the client to bill is the same since tickets are filed against
+        # the client_org. Some installs use a separate `organization` for
+        # the MSP and `client_org` for the customer; default to ticket.organization
+        # for both, which works for single-tenant SaaS.
+        client = getattr(ticket, 'client_org', None) or ticket.organization
+        _C.objects.create(
+            organization=ticket.organization,
+            client_org=client,
+            description=description,
+            amount=amount,
+            currency=action.get('currency') or 'USD',
+            charge_date=_d.today(),
+            is_credit=is_credit,
+            recurrence='once',
+            notes=f'Auto-created by workflow rule for ticket '
+                  f'{ticket.ticket_number}',
+        )
+
     elif atype == 'fire_rule':
         # Phase 14 v4 (v3.17.285): multi-step orchestration. Chain
         # to another WorkflowRule by name within the same org.

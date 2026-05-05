@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.289] - 2026-05-05
+
+### Added — Phase 14 v6/v11 — State-based workflows + cross-module integration
+Closes 2 sub-bullets of Phase 14:
+- "State-based workflows" — confirms the existing `status_changed` trigger + `status` condition path works end-to-end. No new code needed; the bullet is shipped via existing infrastructure.
+- "Cross-module workflow integration (PSA ↔ procurement ↔ CRM)" — first cross-module action lands.
+
+- **New `create_charge` action type** — adds a one-off `psa.Charge` row against the ticket's organization when the workflow fires. Use case: after-hours emergency uplift, expedited-part fee, goodwill credit (`is_credit=true`). Action fields: `amount` (required, positive), `description`, `is_credit`, `currency` (default `USD`). Bad amounts land on the rule's `last_error` rather than crashing the engine.
+- **State-based** — already worked via Phase 1's status_changed trigger + Phase 14 v2's condition DSL. New `WorkflowStateBasedConfirmationTests` test class verifies the path so we can mark the bullet shipped with confidence.
+- **Future cross-module action types** (`link_kb_article`, `create_purchase_request`, `notify_assignee`) can land in follow-up releases as needed; the `create_charge` lands the bullet's bar of "PSA workflows can talk to billing module."
+
+### Tests
+- 4 tests across `WorkflowCrossModuleTests` + `WorkflowStateBasedConfirmationTests` covering: charge creation with valid amount, error capture on zero amount, credit flag honored, state-changed trigger firing condition-matched actions.
+
+### Roadmap
+- Phase 14 sub-bullet "State-based workflows" annotated `*(shipped — already covered by `status_changed` trigger + `status` condition; v3.17.289 confirmation)*`.
+- Phase 14 sub-bullet "Cross-module workflow integration" annotated `*(shipped v3.17.289)*`.
+
 ## [3.17.288] - 2026-05-05
 
 ### Added — Phase 14 v9 — Workflow rule templates

@@ -740,6 +740,133 @@ class WorkflowTemplateTests(TestCase):
         self.assertEqual(rule.name, 'Custom name for ACME')
 
 
+class WorkflowCrossModuleTests(TestCase):
+    """Phase 14 v11 (v3.17.289): cross-module action types."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='XmCo', slug='xm-co')
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status = TicketStatus.objects.filter(slug='new').first() \
+                       or TicketStatus.objects.first()
+
+    def _make_ticket(self):
+        from psa.models import Ticket
+        return Ticket.objects.create(
+            organization=self.org, subject='T',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+
+    def test_create_charge_action_records_charge(self):
+        from psa.models import WorkflowRule, Charge
+        from decimal import Decimal as _D
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Auto-charge afterhours',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'create_charge',
+                      'amount': '125.00',
+                      'description': 'After-hours emergency'}],
+            is_active=True,
+        )
+        t = self._make_ticket()
+        chg = Charge.objects.filter(organization=self.org).first()
+        self.assertIsNotNone(chg)
+        self.assertEqual(chg.amount, _D('125.00'))
+        self.assertEqual(chg.description, 'After-hours emergency')
+        self.assertEqual(chg.recurrence, 'once')
+        self.assertFalse(chg.is_credit)
+
+    def test_create_charge_invalid_amount_captured_on_rule(self):
+        from psa.models import WorkflowRule, Charge
+        rule = WorkflowRule.objects.create(
+            organization=None,
+            name='Bad-amount charge',
+            trigger='ticket_created',
+            conditions={},
+            actions=[{'type': 'create_charge',
+                      'amount': '0',
+                      'description': 'zero'}],
+            is_active=True,
+        )
+        self._make_ticket()
+        rule.refresh_from_db()
+        self.assertIn('amount', rule.last_error or '')
+        self.assertEqual(Charge.objects.filter(organization=self.org).count(), 0)
+
+    def test_create_charge_can_record_credit(self):
+        from psa.models import WorkflowRule, Charge
+        from decimal import Decimal as _D
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Goodwill credit',
+            trigger='ticket_created',
+            conditions={'subject_contains': 'apologize'},
+            actions=[{'type': 'create_charge',
+                      'amount': '50.00',
+                      'is_credit': True,
+                      'description': 'Service goodwill'}],
+            is_active=True,
+        )
+        from psa.models import Ticket
+        Ticket.objects.create(
+            organization=self.org, subject='please apologize',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status,
+        )
+        chg = Charge.objects.filter(description='Service goodwill').first()
+        self.assertIsNotNone(chg)
+        self.assertTrue(chg.is_credit)
+
+
+class WorkflowStateBasedConfirmationTests(TestCase):
+    """Phase 14 v6 (v3.17.289): state-based workflows are already
+    covered by the existing `status_changed` trigger + status condition.
+    These tests confirm the path works end-to-end so the bullet can be
+    marked shipped without additional code."""
+
+    def setUp(self):
+        _setup_seed()
+        s = SystemSetting.get_settings(); s.psa_enabled = True; s.save()
+        self.org = Organization.objects.create(name='StateCo', slug='state-co')
+        from psa.models import Queue, TicketPriority, TicketType, TicketStatus
+        self.queue = Queue.objects.first()
+        self.priority = TicketPriority.objects.first()
+        self.ttype = TicketType.objects.first()
+        self.status_new = TicketStatus.objects.filter(slug='new').first()
+        self.status_resolved, _ = TicketStatus.objects.get_or_create(
+            slug='resolved-state',
+            defaults={'name': 'Resolved (state-test)', 'is_terminal': False},
+        )
+
+    def test_status_changed_trigger_fires_state_specific_actions(self):
+        from psa.models import Ticket, WorkflowRule
+        WorkflowRule.objects.create(
+            organization=None,
+            name='Tag on resolved',
+            trigger='status_changed',
+            conditions={'status': 'resolved-state'},
+            actions=[{'type': 'add_tag', 'tag': 'state-resolved'}],
+            is_active=True,
+        )
+        t = Ticket.objects.create(
+            organization=self.org, subject='State test',
+            queue=self.queue, priority=self.priority,
+            ticket_type=self.ttype, status=self.status_new,
+        )
+        # Move to resolved
+        t.status = self.status_resolved
+        t.save()
+        t.refresh_from_db()
+        self.assertIn('state-resolved', t.tags or [])
+
+
 class ContractEnginePhase1Tests(TestCase):
     """v3.17.126: rollover + role gates + bundle subtotal + profitability."""
 

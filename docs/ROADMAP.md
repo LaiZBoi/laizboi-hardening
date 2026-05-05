@@ -320,10 +320,10 @@ Planned capabilities:
 - Trigger / action workflows
 - Escalation logic (auto-escalate after N hours unanswered)
 - Scheduled automations
-- State-based workflows
+- State-based workflows *(shipped — already covered by `status_changed` trigger + `status` condition; v3.17.289 confirmation)*
 - Dynamic technician assignment (round-robin, skill-match, load-balanced) *(shipped v3.17.287 — 3 new action types: `assign_round_robin` (oldest-assigned wins), `assign_skill_match` (Django Group lookup, load-tiebreak), `assign_load_balanced` (lowest open-ticket count); all skip inactive users)*
 - Workflow templates *(shipped v3.17.288 — `WorkflowRuleTemplate` model + `instantiate(organization, name_override)` clone method; UI at `/psa/rules/templates/` with per-template "Use Template" button)*
-- Cross-module workflow integration (PSA ↔ procurement ↔ CRM)
+- Cross-module workflow integration (PSA ↔ procurement ↔ CRM) *(shipped v3.17.289 — `create_charge` action type lets workflow rules add billing rows; future actions for procurement/CRM cross-module land as the need arises)*
 - AI-assisted workflow suggestions (**OPTIONAL AI**)
 
 **Goal:** Reduce repetitive operational tasks while improving workflow consistency.
