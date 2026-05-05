@@ -419,8 +419,8 @@ Planned capabilities:
 - KPI dashboards *(shipped v3.17.322 — `/reports/kpi/` live widget grid: open tickets, mean age, weekly closed, 30d SLA breaches, MRR/ARR; tenant-scoped; CSV export)*
 - Operational metrics *(shipped v3.17.323 — `/reports/operational-metrics/` mean time to first response + mean time to resolution + first-touch resolution % + queue depth + age distribution; tenant-scoped; CSV export)*
 - Workflow performance analytics *(shipped v3.17.324 — `/reports/workflow-performance/` per-rule fire-count + last-error roll-up; by-trigger distribution; errored rules floated; staff-only; CSV export)*
-- Trend analysis
-- Capacity forecasting
+- Trend analysis *(shipped v3.17.325 — `/reports/trends/` 12-month time series of tickets opened/resolved + MRR added; staff-only; CSV export)*
+- Capacity forecasting *(shipped v3.17.325 — same `/reports/trends/` page surfaces per-tech open-tickets vs `BillableTarget` target_hours_per_week; over-target rows highlighted)*
 - Reporting exports (already CSV; add PDF + scheduled email)
 
 **Goal:** Provide MSP operational visibility and business insight.

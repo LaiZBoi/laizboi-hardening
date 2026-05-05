@@ -139,6 +139,23 @@ First slice of **Phase 28 — Browser Extension + Offline Vault Access** server-
 - Phase 28 sub-bullet "Master-password unlock" left planned — that ships in v3.17.329.
 - Documented future endpoints in v3.17.331 contract spec.
 
+## [3.17.325] - 2026-05-05
+
+### Added — Phase 19 v7 — Trend analysis + capacity forecasting (combined)
+Sixth of seven Phase 19 closeout releases. Closes two roadmap sub-bullets at once: "Trend analysis" and "Capacity forecasting". New `/reports/trends/` shows the last 12 months of operational + revenue trends side-by-side with per-tech capacity load.
+
+- **`reports.views.trends_report`** — single page with two sections:
+  - **Trends section** — month-by-month time series for the last 12 months: tickets opened (by `created_at` month), tickets resolved (by `resolved_at` month), and MRR added (sum of new active contracts' monthly equivalent based on `billing_frequency`).
+  - **Capacity section** — per-tech open ticket count vs. configured `BillableTarget.target_hours_per_week`. Load ratio = `(open_count × 2h heuristic) / target_hours`; rows over 100% are highlighted to flag overload before sprint planning.
+- **Heuristic note**: 2 hours per open ticket is the standard MSP capacity proxy — override later if your shop tracks per-ticket effort estimates.
+- **Tenant ACL**: staff/superuser only — capacity + MRR data is MSP-internal.
+- **Template** `templates/reports/trends.html` — four KPI cards over a left/right split (12-month trend table | per-tech capacity table); over-target rows in `table-warning`.
+- **Tile** added to the Reports home grid.
+- **CSV export** at `?format=csv` — two sections (`# Trends`, `# Capacity`) so a single spreadsheet pivots both.
+
+### Tests
+`TrendsReportTests` (5 tests): 12-month trend row count + opened/resolved totals, capacity load math (over-target + under-target), MRR-added math, non-staff 404 gate, CSV export.
+
 ## [3.17.324] - 2026-05-05
 
 ### Added — Phase 19 v6 — Workflow performance analytics

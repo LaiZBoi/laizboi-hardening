@@ -4360,3 +4360,145 @@ class WorkflowPerformanceReportTests(TestCase):
         body = r.content.decode('utf-8')
         self.assertIn('Auto-assign P1', body)
         self.assertIn('SMTP timeout', body)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class TrendsReportTests(TestCase):
+    """Phase 19 v7 (v3.17.325) — trend analysis + capacity forecasting."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Membership, Role
+        from core.models import Organization, SystemSetting
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from psa.models import (
+            Queue, Ticket, TicketPriority, TicketStatus, TicketType, Contract,
+        )
+        from resourcing.models import BillableTarget
+        from datetime import date as _date, timedelta as _td
+        from decimal import Decimal as _D
+        from django.utils import timezone as _tz
+        call_command('psa_seed_defaults', verbosity=0)
+        s = SystemSetting.get_settings()
+        s.psa_enabled = True
+        s.save()
+
+        cls.org = Organization.objects.create(name='TrCo', slug='tr-co')
+        cls.staff = User.objects.create_user('tr-staff', 'ts@x.com', 'pw',
+                                              is_staff=True, is_superuser=True)
+        cls.member = User.objects.create_user('tr-mem', 'tm@x.com', 'pw')
+        Membership.objects.create(user=cls.member, organization=cls.org,
+                                   role=Role.OWNER, is_active=True)
+        cls.tech1 = User.objects.create_user('tech1', 't1@x.com', 'pw')
+        cls.tech2 = User.objects.create_user('tech2', 't2@x.com', 'pw')
+
+        queue = Queue.objects.first()
+        priority = TicketPriority.objects.first()
+        ttype = TicketType.objects.first()
+        new = TicketStatus.objects.filter(slug='new').first()
+        terminal = TicketStatus.objects.filter(is_terminal=True).first()
+
+        now = _tz.now()
+
+        # 3 tickets opened this month
+        for i in range(3):
+            Ticket.objects.create(
+                organization=cls.org, subject=f'this-month-{i}',
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=new,
+            )
+        # 2 resolved this month
+        for i in range(2):
+            t = Ticket.objects.create(
+                organization=cls.org, subject=f'res-{i}',
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=terminal,
+                resolved_at=now,
+            )
+        # Tech assignments — tech1 over target, tech2 within
+        for i in range(20):
+            Ticket.objects.create(
+                organization=cls.org, subject=f'tech1-{i}',
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=new,
+                assigned_to=cls.tech1,
+            )
+        for i in range(2):
+            Ticket.objects.create(
+                organization=cls.org, subject=f'tech2-{i}',
+                queue=queue, priority=priority,
+                ticket_type=ttype, status=new,
+                assigned_to=cls.tech2,
+            )
+        BillableTarget.objects.create(user=cls.tech1, target_hours_per_week=20)
+        BillableTarget.objects.create(user=cls.tech2, target_hours_per_week=40)
+
+        # 1 active monthly contract started this month
+        Contract.objects.create(
+            organization=cls.org, client_org=cls.org,
+            name='New monthly',
+            start_date=_date.today(),
+            status='active', billing_frequency='monthly',
+            recurring_amount=_D('500'),
+        )
+
+    def _login(self, c, user, org=None):
+        c.force_login(user)
+        s = c.session
+        s['2fa_prompted'] = True
+        if org is not None:
+            s['current_organization_id'] = org.id
+        s.save()
+
+    def test_trend_rows_present_for_12_months(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/trends/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.context['trend_rows']), 12)
+        # Total opened includes assigned (20+2) + open (3) + resolved (2) but
+        # we only counted via created_at; resolved still counts as "opened".
+        # Total = 3 + 2 + 20 + 2 = 27 across all months, mostly current.
+        self.assertGreaterEqual(r.context['summary']['total_opened_12m'], 27)
+        self.assertEqual(r.context['summary']['total_resolved_12m'], 2)
+
+    def test_capacity_load_calculation(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/trends/')
+        cap = {row['username']: row for row in r.context['capacity_rows']}
+        # tech1: 20 tickets * 2h = 40h vs 20h target = 200% load (over)
+        self.assertEqual(cap['tech1']['open_count'], 20)
+        self.assertEqual(cap['tech1']['load_ratio_pct'], 200.0)
+        self.assertTrue(cap['tech1']['over_target'])
+        # tech2: 2 * 2 = 4h vs 40h = 10% load (under)
+        self.assertEqual(cap['tech2']['load_ratio_pct'], 10.0)
+        self.assertFalse(cap['tech2']['over_target'])
+
+    def test_mrr_added_present(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/trends/')
+        self.assertEqual(int(r.context['summary']['total_mrr_added_12m']), 500)
+
+    def test_non_staff_blocked(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.member, self.org)
+        r = c.get('/reports/trends/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_csv_export(self):
+        from django.test import Client
+        c = Client()
+        self._login(c, self.staff)
+        r = c.get('/reports/trends/?format=csv')
+        self.assertEqual(r['Content-Type'], 'text/csv')
+        body = r.content.decode('utf-8')
+        self.assertIn('# Trends', body)
+        self.assertIn('# Capacity', body)
+        self.assertIn('tech1', body)

@@ -4610,3 +4610,149 @@ def workflow_performance_report(request):
         'trigger_rows': trigger_rows,
         'summary': summary,
     })
+
+
+@login_required
+def trends_report(request):
+    """
+    Phase 19 v7 (v3.17.325): trend analysis + capacity forecasting.
+    Combines two sub-bullets:
+
+      Trends section — month-by-month time series for the last 12 months:
+        * Tickets opened (count by created_at month)
+        * Tickets resolved (count by resolved_at month)
+        * MRR added (sum of new active contracts' monthly equivalent)
+
+      Capacity section — per-tech load vs target:
+        * Open ticket count assigned to each user
+        * Configured `BillableTarget.target_hours_per_week`
+        * Utilization proxy: open_count / target_hours (load ratio)
+
+    Tenant ACL: staff/superuser only — capacity + MRR data is MSP-internal.
+    """
+    from psa.models import Ticket, Contract
+    from resourcing.models import BillableTarget
+    from datetime import date as _date
+    from decimal import Decimal as _D
+    from collections import defaultdict
+    from django.db.models import Count, Q
+    from django.contrib.auth.models import User
+    from dateutil.relativedelta import relativedelta as _rd
+
+    is_staff = (request.user.is_superuser
+                or getattr(request, 'is_staff_user', False))
+    if not is_staff:
+        from django.http import Http404
+        raise Http404('Trends + capacity report is staff-only')
+
+    today = _date.today().replace(day=1)
+    months = []
+    for i in range(11, -1, -1):  # 12 months oldest first
+        m = today - _rd(months=i)
+        months.append(m)
+
+    # Per-month opened/resolved counts
+    opened_by_month = defaultdict(int)
+    resolved_by_month = defaultdict(int)
+    cutoff = months[0]
+    cutoff_dt = cutoff
+    for ct in Ticket.objects.filter(created_at__date__gte=cutoff_dt).values_list(
+            'created_at', flat=True):
+        if ct:
+            key = ct.strftime('%Y-%m')
+            opened_by_month[key] += 1
+    for rt in Ticket.objects.filter(resolved_at__date__gte=cutoff_dt).values_list(
+            'resolved_at', flat=True):
+        if rt:
+            key = rt.strftime('%Y-%m')
+            resolved_by_month[key] += 1
+
+    # MRR added per month — sum of new active contracts' monthly equiv
+    mrr_added_by_month = defaultdict(lambda: _D('0'))
+    contracts = (Contract.objects.filter(status='active',
+                                          start_date__gte=cutoff_dt)
+                 .exclude(billing_frequency='none'))
+    for c in contracts:
+        amount = c.effective_recurring_amount
+        if amount <= 0:
+            continue
+        if c.billing_frequency == 'monthly':
+            mrr = amount
+        elif c.billing_frequency == 'quarterly':
+            mrr = (amount / _D('3'))
+        elif c.billing_frequency == 'yearly':
+            mrr = (amount / _D('12'))
+        else:
+            continue
+        key = c.start_date.strftime('%Y-%m')
+        mrr_added_by_month[key] += mrr
+
+    trend_rows = []
+    for m in months:
+        key = m.strftime('%Y-%m')
+        trend_rows.append({
+            'month': key,
+            'opened': opened_by_month.get(key, 0),
+            'resolved': resolved_by_month.get(key, 0),
+            'mrr_added': mrr_added_by_month.get(key, _D('0')).quantize(_D('0.01')),
+        })
+
+    # Capacity section — per-assigned-tech open count vs BillableTarget
+    open_assignments = (Ticket.objects.filter(
+                            status__is_terminal=False,
+                            assigned_to__isnull=False)
+                        .values('assigned_to', 'assigned_to__username')
+                        .annotate(open_count=Count('id'))
+                        .order_by('-open_count'))
+
+    targets_by_user = {bt.user_id: bt.target_hours_per_week
+                       for bt in BillableTarget.objects.filter(is_active=True)}
+
+    capacity_rows = []
+    for row in open_assignments:
+        target = targets_by_user.get(row['assigned_to'])
+        load_ratio = None
+        if target and target > 0:
+            # rough proxy: 1 open ticket ≈ 2 hours work (industry rule of thumb)
+            load_ratio = round(float(row['open_count']) * 2.0 / float(target) * 100, 1)
+        capacity_rows.append({
+            'username': row['assigned_to__username'],
+            'open_count': row['open_count'],
+            'target_hours': target,
+            'load_ratio_pct': load_ratio,
+            'over_target': bool(load_ratio and load_ratio > 100),
+        })
+
+    # Trend totals
+    summary = {
+        'total_opened_12m': sum(r['opened'] for r in trend_rows),
+        'total_resolved_12m': sum(r['resolved'] for r in trend_rows),
+        'total_mrr_added_12m': sum((r['mrr_added'] for r in trend_rows), _D('0')),
+        'capacity_users': len(capacity_rows),
+        'capacity_over_target': sum(1 for r in capacity_rows if r['over_target']),
+    }
+
+    if (request.GET.get('format') or '').lower() == 'csv':
+        import csv as _csv
+        from django.http import HttpResponse as _HR
+        resp = _HR(content_type='text/csv')
+        resp['Content-Disposition'] = 'attachment; filename="trends-capacity.csv"'
+        w = _csv.writer(resp)
+        w.writerow(['# Trends'])
+        w.writerow(['Month', 'Opened', 'Resolved', 'MRR added'])
+        for r in trend_rows:
+            w.writerow([r['month'], r['opened'], r['resolved'], str(r['mrr_added'])])
+        w.writerow([])
+        w.writerow(['# Capacity'])
+        w.writerow(['User', 'Open tickets', 'Target h/wk', 'Load %'])
+        for r in capacity_rows:
+            w.writerow([r['username'], r['open_count'],
+                        r['target_hours'] if r['target_hours'] is not None else '',
+                        r['load_ratio_pct'] if r['load_ratio_pct'] is not None else ''])
+        return resp
+
+    return render(request, 'reports/trends.html', {
+        'trend_rows': trend_rows,
+        'capacity_rows': capacity_rows,
+        'summary': summary,
+    })
