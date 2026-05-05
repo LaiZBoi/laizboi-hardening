@@ -590,12 +590,12 @@ Dependencies: existing AccountingConnection pattern. Builds on Phase 15.
 
 Cross-references: Phase 36 (Agreement Reconciliation) layers an MSP-specific reconciliation flow — included-vs-billable labor, over/under-served clients, pre-invoice approval — on top of the GL-level reconciliation this phase covers.
 
-## Phase 28 — Browser Extension + Offline Vault Access **(L)** [in progress]
+## Phase 28 — Browser Extension + Offline Vault Access **(L)** [shipped — v3.17.331 — server-side API; extension binary out of scope]
 
 **Roadmap item:** Chrome / Firefox / Edge extension for password autofill from the vault, plus an offline-capable PWA mode for read-access to the vault.
 
 Planned capabilities:
-- WebExtension (cross-browser via WebExtensions API) *(server-side API contract scaffolding in progress; bearer-token plumbing shipped v3.17.327 — `vault.WebExtensionAuthToken` model + token issue/list/revoke endpoints + `extension_auth_required` decorator for `Authorization: Bearer <token>` calls)*
+- WebExtension (cross-browser via WebExtensions API) *(shipped v3.17.327–v3.17.331 — server-side API surface fully shipped: `vault.WebExtensionAuthToken` model + bearer-auth + autofill / sync / totp / reveal / verify-master / generate endpoints; complete contract documented in `docs/browser-extension-api.md`. The extension binary itself (Chrome / Firefox / Edge `.crx` package, store submission) is a separate codebase outside this repo)*
 - One-click autofill on login pages from `vault.Password` matched by URL pattern *(shipped v3.17.328 — `/vault/api/extension/autofill/?url=...` returns matches by host suffix; per-call audit log)*
 - Master-password unlock (re-derive AES-GCM key locally; never transmit master) *(shipped v3.17.329 — `GET /vault/api/extension/verify-master/nonce/` issues a 32-byte URL-safe nonce; `POST /vault/api/extension/verify-master/` constant-time-verifies HMAC-SHA256 keyed by the user's stored password hash; server never sees the master password)*
 - Per-organization isolation (extension UI matches the active org context in-app) *(shipped v3.17.330 — `extension_auth_required` honours `X-Organization-Id` header per call when token is unpinned, falls back to token's pinned org otherwise; org-scoped queryset prevents cross-org leakage)*

@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.331] - 2026-05-05
+
+### Added — Phase 28 closure: API contract docs + phase advance to shipped
+Closes Phase 28 from the server-side perspective. The browser-extension binary itself (Chrome / Firefox / Edge `.crx` package, store submission) lives in a separate codebase and is explicitly out of scope for this repo.
+
+- **New file `docs/browser-extension-api.md`** — full contract spec covering:
+  - Authentication: token issue / list / revoke flow, bearer header, `extension_auth_required` decorator behaviour.
+  - Organization context: `X-Organization-Id` header rules vs. token pinning vs. global view.
+  - Endpoint catalogue: 9 endpoints with method, auth type, RoleTemplate permission, audit-log action, shipped version.
+  - Endpoint details: per-endpoint request/response shape, error codes, match logic (autofill), pagination cursor (sync), nonce-then-HMAC dance (verify-master), generator parameters + entropy formula.
+  - RoleTemplate permission table: `vault_extension_use` + `vault_extension_offline_cache` defaults and simple-role fallback matrix.
+  - Auditing: every endpoint's `extra_data.event` key for log filtering.
+  - Versioning policy: contract is stable as of v3.17.331; additive changes only without a v2 prefix.
+
+### Roadmap
+- Phase 28 sub-bullet "WebExtension (cross-browser via WebExtensions API)" annotated `*(shipped v3.17.327–v3.17.331 — server-side API surface fully shipped; complete contract documented in `docs/browser-extension-api.md`. Extension binary itself is a separate codebase)*`.
+- **Phase 28 — Browser Extension + Offline Vault Access** header advanced from `[in progress]` to `[shipped — v3.17.331 — server-side API; extension binary out of scope]` (9 of 9 sub-bullets shipped).
+
+### Tests
+None — pure documentation / phase-marker change.
+
 ## [3.17.330] - 2026-05-05
 
 ### Added — Phase 28 v4: Strong-password generator + per-org isolation tests
