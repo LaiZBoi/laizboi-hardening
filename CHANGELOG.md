@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.297] - 2026-05-05
+
+### Added — Phase 15 v12 — Tax-compute scaffolding (Avalara + TaxJar)
+Closes the "Tax handling support (Avalara / TaxJar integrations)" sub-bullet of Phase 15. Same scaffold-now / live-API-later pattern as the payment-processor scaffolding shipped in v3.17.296.
+
+- **New `integrations.TaxConnection` model** (migration `integrations.0026`) — per-org row with provider type (`avalara` / `taxjar` / `manual`), name, base_url, encrypted_credentials, last_lookup_at, last_error.
+- **New `integrations/providers/tax/` package** — `BaseTaxProvider` interface plus Avalara + TaxJar stubs.
+  - `compute_tax(invoice)` returns `{success, tax_amount, breakdown, error}`. Stubs return a clear "not yet implemented" marker with credential checks; real POST to `/api/v2/transactions/create` (Avalara) or `/v2/taxes` (TaxJar) lands when an MSP wires up an account.
+- **`PROVIDER_REGISTRY` + `get_tax_provider(connection)`** — lookup helper.
+
+### Tests
+- 5 tests in `integrations.tests.TaxConnectionScaffoldTests` covering: encrypted credential round-trip, Avalara provider resolution + DEFAULT_BASE_URL fill, TaxJar provider resolution, `compute_tax` returns the unimplemented marker when credentials are present, returns "not configured" when missing.
+
+### Roadmap
+Phase 15 sub-bullet "Tax handling support (Avalara / TaxJar integrations)" annotated `*(shipped v3.17.297 — scaffold; live `compute_tax()` lands when an MSP connects a real account)*`.
+
 ## [3.17.296] - 2026-05-05
 
 ### Added — Phase 15 v8 — Payment processor scaffolding (Stripe + GoCardless)

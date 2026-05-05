@@ -1129,3 +1129,58 @@ class PaymentConnection(BaseModel):
         creds = self.get_credentials()
         creds.update(kwargs)
         self.set_credentials(creds)
+
+
+# ---------------------------------------------------------------------------
+# Phase 15 v12 (v3.17.297) — Tax compute connections (Avalara / TaxJar).
+# ---------------------------------------------------------------------------
+
+class TaxConnection(BaseModel):
+    """Per-organization connection to a sales-tax compute service.
+    Adapter stubs for Avalara + TaxJar ship today; live `compute_tax()`
+    lands when an MSP wires up a real account."""
+    PROVIDER_TYPES = [
+        ('avalara', 'Avalara AvaTax'),
+        ('taxjar', 'TaxJar'),
+        ('manual', 'Manual / external (use invoice tax_rate)'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE,
+        related_name='tax_connections',
+    )
+    provider_type = models.CharField(max_length=40, choices=PROVIDER_TYPES,
+                                      default='manual')
+    name = models.CharField(max_length=200)
+    base_url = models.URLField(max_length=500, blank=True)
+    encrypted_credentials = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    last_lookup_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+
+    objects = OrganizationManager()
+
+    class Meta:
+        db_table = 'tax_connections'
+        unique_together = [['organization', 'name']]
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.organization.slug}:{self.name} ({self.get_provider_type_display()})'
+
+    def set_credentials(self, credentials_dict):
+        encrypted = encrypt_dict(credentials_dict)
+        self.encrypted_credentials = json.dumps(encrypted)
+
+    def get_credentials(self):
+        if not self.encrypted_credentials:
+            return {}
+        try:
+            return decrypt_dict(json.loads(self.encrypted_credentials))
+        except Exception:
+            return {}
+
+    def update_credentials(self, **kwargs):
+        creds = self.get_credentials()
+        creds.update(kwargs)
+        self.set_credentials(creds)

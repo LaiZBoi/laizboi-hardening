@@ -894,3 +894,73 @@ class PaymentConnectionScaffoldTests(TestCase):
             name='Manual',
         )
         self.assertIsNone(get_payment_provider(conn))
+
+
+class TaxConnectionScaffoldTests(TestCase):
+    """Phase 15 v12 (v3.17.297): tax-compute adapter stubs."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='TxCo')
+
+    def test_credential_round_trip(self):
+        from .models import TaxConnection
+        conn = TaxConnection.objects.create(
+            organization=self.org, provider_type='avalara',
+            name='Ava-prod',
+        )
+        conn.set_credentials({'account_id': '12345',
+                               'license_key': 'lk_yyy'})
+        conn.save()
+        creds = conn.get_credentials()
+        self.assertEqual(creds['account_id'], '12345')
+        self.assertEqual(creds['license_key'], 'lk_yyy')
+        self.assertNotIn('lk_yyy', conn.encrypted_credentials)
+
+    def test_avalara_resolution_and_default_url(self):
+        from .models import TaxConnection
+        from .providers.tax import get_tax_provider
+        from .providers.tax.avalara import AvalaraProvider
+        conn = TaxConnection.objects.create(
+            organization=self.org, provider_type='avalara',
+            name='Ava-test',
+        )
+        p = get_tax_provider(conn)
+        self.assertIsInstance(p, AvalaraProvider)
+        self.assertEqual(p.connection.base_url, 'https://rest.avatax.com')
+
+    def test_taxjar_resolution(self):
+        from .models import TaxConnection
+        from .providers.tax import get_tax_provider
+        from .providers.tax.taxjar import TaxJarProvider
+        conn = TaxConnection.objects.create(
+            organization=self.org, provider_type='taxjar',
+            name='TJ-test',
+        )
+        p = get_tax_provider(conn)
+        self.assertIsInstance(p, TaxJarProvider)
+
+    def test_compute_tax_returns_unimplemented_when_creds_present(self):
+        from .models import TaxConnection
+        from .providers.tax import get_tax_provider
+        conn = TaxConnection.objects.create(
+            organization=self.org, provider_type='avalara',
+            name='Stub-ava',
+        )
+        conn.set_credentials({'account_id': '1', 'license_key': 'k'})
+        conn.save()
+        p = get_tax_provider(conn)
+        result = p.compute_tax(invoice=None)
+        self.assertFalse(result['success'])
+        self.assertIn('not yet implemented', result['error'])
+
+    def test_compute_tax_complains_without_creds(self):
+        from .models import TaxConnection
+        from .providers.tax import get_tax_provider
+        conn = TaxConnection.objects.create(
+            organization=self.org, provider_type='taxjar',
+            name='No-key',
+        )
+        p = get_tax_provider(conn)
+        result = p.compute_tax(invoice=None)
+        self.assertFalse(result['success'])
+        self.assertIn('not configured', result['error'])

@@ -344,7 +344,7 @@ Planned capabilities:
 - MRR forecasting *(shipped v3.17.295 — `/reports/mrr-forecast/` reads active recurring contracts; normalizes monthly/quarterly/yearly to monthly equivalents; per-contract table + 12-month projection; staff-only)*
 - Contract profitability tracking *(partial — Phase 3 profitability-by-contract shipped)*
 - Invoice automation
-- Tax handling support (Avalara / TaxJar integrations)
+- Tax handling support (Avalara / TaxJar integrations) *(shipped v3.17.297 — `TaxConnection` model + `BaseTaxProvider` interface + Avalara & TaxJar adapter stubs; live `compute_tax()` lands when an MSP connects a real account)*
 - Subscription lifecycle management
 
 **Goal:** Improve recurring service management and operational billing visibility.
