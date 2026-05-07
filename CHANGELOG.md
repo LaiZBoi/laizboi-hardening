@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.398] - 2026-05-07
+
+### Fixed — APK build was using the wrong (legacy) codebase
+**The 20MB APK that "Download APK" served was from Feb 26, 2026 — three months old.** The `build_mobile_app` management command was set to build from the legacy `mobile-app/` skeleton (created Apr 28, 2026 — predates Phase 8). The new Expo SDK 51 + TypeScript app shipped via Phase 8 v3.17.354–360 lives at `mobile/`, but the build pipeline never pointed there. Every "Download APK" / "Build & download APK" click served the same cached-from-Feb-2026 binary that has none of the recent fixes (including the v3.17.385 Keystore cold-start crash fix).
+
+Two changes:
+
+- `core/management/commands/build_mobile_app.py` — `mobile_app_dir` now points at `mobile/` (the Expo TS app). Falls back to `mobile-app/` only if `mobile/` is somehow missing. Output path stays at `mobile-app/builds/` so the existing `download_mobile_app` view keeps working without changes.
+- `core/views.py::mobile_apps_admin` — adds a POST `?action=rebuild&platform=<android|ios>` handler that deletes the cached binary + status files. The template now shows a **Rebuild from latest code** button next to the Download button when an APK is present. Clicking it wipes the cache, audit-logs `mobile_app_rebuild_requested`, and redirects back; the next "Build & download" click triggers a fresh compile from the current `mobile/` source tree.
+
+To get the APK with the v3.17.385 Keystore fix:
+1. Apply v3.17.398.
+2. Open Admin → Mobile → Mobile Apps.
+3. Click **Rebuild from latest code** (Android card). Confirm.
+4. Click **Build & download APK** — first build will take ~10–20 min (npm install + Gradle); subsequent builds 3–5 min.
+5. Sideload the new APK and re-test.
+
+### Tests
+None — direct fix; verified by hitting the Rebuild action and confirming the cached APK is wiped.
+
 ## [3.17.397] - 2026-05-07
 
 ### Added — Phase 8.1 backend foundation: TechnicianLocation + ClientSiteGeofence

@@ -33,8 +33,16 @@ class Command(BaseCommand):
         if app_type not in VALID_APP_TYPES:
             raise ValueError(f"Invalid app_type: {app_type}. Must be one of: {', '.join(VALID_APP_TYPES)}")
 
-        mobile_app_dir = os.path.join(settings.BASE_DIR, 'mobile-app')
-        builds_dir = os.path.join(mobile_app_dir, 'builds')
+        # v3.17.397: build from `mobile/` (Expo SDK 51 + TypeScript, the new app
+        # shipped via Phase 8 v3.17.354-360) instead of the legacy `mobile-app/`
+        # skeleton from Feb 2026. Keep the OUTPUT directory at `mobile-app/builds/`
+        # so the existing `download_mobile_app` view continues to read from the
+        # same place without changes.
+        mobile_app_dir = os.path.join(settings.BASE_DIR, 'mobile')
+        if not os.path.isdir(mobile_app_dir):
+            # Fallback: legacy skeleton if `mobile/` ever missing
+            mobile_app_dir = os.path.join(settings.BASE_DIR, 'mobile-app')
+        builds_dir = os.path.join(settings.BASE_DIR, 'mobile-app', 'builds')
         status_file = os.path.join(builds_dir, f'{app_type}_build_status.json')
         self.log_file = os.path.join(builds_dir, f'{app_type}_build.log')
 

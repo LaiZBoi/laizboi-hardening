@@ -829,6 +829,12 @@ def mobile_apps_admin(request):
     instructions for each platform. Linked from the Admin nav
     dropdown so superusers / staff can hand the apps to techs
     in the field without going through Apple/Google stores.
+
+    POST ?action=rebuild&platform=android — wipes the cached
+    binary + status files so the next click on Build/Download
+    triggers a fresh compile from the current `mobile/` source
+    tree (added v3.17.397 because the cached Feb-2026 APK kept
+    being re-served instead of rebuilt).
     """
     import os
     import json
@@ -837,6 +843,34 @@ def mobile_apps_admin(request):
 
     builds_dir = os.path.join(dj_settings.BASE_DIR, 'mobile-app', 'builds')
     os.makedirs(builds_dir, exist_ok=True)
+
+    if request.method == 'POST' and request.POST.get('action') == 'rebuild':
+        platform = request.POST.get('platform', '').strip()
+        if platform in ('android', 'ios'):
+            removed = []
+            for fname in (
+                f'clientst0r.{"apk" if platform == "android" else "ipa"}',
+                f'{platform}_build_status.json',
+                f'{platform}_build.log',
+            ):
+                fpath = os.path.join(builds_dir, fname)
+                if os.path.exists(fpath):
+                    try:
+                        os.remove(fpath)
+                        removed.append(fname)
+                    except OSError:
+                        pass
+            AuditLog.objects.create(
+                user=request.user,
+                action='mobile_app_rebuild_requested',
+                object_type='mobile_app',
+                description=f'Wiped cached {platform} build artifacts: {", ".join(removed) or "nothing — already clean"}',
+            )
+            messages.success(
+                request,
+                f'Cleared cached {platform} build. Click "Build & download {platform.upper()}" to start a fresh build from the latest source.',
+            )
+        return redirect('core:mobile_apps_admin')
 
     def _build_state(app_type, filename):
         binary_path = os.path.join(builds_dir, filename)
