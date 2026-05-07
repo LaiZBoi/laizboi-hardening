@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.350] - 2026-05-07
+
+### Added — Mobile API: knowledge-base endpoints
+Sixth release in the mobile-API train. KB articles back the read surface for techs in the field.
+
+- New endpoint `GET /api/mobile/v1/kb/?search=&page=` — paginated. Returns articles where (`is_global=True` OR `organization_id` is in the user's accessible orgs) AND `is_published=True` AND `is_archived=False`. Search matches `title`, `body`, `slug`.
+- New endpoint `GET /api/mobile/v1/kb/<id>/` — detail with both raw `body` (markdown / HTML source) and `body_html` (rendered + sanitised via `Document.render_content()` which uses bleach). Cross-org reads return 404.
+
+### Tests
+- 5 new tests: list requires auth, list returns global + my-org articles (cross-org excluded), search narrows, detail returns body + rendered HTML, detail cross-org blocked.
+
 ## [3.17.349] - 2026-05-07
 
 ### Added — Mobile API: tickets endpoints

@@ -389,3 +389,68 @@ class MobileTicketsTests(TestCase):
     def test_ticket_list_requires_auth(self):
         c = Client()
         self.assertIn(c.get('/api/mobile/v1/tickets/').status_code, (401, 403))
+
+
+# v3.17.350 — KB endpoints
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileKBTests(TestCase):
+    """KB list/search/detail respect global + org-scope visibility."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from docs.models import Document
+        self.org_a = Organization.objects.create(name='OrgA-KB', slug='orga-kb')
+        self.org_b = Organization.objects.create(name='OrgB-KB', slug='orgb-kb')
+        self.user_a = User.objects.create_user('kbuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user_a, organization=self.org_a, role=Role.OWNER, is_active=True,
+        )
+        self.global_doc = Document.objects.create(
+            title='Global KB Article', slug='global-kb',
+            body='# Global content\n\nUseful for all.',
+            content_type='markdown', is_global=True, is_published=True,
+        )
+        self.org_a_doc = Document.objects.create(
+            organization=self.org_a, title='OrgA Runbook', slug='orga-runbook',
+            body='Org A specific.', content_type='markdown', is_published=True,
+        )
+        self.org_b_doc = Document.objects.create(
+            organization=self.org_b, title='OrgB Internal', slug='orgb-internal',
+            body='Secret to OrgB.', content_type='markdown', is_published=True,
+        )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'kbuser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_kb_list_requires_auth(self):
+        c = Client()
+        self.assertIn(c.get('/api/mobile/v1/kb/').status_code, (401, 403))
+
+    def test_kb_list_returns_global_and_my_org(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/kb/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        ids = [d['id'] for d in resp.json()['results']]
+        self.assertIn(self.global_doc.id, ids)
+        self.assertIn(self.org_a_doc.id, ids)
+        self.assertNotIn(self.org_b_doc.id, ids)
+
+    def test_kb_list_search(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/kb/?search=Runbook', self.token)
+        self.assertEqual(resp.status_code, 200)
+        ids = [d['id'] for d in resp.json()['results']]
+        self.assertEqual(ids, [self.org_a_doc.id])
+
+    def test_kb_detail_returns_body_and_html(self):
+        url = f'/api/mobile/v1/kb/{self.global_doc.id}/'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['body'], '# Global content\n\nUseful for all.')
+        self.assertIn('Global content</h1>', body['body_html'])
+
+    def test_kb_detail_cross_org_blocked(self):
+        url = f'/api/mobile/v1/kb/{self.org_b_doc.id}/'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 404)

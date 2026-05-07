@@ -1,0 +1,93 @@
+"""
+Mobile API knowledge-base endpoints (v3.17.350).
+
+KB articles are stored in `docs.Document`. Visibility rules:
+- `is_global=True` and `is_published=True` → visible to all logged-in users.
+- Org-scoped (`organization_id` set) → visible to members of that org.
+- `is_archived=True` → hidden.
+"""
+from __future__ import annotations
+
+from django.db.models import Q
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.decorators import (
+    api_view, authentication_classes, permission_classes,
+)
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .scoping import accessible_org_ids
+
+
+def _kb_queryset(user):
+    """Articles the user is allowed to see."""
+    from docs.models import Document
+    org_ids = accessible_org_ids(user)
+    return Document.objects.filter(
+        is_published=True, is_archived=False,
+    ).filter(
+        Q(is_global=True) | Q(organization_id__in=org_ids)
+    )
+
+
+def _serialize_kb(doc, *, detail=False):
+    out = {
+        'id': doc.id,
+        'title': doc.title,
+        'slug': doc.slug,
+        'is_global': doc.is_global,
+        'organization_id': doc.organization_id,
+        'content_type': doc.content_type,
+        'updated_at': doc.updated_at.isoformat() if doc.updated_at else None,
+    }
+    if detail:
+        out['body'] = doc.body
+        try:
+            out['body_html'] = doc.render_content()
+        except Exception:
+            out['body_html'] = doc.body
+    return out
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def kb_list_view(request):
+    """GET /api/mobile/v1/kb/?search=&page="""
+    qs = _kb_queryset(request.user)
+
+    search = (request.query_params.get('search') or '').strip()
+    if search:
+        qs = qs.filter(
+            Q(title__icontains=search) | Q(body__icontains=search) | Q(slug__icontains=search)
+        )
+
+    qs = qs.order_by('-updated_at')
+
+    try:
+        page = max(int(request.query_params.get('page', 1)), 1)
+    except ValueError:
+        page = 1
+    page_size = 50
+    start = (page - 1) * page_size
+    total = qs.count()
+    rows = qs[start:start + page_size]
+
+    return Response({
+        'count': total,
+        'page': page,
+        'page_size': page_size,
+        'results': [_serialize_kb(d) for d in rows],
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def kb_detail_view(request, pk: int):
+    """GET /api/mobile/v1/kb/<id>/ — detail with raw markdown + rendered HTML."""
+    try:
+        doc = _kb_queryset(request.user).get(pk=pk)
+    except Exception:
+        return Response({'detail': 'Not found'}, status=404)
+    return Response(_serialize_kb(doc, detail=True))
