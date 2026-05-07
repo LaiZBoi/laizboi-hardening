@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     'files.apps.FilesConfig',
     'audit.apps.AuditConfig',
     'api.apps.ApiConfig',
+    'api_mobile.apps.ApiMobileConfig',
     'integrations.apps.IntegrationsConfig',
     'monitoring.apps.MonitoringConfig',
     'processes.apps.ProcessesConfig',

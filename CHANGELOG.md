@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.346] - 2026-05-07
+
+### Added — Mobile API: DRF setup + auth endpoints
+Second release in the mobile-API train. New `api_mobile/` Django app under `/api/mobile/v1/` with token-authenticated auth endpoints. DRF and `rest_framework.authtoken` were already installed and migrated, so no new dependencies or model migrations are needed for this release.
+
+- New endpoints (all under `/api/mobile/v1/auth/`):
+  - `POST /login/` — username/email + password → `{token, user}`. If the user has 2FA enabled, returns `{mfa_required: true, mfa_token}` and requires a follow-up `/mfa/` call.
+  - `POST /mfa/` — `mfa_token + code` → `{token, user}`. Validates against `django_otp.plugins.otp_totp` confirmed devices.
+  - `POST /logout/` — revokes the caller's token.
+  - `GET /me/` — returns `{user: {id, username, email, full_name, organization_id, role}}`.
+  - `POST /refresh/` — rotates the caller's token (old token revoked, new one issued).
+- Login is throttled at 10/hour per IP via the existing `login` scope. Failed logins continue to feed `django-axes` IP lockout (the existing auth backend chain runs unchanged).
+- Every login / MFA / logout / refresh writes an `AuditLog` with `extra_data.channel='mobile'`. Failed logins audit as `login_failed` with the offending username and the rejection reason (`invalid_credentials` / `bad_totp` / `inactive`).
+- The MFA challenge token is opaque, single-use, kept in Django's default cache for 5 minutes, and consumed atomically.
+
+### Tests
+- 9 new tests in `api_mobile/tests.py` covering login success, wrong password, missing fields, 2FA-required branch (`mfa_required: true` + opaque `mfa_token`), bad-MFA-token rejection, unauthenticated `/me/` blocked, authenticated `/me/` returns profile, `logout` revokes token, `refresh` rotates token.
+
 ## [3.17.355] - 2026-05-07
 
 ### Added — Phase 23 v4: Incident SLA tracking

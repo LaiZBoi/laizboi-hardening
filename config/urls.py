@@ -59,6 +59,9 @@ urlpatterns = [
 
     # API
     path('api/', include('api.urls')),
+
+    # Mobile API (token-authenticated REST surface for the RN client app)
+    path('api/mobile/v1/', include('api_mobile.urls')),
 ]
 
 # Optional: GraphQL API v2 (only if graphene_django is installed)
