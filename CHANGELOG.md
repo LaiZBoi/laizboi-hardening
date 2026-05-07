@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.396] - 2026-05-07
+
+### Fixed — Update flow stuck in "Update Available" loop
+Same class of bug as v3.17.333. Two parallel agents (Backend Mobile API + Phase 8 closeout) shipped with non-overlapping version ranges, but the Backend Mobile API agent's range (345–353) ended up below the Phase 8 closeout agent's range (385–395). Phase 8 v3.17.385 (the APK cold-start fix) shipped first chronologically, then the Mobile API agent kept landing v3.17.349/350 with LOWER version numbers via push-race rebase.
+
+Result: after Apply, `config/version.py` ended up at 3.17.350 even though every committed-tag commit (including v3.17.385) was already an ancestor of HEAD. The updater compares `VERSION` (3.17.350) against the highest tag (v3.17.385), sees a mismatch, and shows "Update Available" forever — clicking Apply again does nothing visible because the script is already at the latest commit.
+
+This release bumps `VERSION` to **3.17.396** — past every existing tag — so `Settings → Updates` reports the install as up-to-date. No code or schema change.
+
+### Note — Backend Mobile API agent stopped
+The Backend Mobile API agent was running in version range 345–353 and had completed 6 of 9 endpoint releases (auth, dashboard, organizations, assets, tickets, KB). The remaining 3 endpoints (vault reveal, monitoring/security/profile, throttling+tests) were stopped to break the non-monotonicity loop. They will be picked up in a follow-up release at HIGHER version numbers (v3.17.397+).
+
+### Tests
+None — pure version bump.
+
 ## [3.17.350] - 2026-05-07
 
 ### Added — Mobile API: knowledge-base endpoints
