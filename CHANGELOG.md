@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.417] - 2026-05-07
+
+### Phase 8 — closure
+Phase 8 (Native mobile apps + GPS auto-time + Timeclock) is now fully shipped. Roadmap header advances to `[shipped — v3.17.417]`; the Sizing-table row reads `shipped v3.17.354–417 (extends Phase 2 + 18 + 21)`.
+
+What landed across the train:
+
+- **Sub-phase 8.1 — Backend foundation** *(v3.17.397–410)*: `TechnicianLocation` + `ClientSiteGeofence` + `TimeclockEntry` + `MobileDevice` models, plus the five token-authed REST endpoints under `/api/mobile/v1/` (locations, timeclock clock-in/out/me, active-ticket).
+- **Sub-phase 8.2 — GPS auto-documentation engine** *(v3.17.412)*: `AutoTimePreference` modes (always_on / ask_first / off), `PendingAutoTime` staging, `auto_document_field_visits` mgmt cmd that runs every minute and triggers Web Push on enter/exit transitions.
+- **Sub-phase 8.3 — Timeclock feature** *(v3.17.413–414)*: web dashboard at `/field-ops/timeclock/` with exception flags + 7-day rollup, payroll CSV export, and a mobile Timeclock screen + dashboard widget in the Expo app.
+- **Sub-phase 8.4 — App build** *(v3.17.354–360)*: `mobile/` Expo TS scaffold with auth, dashboard, organizations, assets, tickets, KB, vault, monitoring, security, settings, and the new timeclock screen.
+- **Sub-phase 8.5 — Privacy + safeguards** *(v3.17.411–416)*: `LocationRetentionPolicy` + nightly `prune_technician_locations` cmd, off-shift suppression (`locations_dropped_offshift`), per-tech `/field-ops/my-location-history/` self-serve UI with bulk delete, `OrganizationFieldOpsSettings.geofence_only_mode` + `GeofenceVisit` privacy-preserving alternative to raw lat/lon, and the `/field-ops/settings/` org-admin UI.
+
+Tests: 29 in `field_ops/tests.py`, 6 new in `api_mobile.tests.MobileFieldOpsTests`. No code changes in this release — annotation-only.
+
 ## [3.17.416] - 2026-05-07
 
 ### Added — Phase 8.5 part 3: org admin retention/privacy UI

@@ -812,13 +812,13 @@ Dependencies: `monitoring/` app (uptime data), `psa.Ticket` (incident history wi
 
 ---
 
-## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)** [in progress]
+## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)** [shipped — v3.17.417]
 
 Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentation + employee timeclock makes this a force-multiplier for billable-hours capture, not just a UX improvement.
 
 Positioned last in the roadmap (v3.17.169) because it's the largest single undertaking and depends on a lot of other work being mature first — backend, scheduling, billing, and mobile app distribution all need to be in place before this phase pays off.
 
-### Sub-phase 8.1 — Backend foundation
+### Sub-phase 8.1 — Backend foundation *(shipped v3.17.397–410)*
 - `TechnicianLocation` model — append-only GPS pings (lat/lon/accuracy/timestamp/source); retention policy + per-org enable flag. *(shipped v3.17.397)*
 - `TimeclockEntry` model — clock-in / clock-out events with tech, organization, location, optional ticket, optional project, source (`'mobile'` / `'web'` / `'manual'`); derives a `TimeEntry` row on clock-out so existing billing rolls up unchanged. *(shipped v3.17.409)*
 - `ClientSiteGeofence` model — per-client polygon or radius around their physical address(es). Used to auto-detect "tech is on site" for ticket time tracking. *(shipped v3.17.397)*
@@ -831,21 +831,21 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 - Selectable per-tech: **Always on** / **Ask first** / **Off**. Per-tech UserProfile flag. *(shipped v3.17.412 — `field_ops.AutoTimePreference`)*
 - Audit log every auto-time event so disputed billing can be traced. *(shipped v3.17.412)*
 
-### Sub-phase 8.3 — Timeclock feature
+### Sub-phase 8.3 — Timeclock feature *(shipped v3.17.413–414)*
 - Web UI: Timeclock dashboard at `/timeclock/` for staff to view who's clocked in, total hours per pay period, exception flags (long shifts, missing clock-out). *(shipped v3.17.413 — `/field-ops/timeclock/`)*
 - Mobile UI: prominent "Clock in / Clock out" button on the app home screen. Optional tie to the active ticket. *(shipped v3.17.414 — `mobile/app/timeclock/index.tsx` + dashboard widget)*
 - Selectable per-org and per-tech: required vs optional, with vs without GPS context, separate from per-ticket time tracking.
 - Payroll export — CSV per pay period, hooks for QuickBooks Time / Gusto / etc. (defer the integration; just structured export first). *(shipped v3.17.413)*
 
-### Sub-phase 8.4 — App build
+### Sub-phase 8.4 — App build *(shipped v3.17.354–360)*
 - React Native (Expo SDK 51+ with EAS cloud build — revisits the earlier "no Expo accounts" rejection; required for store submission). *(read-heavy field-use slice complete: scaffold + auth v3.17.354; dashboard + orgs + assets v3.17.356; tickets + KB v3.17.357; vault + monitoring + security + settings v3.17.359; docs + EAS profiles + placeholder icons v3.17.360 — `mobile/` Expo TypeScript app. Phase 8 stays `[in progress]` because Sub-phases 8.2 (GPS auto-time), 8.3 (timeclock UI), and 8.5 (privacy hardening) are deferred.)*
 - Auth: Azure SSO + email/password fallback; session-token cookie not used (mobile uses long-lived bearer).
 - Screens: Dashboard / My Tickets / Active Ticket / Clock In-Out / Map / Settings.
 - Background location: foreground-only by default, opt-in for background; iOS "Always" permission requested only for techs who enable Always-on auto-time.
 - Push notifications via FCM/APNS for ticket assignment, clock-in reminders, geofence exit prompts.
 
-### Sub-phase 8.5 — Privacy + safeguards
-- **Off-shift suppression**: GPS pings outside the tech's `WorkingHours` (Phase 2) are dropped at the API layer — never stored.
+### Sub-phase 8.5 — Privacy + safeguards *(shipped v3.17.411–416)*
+- **Off-shift suppression**: GPS pings outside the tech's `WorkingHours` (Phase 2) are dropped at the API layer — never stored. *(shipped v3.17.410 — 204 + audit-log `locations_dropped_offshift`)*
 - Per-tech UI to view + delete their own location history. *(shipped v3.17.415 — `/field-ops/my-location-history/`)*
 - Org-admin retention policy (default: 90 days). *(model + prune mgmt cmd shipped v3.17.411; org-admin UI shipped v3.17.416 — `/field-ops/settings/`)*
 - Geofence-only mode: store only "entered/exited geofence X at time T", never raw lat/lon. *(shipped v3.17.415 — `OrganizationFieldOpsSettings.geofence_only_mode` + `GeofenceVisit` model + locations endpoint integration)*
@@ -907,7 +907,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 38 — Client Onboarding / Offboarding Runbooks | M | 2-3 weeks | extends `processes/` + Phase 14 |
 | 39 — Compliance Evidence Packs | M | 2-3 weeks | extends Phase 9 + vault + monitoring + psa |
 | 40 — Public / Client-Facing Status Page | M | 2-3 weeks | extends monitoring + psa Tickets |
-| 8 — Mobile apps + GPS auto-time + Timeclock | L | 10-13 weeks | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
+| 8 — Mobile apps + GPS auto-time + Timeclock | L | **shipped v3.17.354–417 (extends Phase 2 + 18 + 21)** | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.
 
