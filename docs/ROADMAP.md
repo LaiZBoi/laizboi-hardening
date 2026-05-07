@@ -847,9 +847,9 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 ### Sub-phase 8.5 — Privacy + safeguards
 - **Off-shift suppression**: GPS pings outside the tech's `WorkingHours` (Phase 2) are dropped at the API layer — never stored.
 - Per-tech UI to view + delete their own location history. *(shipped v3.17.415 — `/field-ops/my-location-history/`)*
-- Org-admin retention policy (default: 90 days). *(model + prune mgmt cmd shipped v3.17.411; org-admin UI lands v3.17.416)*
+- Org-admin retention policy (default: 90 days). *(model + prune mgmt cmd shipped v3.17.411; org-admin UI shipped v3.17.416 — `/field-ops/settings/`)*
 - Geofence-only mode: store only "entered/exited geofence X at time T", never raw lat/lon. *(shipped v3.17.415 — `OrganizationFieldOpsSettings.geofence_only_mode` + `GeofenceVisit` model + locations endpoint integration)*
-- Audit trail of every location-history view + export.
+- Audit trail of every location-history view + export. *(shipped v3.17.415–416 — every view, delete, geofence-only write, and settings change emits an `AuditLog` row)*
 
 **Dependencies:** Phase 2 (`WorkingHours` for off-shift suppression). Recommended before Phase 3 (so timeclock data flows into utilization reporting).
 

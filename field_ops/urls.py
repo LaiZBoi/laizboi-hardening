@@ -30,4 +30,6 @@ urlpatterns = [
         'my-location-history/delete-all/',
         views.my_location_delete_all, name='my_location_delete_all',
     ),
+    # Sub-phase 8.5 part 3 (v3.17.416)
+    path('settings/', views.settings_view, name='settings'),
 ]

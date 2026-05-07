@@ -560,3 +560,48 @@ class GeofenceOnlyModeTests(TestCase):
         # Outside any geofence-only org -> regular TechnicianLocation row
         self.assertEqual(TechnicianLocation.objects.filter(tech=self.user).count(), 1)
         self.assertEqual(GeofenceVisit.objects.filter(user=self.user).count(), 0)
+
+
+@override_settings(
+    MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+    STORAGES=_TEST_STORAGES,
+)
+class FieldOpsSettingsViewTests(TestCase):
+    """v3.17.416 — org-admin retention/privacy UI."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Set Org')
+        self.staff = User.objects.create_user(
+            'fset-staff', password='x', is_staff=True,
+        )
+        self.guest = User.objects.create_user('fset-guest', password='x')
+        self.client = Client()
+
+    def test_non_admin_blocked(self):
+        self.client.force_login(self.guest)
+        resp = self.client.get('/field-ops/settings/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_save_changes_persist_and_audit(self):
+        from .models import OrganizationFieldOpsSettings
+        from audit.models import AuditLog
+        self.client.force_login(self.staff)
+        # Initial GET creates a settings row
+        resp = self.client.get(f'/field-ops/settings/?org={self.org.id}')
+        self.assertEqual(resp.status_code, 200)
+        # POST changes
+        resp2 = self.client.post('/field-ops/settings/', {
+            'organization_id': self.org.id,
+            'geofence_only_mode': 'on',
+            'retention_days': '45',
+        })
+        self.assertEqual(resp2.status_code, 302)
+        s = OrganizationFieldOpsSettings.objects.get(organization=self.org)
+        self.assertTrue(s.geofence_only_mode)
+        self.assertEqual(s.retention_days, 45)
+        # Audit row written
+        rows = AuditLog.objects.filter(user=self.staff)
+        self.assertTrue(any(
+            (r.extra_data or {}).get('event') == 'org_field_ops_settings_changed'
+            for r in rows
+        ))

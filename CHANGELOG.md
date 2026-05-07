@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.416] - 2026-05-07
+
+### Added — Phase 8.5 part 3: org admin retention/privacy UI
+Closes Sub-phase 8.5. Org admins can now toggle `geofence_only_mode` and adjust `retention_days` from the web UI without going through the Django admin.
+
+- `/field-ops/settings/?org=<id>` (org admin / staff / superuser) — form for `geofence_only_mode` toggle + `retention_days` numeric. Auto-creates the `OrganizationFieldOpsSettings` row on first GET. POST saves + audit-logs `org_field_ops_settings_changed` with before/after diff.
+- Template `templates/field_ops/settings.html`.
+
+### Tests
+- 2 new tests: non-admin blocked (403), save persists + writes the audit row.
+
 ## [3.17.415] - 2026-05-07
 
 ### Added — Phase 8.5: per-tech location history + geofence-only mode

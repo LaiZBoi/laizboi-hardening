@@ -196,3 +196,93 @@ def my_location_delete_all(request):
     _audit(request.user, 'my_location_history_delete_all', {'deleted': deleted})
     messages.success(request, f'Deleted {deleted} location row(s).')
     return redirect('field_ops:my_location_history')
+
+
+# ---------------------------------------------------------------------------
+# Sub-phase 8.5 part 3 — Org admin retention/privacy UI (v3.17.416)
+# ---------------------------------------------------------------------------
+
+def _org_admin_only(user):
+    """Org-admin gate: superuser, is_staff, or has any active OWNER/ADMIN
+    membership."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    try:
+        from accounts.models import Membership, Role
+        return Membership.objects.filter(
+            user=user, is_active=True,
+            role__in=[Role.OWNER, Role.ADMIN],
+        ).exists()
+    except Exception:
+        return False
+
+
+def _picked_organization(request):
+    """Resolve the org the admin is editing settings for. Falls back to
+    the first OWNER-membership org for non-superusers."""
+    org_id = request.GET.get('org') or request.POST.get('organization_id')
+    from core.models import Organization
+    if org_id:
+        try:
+            return Organization.objects.get(pk=int(org_id))
+        except (Organization.DoesNotExist, ValueError):
+            return None
+    if request.user.is_superuser or request.user.is_staff:
+        return Organization.objects.order_by('id').first()
+    try:
+        from accounts.models import Membership, Role
+        m = Membership.objects.filter(
+            user=request.user, is_active=True,
+            role__in=[Role.OWNER, Role.ADMIN],
+        ).select_related('organization').first()
+        return m.organization if m else None
+    except Exception:
+        return None
+
+
+@login_required
+def settings_view(request):
+    """`/field-ops/settings/` — org-admin form for geofence_only_mode +
+    retention_days. POST saves and audit-logs the change."""
+    if not _org_admin_only(request.user):
+        return HttpResponseForbidden('Org admin only.')
+
+    org = _picked_organization(request)
+    if org is None:
+        return render(request, 'field_ops/settings.html', {'no_org': True})
+
+    settings_obj, _ = OrganizationFieldOpsSettings.objects.get_or_create(
+        organization=org,
+    )
+
+    if request.method == 'POST':
+        before = {
+            'geofence_only_mode': settings_obj.geofence_only_mode,
+            'retention_days': settings_obj.retention_days,
+        }
+        settings_obj.geofence_only_mode = bool(
+            request.POST.get('geofence_only_mode') == 'on'
+        )
+        try:
+            settings_obj.retention_days = max(
+                1, int(request.POST.get('retention_days') or 90)
+            )
+        except (TypeError, ValueError):
+            settings_obj.retention_days = 90
+        settings_obj.save()
+        after = {
+            'geofence_only_mode': settings_obj.geofence_only_mode,
+            'retention_days': settings_obj.retention_days,
+        }
+        _audit(request.user, 'org_field_ops_settings_changed', {
+            'organization_id': org.id, 'before': before, 'after': after,
+        })
+        messages.success(request, 'Field-ops settings saved.')
+        return redirect(f"{request.path}?org={org.id}")
+
+    return render(request, 'field_ops/settings.html', {
+        'organization': org,
+        'settings_obj': settings_obj,
+    })
