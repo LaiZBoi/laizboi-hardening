@@ -3,7 +3,7 @@ Mobile API URL config — `/api/mobile/v1/`.
 """
 from django.urls import path
 
-from . import views_auth, views_assets, views_dashboard
+from . import views_auth, views_assets, views_dashboard, views_tickets
 
 app_name = 'api_mobile'
 
@@ -23,4 +23,9 @@ urlpatterns = [
     # Assets (v3.17.348)
     path('assets/', views_assets.asset_list_view, name='asset_list'),
     path('assets/<int:pk>/', views_assets.asset_detail_view, name='asset_detail'),
+
+    # Tickets (v3.17.349)
+    path('tickets/', views_tickets.ticket_list_view, name='ticket_list'),
+    path('tickets/<int:pk>/', views_tickets.ticket_detail_view, name='ticket_detail'),
+    path('tickets/<int:pk>/comments/', views_tickets.ticket_comment_view, name='ticket_comment'),
 ]

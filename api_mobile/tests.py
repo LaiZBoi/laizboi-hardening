@@ -288,3 +288,104 @@ class MobileAssetsTests(TestCase):
     def test_asset_list_requires_auth(self):
         c = Client()
         self.assertIn(c.get('/api/mobile/v1/assets/').status_code, (401, 403))
+
+
+# v3.17.349 — tickets endpoints
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileTicketsTests(TestCase):
+    """Ticket list/detail/create/patch/comment respect org scope."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from psa.models import (
+            Ticket, TicketStatus, TicketPriority, TicketType, Queue,
+        )
+        self.org_a = Organization.objects.create(name='OrgA-Tk', slug='orga-tk')
+        self.org_b = Organization.objects.create(name='OrgB-Tk', slug='orgb-tk')
+        self.user_a = User.objects.create_user('tkuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user_a, organization=self.org_a, role=Role.OWNER, is_active=True,
+        )
+        # Seed minimal PSA workflow rows
+        self.status_new = TicketStatus.objects.create(name='New', slug='new', sort_order=1)
+        self.status_closed = TicketStatus.objects.create(
+            name='Closed', slug='closed', sort_order=99, is_terminal=True,
+        )
+        self.priority = TicketPriority.objects.create(code='P3', name='Normal')
+        self.priority_p1 = TicketPriority.objects.create(code='P1', name='Critical')
+        self.ttype = TicketType.objects.create(name='Incident', slug='incident')
+        self.queue = Queue.objects.create(name='Default', slug='default')
+        self.ticket_a = Ticket.objects.create(
+            organization=self.org_a, subject='OrgA ticket',
+            status=self.status_new, priority=self.priority,
+            ticket_type=self.ttype, queue=self.queue,
+        )
+        self.ticket_b = Ticket.objects.create(
+            organization=self.org_b, subject='OrgB ticket',
+            status=self.status_new, priority=self.priority,
+            ticket_type=self.ttype, queue=self.queue,
+        )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'tkuser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_ticket_list_scoped_to_user_orgs(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/tickets/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        ids = [t['id'] for t in resp.json()['results']]
+        self.assertIn(self.ticket_a.id, ids)
+        self.assertNotIn(self.ticket_b.id, ids)
+
+    def test_ticket_detail_returns_my_ticket_with_comments(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket_a.id}/'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['subject'], 'OrgA ticket')
+        self.assertIn('comments', body)
+
+    def test_ticket_detail_cross_org_blocked(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket_b.id}/'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_ticket_create(self):
+        resp = _auth_post(self.client, '/api/mobile/v1/tickets/', self.token, {
+            'organization_id': self.org_a.id,
+            'subject': 'New ticket from mobile',
+            'description': 'Help.',
+        })
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['subject'], 'New ticket from mobile')
+
+    def test_ticket_create_cross_org_rejected(self):
+        resp = _auth_post(self.client, '/api/mobile/v1/tickets/', self.token, {
+            'organization_id': self.org_b.id,  # not accessible
+            'subject': 'Bad attempt',
+        })
+        self.assertEqual(resp.status_code, 403)
+
+    def test_ticket_patch_status(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket_a.id}/'
+        resp = self.client.patch(
+            url, data=json.dumps({'status_id': self.status_closed.id}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['status'], 'Closed')
+
+    def test_ticket_add_comment(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket_a.id}/comments/'
+        resp = _auth_post(self.client, url, self.token, {
+            'body': 'On site now', 'is_internal': True,
+        })
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()['body'], 'On site now')
+        self.assertTrue(resp.json()['is_internal'])
+
+    def test_ticket_list_requires_auth(self):
+        c = Client()
+        self.assertIn(c.get('/api/mobile/v1/tickets/').status_code, (401, 403))

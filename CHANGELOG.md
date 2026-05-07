@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.349] - 2026-05-07
+
+### Added — Mobile API: tickets endpoints
+Fifth release in the mobile-API train. Full read/create/patch surface plus comment add — covers a tech's daily field workflow.
+
+- New endpoint `GET /api/mobile/v1/tickets/?status=&priority=&assigned_to_me=true&organization_id=&search=&page=` — paginated. `status=open` matches all non-terminal statuses; `status=closed` matches `is_terminal=True`; otherwise matches `TicketStatus.slug`. `priority` matches `TicketPriority.code` (e.g. `P1`).
+- New endpoint `POST /api/mobile/v1/tickets/` — create. Requires `organization_id` + `subject`; `description`, `requester_name`, `requester_email` optional. Cross-org create returns 403. Defaults pulled from existing seed data (status=new, priority=P3, first TicketType + Queue) — returns 409 if PSA seed data is missing.
+- New endpoint `GET /api/mobile/v1/tickets/<id>/` — detail with embedded comments thread (ordered by `created_at`).
+- New endpoint `PATCH /api/mobile/v1/tickets/<id>/` — partial update of `status_id` / `priority_id` / `assigned_to_id` (use `null` / `0` to unassign). Cross-org returns 404.
+- New endpoint `POST /api/mobile/v1/tickets/<id>/comments/` — add a comment. Body required; optional `is_internal` flag. `source='api'` recorded on the row.
+
+### Tests
+- 8 new tests: list scoped to user orgs, detail returns my ticket with comments, detail cross-org blocked (404), create happy path, create cross-org rejected (403), patch status, add comment, list requires auth.
+
 ## [3.17.348] - 2026-05-07
 
 ### Added — Mobile API: assets endpoints
