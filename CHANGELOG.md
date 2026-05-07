@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.357] - 2026-05-07
+
+### Added — Phase 8 mobile app v3: Tickets + Knowledge Base
+Third mobile-app release. Adds the workflow surface for techs in the field — review, triage, comment, and create tickets, plus search-and-read of the knowledge base.
+
+- New screens: `app/tickets/index.tsx` (filter chips: open / mine / critical / closed / all + search), `app/tickets/[id].tsx` (detail + status + priority chip-pickers + comments thread + add-comment form with optional internal flag), `app/tickets/new.tsx` (create form), `app/kb/index.tsx` (search), `app/kb/[id].tsx` (article render via `react-native-markdown-display`; HTML articles fall back to plain text — TODO add `react-native-render-html` if needed).
+- New TanStack Query hooks: `useTickets(args)`, `useTicket(id)`, `useCreateTicket`, `useUpdateTicket(id)`, `useAddComment(id)`, `useKBArticles(search)`, `useKBArticle(id)`. Mutations invalidate the right cache keys so the dashboard counters refresh on status changes.
+- `auth.ts` `me()` now hits `/auth/me/` to match backend v3.17.346 (was `/profile/`); `/profile/` is reserved for the editable Settings screen in v3.17.359.
+- No Django code touched. `cd mobile && npx tsc --noEmit` clean.
+
+### Tests
+- `cd mobile && npx tsc --noEmit` clean.
+
 ## [3.17.356] - 2026-05-07
 
 ### Added — Phase 8 mobile app v2: Dashboard + Organizations + Assets
