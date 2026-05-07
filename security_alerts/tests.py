@@ -30,9 +30,11 @@ from security_alerts.models import (
     SecurityAlertRule,
     SecurityIncident,
     SecurityIncidentEvent,
+    SecurityIncidentSLAPolicy,
     SecurityVendorConnection,
     SIEMWebhookEndpoint,
     _correlate_alert_to_incident,
+    evaluate_incident_breaches,
 )
 
 
@@ -482,6 +484,78 @@ class ExposureScoringTests(TestCase):
         call_command('recompute_exposure_scores', stdout=out)
         self.org.refresh_from_db()
         self.assertGreater(self.org.exposure_score, 0)
+
+
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.340 — Incident SLA tracking
+# ---------------------------------------------------------------------------
+
+class IncidentSLATests(TestCase):
+    def setUp(self):
+        self.org = _make_org()
+        self.policy = SecurityIncidentSLAPolicy.objects.create(
+            organization=self.org, severity='high',
+            acknowledge_minutes=15, contain_minutes=60, resolve_minutes=240,
+        )
+
+    def _incident(self, **kwargs):
+        defaults = dict(organization=self.org, title='t', severity='high')
+        defaults.update(kwargs)
+        return SecurityIncident.objects.create(**defaults)
+
+    def test_no_breach_when_inside_windows(self):
+        # Fresh incident → no targets crossed → no breaches.
+        inc = self._incident()
+        new = evaluate_incident_breaches(inc)
+        self.assertEqual(new, [])
+        self.assertEqual(inc.events.filter(kind='sla_breach').count(), 0)
+
+    def test_acknowledge_breach_recorded_when_overdue(self):
+        inc = self._incident()
+        # Backdate opened_at past the acknowledge target.
+        SecurityIncident.objects.filter(pk=inc.pk).update(
+            opened_at=timezone.now() - timedelta(minutes=20),
+        )
+        inc.refresh_from_db()
+        new = evaluate_incident_breaches(inc)
+        self.assertIn('acknowledge', new)
+        self.assertEqual(inc.events.filter(kind='sla_breach').count(), 1)
+
+    def test_breach_idempotent(self):
+        inc = self._incident()
+        SecurityIncident.objects.filter(pk=inc.pk).update(
+            opened_at=timezone.now() - timedelta(minutes=300),
+        )
+        inc.refresh_from_db()
+        evaluate_incident_breaches(inc)
+        evaluate_incident_breaches(inc)
+        # All three targets crossed but each only once.
+        self.assertEqual(inc.events.filter(kind='sla_breach').count(), 3)
+
+    def test_met_inside_target_no_breach(self):
+        inc = self._incident()
+        # Set opened_at 30 min ago; acknowledged 10 min after (within 15min target).
+        opened = timezone.now() - timedelta(minutes=30)
+        SecurityIncident.objects.filter(pk=inc.pk).update(
+            opened_at=opened,
+            acknowledged_at=opened + timedelta(minutes=10),
+        )
+        inc.refresh_from_db()
+        new = evaluate_incident_breaches(inc)
+        # Acknowledge was met. Contain still inside 60m window (no breach).
+        # Resolve still inside 240m window. So zero breaches.
+        self.assertEqual(new, [])
+
+    def test_management_command_records_breaches(self):
+        from io import StringIO
+        inc = self._incident()
+        SecurityIncident.objects.filter(pk=inc.pk).update(
+            opened_at=timezone.now() - timedelta(minutes=400),
+        )
+        out = StringIO()
+        call_command('check_incident_sla_breaches', stdout=out)
+        inc.refresh_from_db()
+        self.assertEqual(inc.events.filter(kind='sla_breach').count(), 3)
 
 
 class MTTAQueryTests(TestCase):

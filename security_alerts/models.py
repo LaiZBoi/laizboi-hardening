@@ -469,6 +469,125 @@ class SecurityIncidentEvent(models.Model):
         return f'{self.get_kind_display()} on incident {self.incident_id}'
 
 
+class SecurityIncidentSLAPolicy(models.Model):
+    """Phase 23 v3.17.340 — SLA targets for security incidents.
+
+    A policy targets a (severity, optional client_org) tuple and sets
+    minutes-to-acknowledge / minutes-to-contain / minutes-to-resolve
+    deadlines. The breach checker mgmt cmd
+    `manage.py check_incident_sla_breaches` walks every open incident,
+    computes whether each target has been crossed, and writes a
+    `sla_breach` event into the incident timeline (only once per
+    target per incident).
+    """
+
+    organization = models.ForeignKey(
+        'core.Organization', on_delete=models.CASCADE,
+        related_name='security_incident_sla_policies',
+        help_text='MSP tenant that owns the policy.',
+    )
+    client_org = models.ForeignKey(
+        'core.Organization', on_delete=models.SET_NULL,
+        related_name='+', null=True, blank=True,
+        help_text='Optionally pin the policy to one client; '
+                  'blank = MSP-wide for the given severity.',
+    )
+    severity = models.CharField(
+        max_length=20, choices=SecurityAlert.SEVERITY_CHOICES,
+        help_text='Severity bucket the policy applies to.',
+    )
+
+    acknowledge_minutes = models.PositiveIntegerField(
+        default=15,
+        help_text='Time-to-acknowledge SLA (minutes from open).',
+    )
+    contain_minutes = models.PositiveIntegerField(
+        default=60,
+        help_text='Time-to-contain SLA (minutes from open).',
+    )
+    resolve_minutes = models.PositiveIntegerField(
+        default=240,
+        help_text='Time-to-resolve SLA (minutes from open).',
+    )
+
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'security_incident_sla_policies'
+        ordering = ['organization', 'severity']
+        unique_together = [['organization', 'client_org', 'severity']]
+
+    def __str__(self):
+        scope = self.client_org.name if self.client_org else '(MSP-wide)'
+        return f'{self.severity} / {scope} — {self.resolve_minutes}m resolve'
+
+
+def policy_for_incident(incident):
+    """Return the most-specific active SLA policy for this incident, or None."""
+    qs = SecurityIncidentSLAPolicy.objects.filter(
+        organization=incident.organization,
+        severity=incident.severity,
+        is_active=True,
+    )
+    # Prefer client-pinned policy
+    pinned = qs.filter(client_org=incident.client_org).first() if incident.client_org_id else None
+    if pinned:
+        return pinned
+    return qs.filter(client_org__isnull=True).first()
+
+
+def evaluate_incident_breaches(incident):
+    """Phase 23 v3.17.340 — write `sla_breach` timeline events for any
+    SLA target the incident has crossed without being met. Idempotent —
+    won't double-record the same breach.
+
+    Returns a list of breach kind strings recorded this call.
+    """
+    from django.utils import timezone
+
+    policy = policy_for_incident(incident)
+    if policy is None:
+        return []
+
+    now = timezone.now()
+    breaches = []
+    existing = set(
+        incident.events.filter(kind='sla_breach').values_list('message', flat=True)
+    )
+
+    targets = [
+        ('acknowledge', policy.acknowledge_minutes, incident.acknowledged_at),
+        ('contain', policy.contain_minutes, incident.contained_at),
+        ('resolve', policy.resolve_minutes, incident.resolved_at),
+    ]
+    for label, minutes, met_at in targets:
+        deadline = incident.opened_at + _timedelta(minutes=minutes)
+        if met_at is not None and met_at <= deadline:
+            continue  # met inside SLA, skip
+        if met_at is None and now <= deadline:
+            continue  # still inside the window
+        marker = f'sla_breach:{label}'
+        # De-dupe by checking if any prior sla_breach event message starts with marker
+        if any(m.startswith(marker) for m in existing):
+            continue
+        msg = (
+            f'{marker} — target {minutes} min exceeded '
+            f'(deadline {deadline.isoformat()}, '
+            f'{"met " + met_at.isoformat() if met_at else "not met"})'
+        )
+        incident.add_event(kind='sla_breach', message=msg)
+        breaches.append(label)
+    return breaches
+
+
+def _timedelta(*, minutes):
+    from datetime import timedelta
+    return timedelta(minutes=minutes)
+
+
 def _correlate_alert_to_incident(alert, *, window_minutes=60):
     """Phase 23 v3.17.338 — auto-grouping helper.
 

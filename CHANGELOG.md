@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.355] - 2026-05-07
+
+### Added — Phase 23 v4: Incident SLA tracking
+Fourth Phase 23 release. Security incidents now carry SLA targets (acknowledge / contain / resolve) via a new `SecurityIncidentSLAPolicy` model. Targets are matched on (organization, client_org, severity) with the most-specific (client-pinned) policy winning over MSP-wide. A breach checker walks every open incident and writes idempotent `sla_breach` timeline events when a target deadline passes without being met.
+
+- New model `security_alerts.SecurityIncidentSLAPolicy` — minutes-to-acknowledge / contain / resolve targets per (org, optional client, severity), unique together.
+- New helpers `policy_for_incident(incident)` and `evaluate_incident_breaches(incident)` in `security_alerts.models`. Breach evaluation is idempotent — re-running won't double-record the same target.
+- New mgmt cmd `manage.py check_incident_sla_breaches [--org-id=N]`.
+- New migration `security_alerts/0004_securityincidentslapolicy.py`.
+
+### Tests
+- 5 new tests covering inside-window happy path, acknowledge-overdue, idempotency, met-inside-target, and the management command.
+
 ## [3.17.354] - 2026-05-07
 
 ### Added — Phase 8 mobile app v1: scaffold + auth client
