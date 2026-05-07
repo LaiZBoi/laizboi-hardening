@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.360] - 2026-05-07
+
+### Added — Phase 23 v6: Threat visibility dashboard
+Sixth Phase 23 release. New single-pane analyst view at `/security/threat-overview/` rolling up open alerts by severity, open incidents by severity, top-exposed organizations (cached `exposure_score`), in-flight playbook activity in the last 24 hours, and a 7-day-vs-prior-7-day week-over-week alert-volume trend.
+
+- New view `threat_overview` and template `templates/security_alerts/threat_overview.html`.
+- Safe with empty data (zero alerts, zero incidents, zero exposure scores) — renders the page with placeholders.
+- Reuses cached `Organization.exposure_score` for the top-exposed table.
+
+### Tests
+- 4 new tests covering empty render, alert counts, top-exposed inclusion, and the no-prior-week WoW edge case.
+
 ## [3.17.359] - 2026-05-07
 
 ### Added — Phase 8 mobile app v4: Vault + Monitoring + Security + Settings

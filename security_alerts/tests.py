@@ -645,6 +645,70 @@ class RemediationPlaybookTests(TestCase):
         self.assertEqual(status, 'skip')
 
 
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.359 — Threat visibility dashboard
+# ---------------------------------------------------------------------------
+
+@override_settings(
+    MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+    STORAGES=_TEST_STORAGES,
+)
+class ThreatOverviewTests(TestCase):
+    def setUp(self):
+        self.org = _make_org()
+        self.user = User.objects.create_user(
+            username='soc', password='pw', is_superuser=True, is_staff=True,
+        )
+        from accounts.models import Membership
+        Membership.objects.create(
+            user=self.user, organization=self.org, is_active=True,
+        )
+        self.conn = _make_conn(self.org)
+
+    def test_overview_renders_with_no_data(self):
+        c = Client()
+        c.force_login(self.user)
+        r = c.get('/security/threat-overview/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Threat Overview')
+
+    def test_overview_counts_open_alerts(self):
+        SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id='o-1', severity='critical', title='c', status='new',
+        )
+        SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id='o-2', severity='high', title='h', status='acknowledged',
+        )
+        c = Client()
+        c.force_login(self.user)
+        r = c.get('/security/threat-overview/')
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context['open_alert_counts']
+        self.assertEqual(ctx['critical'], 1)
+        self.assertEqual(ctx['high'], 1)
+
+    def test_overview_includes_top_exposed_orgs(self):
+        self.org.exposure_score = 250
+        self.org.save(update_fields=['exposure_score'])
+        c = Client()
+        c.force_login(self.user)
+        r = c.get('/security/threat-overview/')
+        self.assertIn(self.org, list(r.context['top_exposed']))
+
+    def test_overview_wow_pct_when_no_prior_week(self):
+        # Past 7d has alerts, prior 7d has none → wow_pct should be 100.
+        SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id='wow-1', severity='medium', title='w',
+        )
+        c = Client()
+        c.force_login(self.user)
+        r = c.get('/security/threat-overview/')
+        self.assertEqual(r.context['wow_pct'], 100.0)
+
+
 class MTTAQueryTests(TestCase):
     def test_unacked_alerts_counted(self):
         from reports.queries import security_alert_mtta
