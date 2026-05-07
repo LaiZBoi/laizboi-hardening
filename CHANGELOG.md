@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.385] - 2026-05-07
+
+### Fixed — Mobile APK crashes immediately after biometric unlock
+Real-world Android crash report: "makes me use unlock pattern or bio as soon as it opens, then immediately closes. I haven't even put in server details or login info." Root cause: on Android cold start the Keystore is briefly locked while the user authenticates, and `SecureStore.getItemAsync` throws a native exception during that window. The unhandled rejection inside the boot path was bubbling out of `useEffect` and the OS killed the process before any UI could mount.
+
+- `mobile/src/utils/storage.ts` — added a `bootstrap()` helper that wraps token + server URL reads in defensive try/catch and never throws on Keystore-not-yet-ready situations.
+- `mobile/app/_layout.tsx` — boot sequence now uses `bootstrap()` and treats any storage exception as "no token, continue to /login". Wrapped `<Stack>` in the new `<ErrorBoundary>` so any uncaught render-tree error shows a friendly fallback instead of crashing the app process.
+- `mobile/app/index.tsx` — same defensive wrapping plus a try/catch on the `router.replace()` call (in case the router isn't ready yet).
+- `mobile/src/components/ErrorBoundary.tsx` — new top-level error boundary with a "Try again" button.
+
+### Tests
+None — pure mobile-app boot-path hardening; verified by reading the updated files and confirming no static-analysis regression. (Native test would require running the Android emulator, which isn't available in CI.)
+
 ## [3.17.349] - 2026-05-07
 
 ### Added — Mobile API: tickets endpoints
