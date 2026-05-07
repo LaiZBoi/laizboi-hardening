@@ -484,22 +484,22 @@ Planned capabilities:
 
 **Goal:** Improve operational knowledge management and documentation governance.
 
-## Phase 23 — Security Event & Incident Workflows **(L)**
+## Phase 23 — Security Event & Incident Workflows **(L)** [in progress]
 
 **Roadmap item:** Security Event Correlation & Incident Operations. Extends Phase 9 (security alert ingestion) — these are the next-tier incident workflows on top of the basic alert dashboard.
 
 Planned capabilities:
-- Security event ingestion *(planned — Phase 9.1)*
-- SIEM integrations
-- Vulnerability correlation (CVE → affected assets → exposure)
-- CVE-to-ticket workflows
+- Security event ingestion *(shipped v3.17.168 via Phase 9.1+9.2 — SecurityVendorConnection + SecurityAlert + pollers + webhook)*
+- SIEM integrations *(shipped v3.17.337 — generic CEF/JSON/Syslog inbound endpoint with HMAC auth at /security/siem/webhook/)*
+- Vulnerability correlation (CVE → affected assets → exposure) *(shipped v3.17.306–307 via Phase 17 v6+v8 — Vulnerability + affected_assets + ticket linking)*
+- CVE-to-ticket workflows *(shipped v3.17.307 via Phase 17 v8 — vuln-to-ticket linking)*
 - Security incident timelines
 - Exposure scoring
 - Incident SLA tracking
 - Automated remediation workflows
-- Security dashboarding *(planned — Phase 9.3)*
+- Security dashboarding *(shipped v3.17.168 via Phase 9.3 — `/security/alerts/`)*
 - Threat visibility
-- Security event reporting *(planned — Phase 9.4)*
+- Security event reporting *(shipped v3.17.168 via Phase 9.4 — MTTA + suppression + digest framework)*
 - AI-assisted incident summarization (**OPTIONAL AI**)
 
 Potential integrations:

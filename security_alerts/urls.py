@@ -18,4 +18,9 @@ urlpatterns = [
     path('rules/new/', views.rule_form, name='rule_create'),
     path('rules/<int:pk>/edit/', views.rule_form, name='rule_edit'),
     path('webhook/<str:token>/', views.webhook_receive, name='webhook_receive'),
+    # Phase 23 v3.17.337 — SIEM webhook endpoints
+    path('siem/', views.siem_endpoint_list, name='siem_endpoint_list'),
+    path('siem/new/', views.siem_endpoint_form, name='siem_endpoint_create'),
+    path('siem/<int:pk>/edit/', views.siem_endpoint_form, name='siem_endpoint_edit'),
+    path('siem/webhook/<str:token>/', views.siem_webhook_receive, name='siem_webhook_receive'),
 ]

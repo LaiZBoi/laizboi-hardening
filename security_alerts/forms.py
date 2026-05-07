@@ -1,5 +1,9 @@
 from django import forms
-from .models import SecurityAlertRule, SecurityVendorConnection
+from .models import (
+    SecurityAlertRule,
+    SecurityVendorConnection,
+    SIEMWebhookEndpoint,
+)
 
 
 # Bootstrap 5 widget classes applied at form-class level so the templates
@@ -67,4 +71,26 @@ class SecurityAlertRuleForm(forms.ModelForm):
                 'placeholder': '0-23'}),
             'notes': forms.Textarea(attrs={**_TEXT, 'rows': 3,
                 'placeholder': 'Why this rule exists; who owns it.'}),
+        }
+
+
+class SIEMWebhookEndpointForm(forms.ModelForm):
+    """Phase 23 v3.17.337 — generic SIEM/Syslog/CEF inbound endpoint."""
+
+    class Meta:
+        model = SIEMWebhookEndpoint
+        fields = [
+            'name', 'expected_format', 'client_org',
+            'require_hmac', 'default_severity',
+            'is_active', 'notes',
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs=_TEXT),
+            'expected_format': forms.Select(attrs=_SELECT),
+            'client_org': forms.Select(attrs=_SELECT),
+            'require_hmac': forms.CheckboxInput(attrs=_CHECK),
+            'default_severity': forms.Select(attrs=_SELECT),
+            'is_active': forms.CheckboxInput(attrs=_CHECK),
+            'notes': forms.Textarea(attrs={**_TEXT, 'rows': 3,
+                'placeholder': 'Source SIEM, who configured it, intended use case.'}),
         }

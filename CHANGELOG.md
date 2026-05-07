@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.337] - 2026-05-07
+
+### Added — Phase 23 v1: SIEM webhook adapter (CEF/JSON/Syslog)
+First Phase 23 release. New `SIEMWebhookEndpoint` model exposes a per-token inbound endpoint at `/security/siem/webhook/<token>/` that accepts CEF (ArcSight Common Event Format), generic JSON, or syslog-wrapped CEF. Inbound events are normalized into the existing `SecurityAlert` schema so the triage UI, auto-ticket rules, and downstream Phase 23 incident workflows just work.
+
+- New model `security_alerts.SIEMWebhookEndpoint` — per-organization endpoint with auto-generated token + HMAC secret, optional `require_hmac` enforcement, configurable expected format, default severity fallback.
+- New CEF parser at `security_alerts/siem.py` — `parse_cef_line` handles escaped pipes in headers, `_split_cef_extension` extracts key=value pairs preserving spaces, severity 0–10 maps to `low/medium/high/critical` buckets.
+- New view `siem_webhook_receive` — 404 for unknown tokens, 403 for invalid/missing-when-required signatures, 200 with `{received, imported}` JSON on success. Dedupes on `(siem_endpoint, external_id)`.
+- New URLs: `/security/siem/` (CRUD list), `/security/siem/new/`, `/security/siem/<id>/edit/`, `/security/siem/webhook/<token>/`.
+- `SecurityAlert.connection` is now nullable; new `SecurityAlert.siem_endpoint` FK + dedupe index. Vendor-connection alerts continue to dedupe on `(connection, external_id)`.
+
+### Tests
+- 7 new tests covering CEF parser, severity bucketing, unknown-token 404, invalid HMAC 403, valid HMAC accept, dedupe on repeat ingestion, JSON payload happy path, require_hmac enforcement.
+
 ## [3.17.336] - 2026-05-07
 
 ### Removed — Phase 29 deleted from roadmap

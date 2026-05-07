@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import SecurityVendorConnection, SecurityAlert, SecurityAlertRule
+from .models import (
+    SecurityVendorConnection, SecurityAlert, SecurityAlertRule,
+    SIEMWebhookEndpoint,
+)
 
 
 @admin.register(SecurityVendorConnection)
@@ -23,3 +26,12 @@ class SecurityAlertRuleAdmin(admin.ModelAdmin):
     list_display = ('name', 'priority', 'is_active', 'organization',
                     'match_provider', 'match_category', 'match_severity_min')
     list_filter = ('is_active', 'match_provider', 'match_category')
+
+
+@admin.register(SIEMWebhookEndpoint)
+class SIEMWebhookEndpointAdmin(admin.ModelAdmin):
+    list_display = ('name', 'expected_format', 'organization', 'client_org',
+                    'is_active', 'received_count', 'last_seen_at')
+    list_filter = ('expected_format', 'is_active', 'require_hmac')
+    search_fields = ('name', 'organization__name', 'client_org__name')
+    readonly_fields = ('token', 'hmac_secret', 'received_count', 'last_seen_at')

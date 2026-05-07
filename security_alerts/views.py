@@ -18,11 +18,16 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from accounts.permission_utils import require_perm, user_has_perm
-from .forms import SecurityVendorConnectionForm, SecurityAlertRuleForm
+from .forms import (
+    SecurityVendorConnectionForm,
+    SecurityAlertRuleForm,
+    SIEMWebhookEndpointForm,
+)
 from .models import (
     SecurityAlert,
     SecurityAlertRule,
     SecurityVendorConnection,
+    SIEMWebhookEndpoint,
 )
 
 
@@ -398,3 +403,112 @@ def webhook_receive(request, token):
     conn.last_error = ''
     conn.save(update_fields=['last_sync_at', 'last_sync_status', 'last_error'])
     return JsonResponse({'ok': True, 'imported': imported})
+
+
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.337 — SIEM webhook endpoints (CRUD + receiver)
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm('security_alerts_view')
+def siem_endpoint_list(request):
+    orgs = _user_orgs(request.user)
+    endpoints = SIEMWebhookEndpoint.objects.filter(
+        organization__in=orgs,
+    ).select_related('organization', 'client_org')
+    return render(request, 'security_alerts/siem_endpoint_list.html', {
+        'endpoints': endpoints,
+        'can_manage': user_has_perm(request.user, 'security_alerts_manage_connections'),
+    })
+
+
+@login_required
+@require_perm('security_alerts_manage_connections')
+def siem_endpoint_form(request, pk=None):
+    orgs = _user_orgs(request.user)
+    instance = None
+    if pk is not None:
+        instance = get_object_or_404(
+            SIEMWebhookEndpoint, pk=pk, organization__in=orgs,
+        )
+    if request.method == 'POST':
+        form = SIEMWebhookEndpointForm(request.POST, instance=instance)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            if not instance:
+                obj.organization = _primary_org(request.user) or orgs.first()
+                obj.created_by = request.user
+            obj.save()
+            from audit.models import AuditLog
+            AuditLog.log(
+                user=request.user,
+                action='siem_endpoint_saved',
+                organization=obj.organization,
+                object_type='security_alerts.SIEMWebhookEndpoint',
+                object_id=obj.pk,
+                object_repr=obj.name,
+                description=f'Saved SIEM webhook endpoint {obj.name}',
+            )
+            messages.success(request, 'SIEM webhook endpoint saved.')
+            return redirect('security_alerts:siem_endpoint_list')
+    else:
+        form = SIEMWebhookEndpointForm(instance=instance)
+    return render(request, 'security_alerts/siem_endpoint_form.html', {
+        'form': form, 'instance': instance,
+    })
+
+
+@csrf_exempt
+def siem_webhook_receive(request, token):
+    """Phase 23 v3.17.337 — generic CEF/JSON inbound webhook.
+
+    Authenticates with the per-endpoint URL token; optional HMAC-SHA256
+    signature in `X-Cst0r-Signature`. Returns 404 for unknown tokens,
+    403 for invalid signatures (or missing when `require_hmac=True`).
+    """
+    from .siem import (
+        ingest_payload, parse_inbound, verify_signature,
+    )
+    if request.method != 'POST':
+        return HttpResponseBadRequest('POST only')
+
+    endpoint = SIEMWebhookEndpoint.objects.filter(
+        token=token, is_active=True,
+    ).select_related('organization', 'client_org').first()
+    if not endpoint:
+        raise Http404('Unknown SIEM webhook token')
+
+    body = request.body or b''
+    sig_header = request.META.get('HTTP_X_CST0R_SIGNATURE') or ''
+    if endpoint.require_hmac:
+        if not sig_header or not verify_signature(endpoint.hmac_secret, body, sig_header):
+            return HttpResponseForbidden('Invalid or missing signature')
+    elif sig_header:
+        # Signature present — verify it. Don't accept bogus signatures.
+        if not verify_signature(endpoint.hmac_secret, body, sig_header):
+            return HttpResponseForbidden('Bad signature')
+
+    try:
+        alerts = parse_inbound(body, endpoint.expected_format)
+    except Exception as exc:
+        endpoint.last_error = str(exc)[:500]
+        endpoint.save(update_fields=['last_error'])
+        return JsonResponse({'ok': False, 'error': 'parse_failed'}, status=400)
+
+    if not alerts:
+        endpoint.last_error = 'no_events_parsed'
+        endpoint.save(update_fields=['last_error'])
+        return JsonResponse(
+            {'ok': True, 'imported': 0, 'note': 'no events parsed'},
+        )
+
+    imported = ingest_payload(endpoint, alerts)
+    endpoint.last_seen_at = timezone.now()
+    endpoint.last_error = ''
+    endpoint.received_count = (endpoint.received_count or 0) + len(alerts)
+    endpoint.save(update_fields=['last_seen_at', 'last_error', 'received_count'])
+    return JsonResponse({
+        'ok': True,
+        'received': len(alerts),
+        'imported': imported,
+    })

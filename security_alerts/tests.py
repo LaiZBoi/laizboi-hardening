@@ -29,6 +29,7 @@ from security_alerts.models import (
     SecurityAlert,
     SecurityAlertRule,
     SecurityVendorConnection,
+    SIEMWebhookEndpoint,
 )
 
 
@@ -178,6 +179,137 @@ class WebhookReceiverTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()['ok'], True)
         self.assertEqual(SecurityAlert.objects.filter(external_id='evt-77').count(), 1)
+
+
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.337 — SIEM webhook adapter
+# ---------------------------------------------------------------------------
+
+class SIEMParserTests(TestCase):
+    def test_parse_cef_basic_line(self):
+        from security_alerts.siem import parse_cef_line
+        line = (
+            'CEF:0|TestVendor|TestProduct|1.0|sig-1234|Sample Login Failure|7|'
+            'src=10.0.0.1 dvchost=workstation-3 msg=Failed login attempt rt=1700000000'
+        )
+        out = parse_cef_line(line)
+        self.assertIsNotNone(out)
+        self.assertEqual(out['title'], 'Sample Login Failure')
+        self.assertEqual(out['severity'], 'high')
+        self.assertEqual(out['asset_hint'], 'workstation-3')
+        self.assertIn('Failed login attempt', out['description'])
+        self.assertEqual(out['raw_payload']['vendor'], 'TestVendor')
+
+    def test_parse_cef_returns_none_on_non_cef(self):
+        from security_alerts.siem import parse_cef_line
+        self.assertIsNone(parse_cef_line('not a cef line'))
+        self.assertIsNone(parse_cef_line(''))
+
+    def test_severity_bucket_numeric_and_string(self):
+        from security_alerts.siem import _bucket_severity
+        self.assertEqual(_bucket_severity(0), 'low')
+        self.assertEqual(_bucket_severity(5), 'medium')
+        self.assertEqual(_bucket_severity(8), 'high')
+        self.assertEqual(_bucket_severity(10), 'critical')
+        self.assertEqual(_bucket_severity('critical'), 'critical')
+        self.assertEqual(_bucket_severity('CRITICAL'), 'critical')
+        self.assertEqual(_bucket_severity('low'), 'low')
+        self.assertEqual(_bucket_severity(None), 'medium')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+class SIEMWebhookReceiverTests(TestCase):
+    def setUp(self):
+        _seed_psa()
+        self.org = _make_org()
+        self.endpoint = SIEMWebhookEndpoint.objects.create(
+            organization=self.org, name='Splunk-feed',
+            expected_format='cef', default_severity='medium',
+        )
+
+    def test_unknown_token_returns_404(self):
+        c = Client()
+        r = c.post('/security/siem/webhook/no-such-token/', data='CEF:0|x|y|1|1|t|5|',
+                   content_type='text/plain')
+        self.assertEqual(r.status_code, 404)
+
+    def test_invalid_hmac_returns_403(self):
+        import hmac, hashlib
+        c = Client()
+        body = b'CEF:0|Vendor|Prod|1|sig-1|test|5|src=1.2.3.4'
+        r = c.post(
+            f'/security/siem/webhook/{self.endpoint.token}/',
+            data=body, content_type='text/plain',
+            HTTP_X_CST0R_SIGNATURE='deadbeef-not-valid',
+        )
+        self.assertEqual(r.status_code, 403)
+
+    def test_cef_ingestion_creates_security_alert(self):
+        c = Client()
+        body = (
+            'CEF:0|Splunk|Enterprise|9.0|firewall-1234|Suspicious Login|9|'
+            'src=10.0.0.5 dvchost=mail-server msg=multiple failed logins'
+        )
+        r = c.post(
+            f'/security/siem/webhook/{self.endpoint.token}/',
+            data=body, content_type='text/plain',
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['imported'], 1)
+        alert = SecurityAlert.objects.get(siem_endpoint=self.endpoint)
+        self.assertEqual(alert.title, 'Suspicious Login')
+        self.assertEqual(alert.severity, 'critical')
+        self.assertEqual(alert.asset_hint, 'mail-server')
+
+    def test_dedupe_on_repeat_ingestion(self):
+        c = Client()
+        body = (
+            'CEF:0|Vendor|Prod|1.0|sig-dedupe|Repeat Event|6|'
+            'externalId=EVT-7777 dvchost=db-host'
+        )
+        c.post(f'/security/siem/webhook/{self.endpoint.token}/',
+               data=body, content_type='text/plain')
+        c.post(f'/security/siem/webhook/{self.endpoint.token}/',
+               data=body, content_type='text/plain')
+        # Should be one row, not two.
+        self.assertEqual(SecurityAlert.objects.filter(siem_endpoint=self.endpoint).count(), 1)
+
+    def test_valid_hmac_accepts_request(self):
+        import hmac, hashlib
+        body = b'CEF:0|Vendor|Prod|1.0|sig-2|HMAC-protected|7|src=10.0.0.9'
+        sig = hmac.new(self.endpoint.hmac_secret.encode('utf-8'), body, hashlib.sha256).hexdigest()
+        c = Client()
+        r = c.post(
+            f'/security/siem/webhook/{self.endpoint.token}/',
+            data=body, content_type='text/plain',
+            HTTP_X_CST0R_SIGNATURE=sig,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['imported'], 1)
+
+    def test_require_hmac_rejects_missing_signature(self):
+        self.endpoint.require_hmac = True
+        self.endpoint.save(update_fields=['require_hmac'])
+        c = Client()
+        r = c.post(
+            f'/security/siem/webhook/{self.endpoint.token}/',
+            data='CEF:0|v|p|1|x|t|5|', content_type='text/plain',
+        )
+        self.assertEqual(r.status_code, 403)
+
+    def test_json_payload_ingestion(self):
+        self.endpoint.expected_format = 'json'
+        self.endpoint.save(update_fields=['expected_format'])
+        c = Client()
+        body = '{"id": "abc-9", "title": "JSON event", "severity": "high", "host": "web-01"}'
+        r = c.post(
+            f'/security/siem/webhook/{self.endpoint.token}/',
+            data=body, content_type='application/json',
+        )
+        self.assertEqual(r.status_code, 200)
+        alert = SecurityAlert.objects.get(siem_endpoint=self.endpoint, external_id='abc-9')
+        self.assertEqual(alert.severity, 'high')
+        self.assertEqual(alert.asset_hint, 'web-01')
 
 
 class MTTAQueryTests(TestCase):
