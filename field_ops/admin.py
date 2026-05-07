@@ -4,9 +4,11 @@ Admin registration for field_ops models.
 from django.contrib import admin
 
 from .models import (
+    AutoTimePreference,
     ClientSiteGeofence,
     LocationRetentionPolicy,
     MobileDevice,
+    PendingAutoTime,
     TechnicianLocation,
     TimeclockEntry,
 )
@@ -35,6 +37,21 @@ class TimeclockEntryAdmin(admin.ModelAdmin):
     search_fields = ('tech__username', 'tech__email', 'notes')
     date_hierarchy = 'clocked_in_at'
     raw_id_fields = ('tech', 'organization', 'location', 'ticket', 'project', 'derived_time_entry')
+
+
+@admin.register(AutoTimePreference)
+class AutoTimePreferenceAdmin(admin.ModelAdmin):
+    list_display = ('user', 'mode', 'updated_at')
+    list_filter = ('mode',)
+    search_fields = ('user__username',)
+
+
+@admin.register(PendingAutoTime)
+class PendingAutoTimeAdmin(admin.ModelAdmin):
+    list_display = ('user', 'organization', 'geofence', 'entered_at', 'confirmed_at', 'cancelled_at')
+    list_filter = ('organization',)
+    search_fields = ('user__username',)
+    raw_id_fields = ('user', 'organization', 'geofence', 'suggested_ticket')
 
 
 @admin.register(LocationRetentionPolicy)

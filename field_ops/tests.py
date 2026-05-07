@@ -246,3 +246,125 @@ class LocationRetentionPolicyTests(TestCase):
         out = StringIO()
         call_command('prune_technician_locations', stdout=out)
         self.assertIn('Deleted 0', out.getvalue())
+
+
+class AutoDocumentFieldVisitsTests(TestCase):
+    """v3.17.412 — GPS auto-documentation engine (Sub-phase 8.2)."""
+
+    def setUp(self):
+        from psa.models import (
+            Queue, Ticket, TicketPriority, TicketStatus, TicketTimeEntry, TicketType,
+        )
+        self.user = User.objects.create_user(username='tech-eng', password='x')
+        self.org = Organization.objects.create(name='Eng Org')
+        self.fence = ClientSiteGeofence.objects.create(
+            organization=self.org, name='HQ', kind='radius',
+            center_lat=Decimal('40.0'), center_lon=Decimal('-73.0'),
+            radius_meters=200, active=True,
+        )
+        # Build a ticket so the engine has something to start time against.
+        sn = TicketStatus.objects.create(name='New', slug='new', sort_order=1)
+        pr = TicketPriority.objects.create(code='P3', name='Normal')
+        tt = TicketType.objects.create(name='Incident', slug='incident')
+        qu = Queue.objects.create(name='Default', slug='default')
+        self.ticket = Ticket.objects.create(
+            organization=self.org, subject='Eng', status=sn,
+            priority=pr, ticket_type=tt, queue=qu,
+        )
+        # Plant an unsubmitted TicketTimeEntry so _last_active_ticket finds it.
+        TicketTimeEntry.objects.create(
+            ticket=self.ticket, user=self.user,
+            started_at=timezone.now() - timedelta(hours=2),
+            ended_at=timezone.now() - timedelta(hours=1),
+            is_billable=True,
+        )
+
+    def _ping_inside(self):
+        return TechnicianLocation.objects.create(
+            tech=self.user, lat=Decimal('40.0'), lon=Decimal('-73.0'),
+            timestamp=timezone.now(),
+        )
+
+    def _ping_outside(self):
+        return TechnicianLocation.objects.create(
+            tech=self.user, lat=Decimal('41.5'), lon=Decimal('-74.5'),
+            timestamp=timezone.now(),
+        )
+
+    def test_off_mode_skips_user(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from .models import AutoTimePreference
+        AutoTimePreference.objects.create(user=self.user, mode='off')
+        self._ping_inside()
+        out = StringIO()
+        call_command('auto_document_field_visits', stdout=out)
+        # No new running TicketTimeEntry
+        from psa.models import TicketTimeEntry
+        self.assertFalse(
+            TicketTimeEntry.objects.filter(user=self.user, ended_at__isnull=True).exists()
+        )
+
+    def test_always_on_enter_creates_running_entry(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from .models import AutoTimePreference
+        AutoTimePreference.objects.create(user=self.user, mode='always_on')
+        self._ping_inside()
+        out = StringIO()
+        call_command('auto_document_field_visits', stdout=out)
+        from psa.models import TicketTimeEntry
+        running = TicketTimeEntry.objects.filter(
+            user=self.user, ended_at__isnull=True, ticket=self.ticket,
+        )
+        self.assertEqual(running.count(), 1)
+        self.assertIn('[auto-time:field_ops]', running.first().notes)
+
+    def test_always_on_exit_closes_entry(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from .models import AutoTimePreference
+        AutoTimePreference.objects.create(user=self.user, mode='always_on')
+        # Step 1: enter
+        self._ping_inside()
+        call_command('auto_document_field_visits', stdout=StringIO())
+        # Step 2: drop a fresh outside ping so latest is OUTSIDE
+        self._ping_outside()
+        call_command('auto_document_field_visits', stdout=StringIO())
+        from psa.models import TicketTimeEntry
+        running = TicketTimeEntry.objects.filter(
+            user=self.user, ended_at__isnull=True,
+        )
+        self.assertEqual(running.count(), 0)
+
+    def test_ask_first_creates_pending_no_time_entry(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from .models import AutoTimePreference, PendingAutoTime
+        AutoTimePreference.objects.create(user=self.user, mode='ask_first')
+        self._ping_inside()
+        call_command('auto_document_field_visits', stdout=StringIO())
+        # PendingAutoTime row exists
+        self.assertEqual(
+            PendingAutoTime.objects.filter(user=self.user, confirmed_at__isnull=True).count(),
+            1,
+        )
+        # No running TicketTimeEntry yet (ask_first defers)
+        from psa.models import TicketTimeEntry
+        self.assertFalse(
+            TicketTimeEntry.objects.filter(user=self.user, ended_at__isnull=True).exists()
+        )
+
+    def test_no_recent_ping_skips_user(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from .models import AutoTimePreference
+        AutoTimePreference.objects.create(user=self.user, mode='always_on')
+        # Stale ping (1 hour ago)
+        TechnicianLocation.objects.create(
+            tech=self.user, lat=Decimal('40.0'), lon=Decimal('-73.0'),
+            timestamp=timezone.now() - timedelta(hours=1),
+        )
+        out = StringIO()
+        call_command('auto_document_field_visits', stdout=out)
+        self.assertIn('skipped=1', out.getvalue())

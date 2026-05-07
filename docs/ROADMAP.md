@@ -825,11 +825,11 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 - REST API additions: `/api/v2/mobile/locations/`, `/api/v2/mobile/timeclock/`, `/api/v2/mobile/active-ticket/`. *(shipped v3.17.410 — endpoints live at `/api/mobile/v1/locations/`, `/api/mobile/v1/timeclock/clock-in/` + `/clock-out/` + `/me/`, and `/api/mobile/v1/active-ticket/`. Off-shift GPS suppression honors `WorkingHours` per Sub-phase 8.5.)*
 - Token auth (long-lived per-device tokens stored in `MobileDevice` model with revoke-on-demand). *(API plan doc shipped v3.17.345; auth endpoints v3.17.346; dashboard + organizations v3.17.347; assets v3.17.348; tickets v3.17.349; KB endpoints — list / search / detail with raw markdown + rendered HTML — shipped v3.17.350; vault / monitoring / profile endpoints land v3.17.351 → v3.17.353)*
 
-### Sub-phase 8.2 — GPS auto-documentation engine
-- Background worker: every GPS ping with the tech "inside a client geofence" auto-starts a `TicketTimeEntry` against their currently-active ticket for that client (or creates a placeholder if no ticket open).
-- On exit-geofence event: stop the time entry, write the duration, optionally prompt the tech to confirm + add notes via push notification.
-- Selectable per-tech: **Always on** / **Ask first** / **Off**. Per-tech UserProfile flag.
-- Audit log every auto-time event so disputed billing can be traced.
+### Sub-phase 8.2 — GPS auto-documentation engine *(shipped v3.17.412)*
+- Background worker: every GPS ping with the tech "inside a client geofence" auto-starts a `TicketTimeEntry` against their currently-active ticket for that client (or creates a placeholder if no ticket open). *(shipped v3.17.412 — `python manage.py auto_document_field_visits`, cron every 1 min)*
+- On exit-geofence event: stop the time entry, write the duration, optionally prompt the tech to confirm + add notes via push notification. *(shipped v3.17.412)*
+- Selectable per-tech: **Always on** / **Ask first** / **Off**. Per-tech UserProfile flag. *(shipped v3.17.412 — `field_ops.AutoTimePreference`)*
+- Audit log every auto-time event so disputed billing can be traced. *(shipped v3.17.412)*
 
 ### Sub-phase 8.3 — Timeclock feature
 - Web UI: Timeclock dashboard at `/timeclock/` for staff to view who's clocked in, total hours per pay period, exception flags (long shifts, missing clock-out).

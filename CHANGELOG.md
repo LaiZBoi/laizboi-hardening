@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.412] - 2026-05-07
+
+### Added — Phase 8.2 GPS auto-documentation engine
+The headline force-multiplier from Phase 8: a tech walks into a client site and a billable timer starts itself. Closes Sub-phase 8.2.
+
+- `field_ops.AutoTimePreference` (`OneToOneField(User)`, `mode` choices `always_on` / `ask_first` / `off`, default `ask_first`).
+- `field_ops.PendingAutoTime` — staging row created when an `ask_first` tech enters a geofence; promoted to a real `TicketTimeEntry` when the tech confirms via the front-end.
+- `python manage.py auto_document_field_visits [--window-minutes N]` (cron every minute):
+  - For each tech with `mode != 'off'` and a recent (last 5 min) `TechnicianLocation`, walk active `ClientSiteGeofence` rows.
+  - **ENTER (always_on)** → create + start a `TicketTimeEntry` against the user's last-active ticket for that org. Notes start with `[auto-time:field_ops]` so the engine can find its own rows on exit.
+  - **ENTER (ask_first)** → create a `PendingAutoTime` row + emit a Web Push using the existing Phase 21 v9 helper (`WebPushSubscription.send`).
+  - **EXIT** → close every running engine-marked `TicketTimeEntry` for that user.
+  - Audit logs every transition with `extra_data.event = auto_time_*`.
+- Migration `field_ops/0004_autotimepreference.py`.
+
+### Tests
+- 5 new tests: off-mode skips, always_on enter creates a running entry, exit closes it, ask_first creates a `PendingAutoTime` (not a running TicketTimeEntry), no-recent-ping skips.
+
 ## [3.17.411] - 2026-05-07
 
 ### Added — Phase 8.5 retention: LocationRetentionPolicy + prune mgmt cmd

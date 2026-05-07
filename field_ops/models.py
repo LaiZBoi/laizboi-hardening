@@ -380,3 +380,89 @@ class LocationRetentionPolicy(models.Model):
 
     def __str__(self) -> str:
         return f'{self.organization_id}: {self.retention_days}d'
+
+
+# -----------------------------------------------------------------------------
+# Sub-phase 8.2 — AutoTimePreference (v3.17.412)
+# -----------------------------------------------------------------------------
+
+AUTO_TIME_MODE_CHOICES = (
+    ('always_on', 'Always on (auto-start time entries silently)'),
+    ('ask_first', 'Ask first (push notification, requires confirm)'),
+    ('off', 'Off (no auto-time)'),
+)
+
+
+class AutoTimePreference(models.Model):
+    """
+    Per-tech preference for the GPS auto-documentation engine.
+
+    `always_on` — entering a known geofence auto-starts a `TicketTimeEntry`
+        against the tech's last-active ticket for that org.
+    `ask_first` — the engine creates a pending confirmation row and emits
+        a Web Push notification; the time entry is only committed when the
+        tech taps Confirm.
+    `off`       — engine skips this user entirely.
+
+    Default is `ask_first` (privacy-preserving).
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='auto_time_preference',
+    )
+    mode = models.CharField(
+        max_length=12, choices=AUTO_TIME_MODE_CHOICES, default='ask_first',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Auto-time preference'
+        verbose_name_plural = 'Auto-time preferences'
+
+    def __str__(self) -> str:
+        return f'{self.user_id}: {self.mode}'
+
+
+class PendingAutoTime(models.Model):
+    """
+    Sub-phase 8.2 ask-first staging row. Created when an `ask_first`
+    tech enters a geofence; the engine emits a push, then this row is
+    promoted to a real `TicketTimeEntry` if the tech confirms before
+    the auto-expiry.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='pending_auto_time',
+    )
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='+',
+    )
+    geofence = models.ForeignKey(
+        ClientSiteGeofence,
+        on_delete=models.CASCADE,
+        related_name='+',
+    )
+    suggested_ticket = models.ForeignKey(
+        'psa.Ticket',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+    )
+    entered_at = models.DateTimeField(default=timezone.now)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-entered_at']
+        indexes = [
+            models.Index(fields=['user', '-entered_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'PendingAutoTime#{self.pk or "?"} u={self.user_id}'
