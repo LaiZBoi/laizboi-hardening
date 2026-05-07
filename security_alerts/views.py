@@ -621,6 +621,93 @@ def incident_decide(request, pk):
 
 @login_required
 @require_perm('security_alerts_view')
+def threat_overview(request):
+    """Phase 23 v3.17.359 — Threat visibility dashboard.
+
+    Single-pane view for an MSP analyst: open alerts by severity, open
+    incidents by severity, top exposed orgs (cached score), in-flight
+    playbook activity in the last 24h, and a 7-day-vs-prior-7-day
+    week-over-week alert-volume trend.
+    """
+    from datetime import timedelta
+    from django.db.models import Count
+    from .models import RemediationPlaybook
+    from core.models import Organization
+
+    orgs = _user_orgs(request.user)
+
+    # Open alert counts per severity.
+    open_alert_counts = {
+        sev: SecurityAlert.objects.filter(
+            organization__in=orgs, status__in=['new', 'acknowledged'],
+            severity=sev,
+        ).count()
+        for sev, _ in SecurityAlert.SEVERITY_CHOICES
+    }
+
+    # Open incident counts per severity + total.
+    open_incidents_qs = SecurityIncident.objects.filter(
+        organization__in=orgs,
+        status__in=['open', 'investigating', 'contained'],
+    )
+    open_incident_counts = {
+        sev: open_incidents_qs.filter(severity=sev).count()
+        for sev, _ in SecurityAlert.SEVERITY_CHOICES
+    }
+    total_open_incidents = open_incidents_qs.count()
+
+    # Top exposed orgs (cached score).
+    top_exposed = Organization.objects.filter(
+        pk__in=orgs.values_list('pk', flat=True),
+        is_active=True,
+    ).order_by('-exposure_score')[:10]
+
+    # In-flight playbook activity (timeline events of kind playbook_action
+    # in the last 24h).
+    cutoff = timezone.now() - timedelta(hours=24)
+    recent_playbook_events = SecurityIncidentEvent.objects.filter(
+        kind='playbook_action',
+        occurred_at__gte=cutoff,
+        incident__organization__in=orgs,
+    ).select_related('incident').order_by('-occurred_at')[:20]
+
+    # Configured playbooks count.
+    playbook_count = RemediationPlaybook.objects.filter(
+        organization__in=orgs, is_active=True,
+    ).count()
+
+    # Week-over-week trend.
+    now = timezone.now()
+    week_a_start = now - timedelta(days=7)
+    week_b_start = now - timedelta(days=14)
+    week_a_count = SecurityAlert.objects.filter(
+        organization__in=orgs, seen_at__gte=week_a_start,
+    ).count()
+    week_b_count = SecurityAlert.objects.filter(
+        organization__in=orgs, seen_at__gte=week_b_start, seen_at__lt=week_a_start,
+    ).count()
+    if week_b_count > 0:
+        wow_pct = round(((week_a_count - week_b_count) / week_b_count) * 100, 1)
+    elif week_a_count > 0:
+        wow_pct = 100.0
+    else:
+        wow_pct = 0.0
+
+    return render(request, 'security_alerts/threat_overview.html', {
+        'open_alert_counts': open_alert_counts,
+        'open_incident_counts': open_incident_counts,
+        'total_open_incidents': total_open_incidents,
+        'top_exposed': top_exposed,
+        'recent_playbook_events': recent_playbook_events,
+        'playbook_count': playbook_count,
+        'week_a_count': week_a_count,
+        'week_b_count': week_b_count,
+        'wow_pct': wow_pct,
+    })
+
+
+@login_required
+@require_perm('security_alerts_view')
 def playbook_list(request):
     orgs = _user_orgs(request.user)
     playbooks = RemediationPlaybook.objects.filter(

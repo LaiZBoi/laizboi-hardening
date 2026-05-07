@@ -498,7 +498,7 @@ Planned capabilities:
 - Incident SLA tracking *(shipped v3.17.355 — SecurityIncidentSLAPolicy + `check_incident_sla_breaches` mgmt cmd + idempotent timeline events)*
 - Automated remediation workflows *(shipped v3.17.358 — RemediationPlaybook + RemediationPlaybookStep engine; auto-fires on incident open; step types create_ticket / send_email / quarantine_asset_flag / run_workflow_rule)*
 - Security dashboarding *(shipped v3.17.168 via Phase 9.3 — `/security/alerts/`)*
-- Threat visibility
+- Threat visibility *(shipped v3.17.361 — `/security/threat-overview/` single-pane dashboard with severity rollups, top-exposed orgs, playbook activity, week-over-week trend)*
 - Security event reporting *(shipped v3.17.168 via Phase 9.4 — MTTA + suppression + digest framework)*
 - AI-assisted incident summarization (**OPTIONAL AI**)
 

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Threat Overview{% endblock %}
+{% block content %}
+<h2>Threat Overview</h2>
+<p class="text-muted">Single-pane visibility across alerts, incidents, exposure scores, and in-flight remediation.</p>
+
+<div class="row mb-3">
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header"><strong>Open alerts by severity</strong></div>
+            <ul class="list-group list-group-flush">
+                {% for sev, count in open_alert_counts.items %}
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-capitalize">{{ sev }}</span>
+                    <span class="badge bg-{% if sev == 'critical' %}danger{% elif sev == 'high' %}warning text-dark{% elif sev == 'medium' %}info text-dark{% else %}secondary{% endif %}">{{ count }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header"><strong>Open incidents ({{ total_open_incidents }} total)</strong></div>
+            <ul class="list-group list-group-flush">
+                {% for sev, count in open_incident_counts.items %}
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-capitalize">{{ sev }}</span>
+                    <span class="badge bg-secondary">{{ count }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header"><strong>Top exposed organizations</strong></div>
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Org</th><th>Exposure</th><th>Updated</th></tr></thead>
+                <tbody>
+                    {% for o in top_exposed %}
+                    <tr>
+                        <td>{{ o.name }}</td>
+                        <td>
+                            {% if o.exposure_score >= 200 %}<span class="badge bg-danger">{{ o.exposure_score }}</span>
+                            {% elif o.exposure_score >= 50 %}<span class="badge bg-warning text-dark">{{ o.exposure_score }}</span>
+                            {% else %}<span class="badge bg-success">{{ o.exposure_score }}</span>{% endif %}
+                        </td>
+                        <td class="small text-muted">{{ o.exposure_score_updated_at|date:"M j H:i"|default:"—" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="3" class="text-muted">No data — run `manage.py recompute_exposure_scores`.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header"><strong>Week-over-week alert volume</strong></div>
+            <div class="card-body">
+                <p class="mb-1">Past 7 days: <strong>{{ week_a_count }}</strong> alert{{ week_a_count|pluralize }}</p>
+                <p class="mb-1">Prior 7 days: <strong>{{ week_b_count }}</strong> alert{{ week_b_count|pluralize }}</p>
+                <p class="mb-0">Change:
+                    {% if wow_pct > 0 %}<span class="text-danger">+{{ wow_pct }}%</span>
+                    {% elif wow_pct < 0 %}<span class="text-success">{{ wow_pct }}%</span>
+                    {% else %}<span class="text-muted">{{ wow_pct }}%</span>{% endif %}
+                </p>
+                <hr>
+                <p class="mb-0 small text-muted">{{ playbook_count }} active remediation playbook{{ playbook_count|pluralize }} configured.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><strong>In-flight playbook activity (last 24h)</strong></div>
+    <ul class="list-group list-group-flush">
+        {% for ev in recent_playbook_events %}
+        <li class="list-group-item">
+            <div class="d-flex justify-content-between">
+                <span>
+                    Incident <a href="{% url 'security_alerts:incident_detail' ev.incident_id %}">#{{ ev.incident_id }}</a>:
+                    {{ ev.message|truncatechars:160 }}
+                </span>
+                <small class="text-muted">{{ ev.occurred_at }}</small>
+            </div>
+        </li>
+        {% empty %}
+        <li class="list-group-item text-muted">No playbook activity in the last 24 hours.</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}
