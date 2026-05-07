@@ -620,6 +620,33 @@ def incident_decide(request, pk):
 # ---------------------------------------------------------------------------
 
 @login_required
+@require_perm('security_alerts_acknowledge')
+@require_POST
+def incident_ai_summarize(request, pk):
+    """Phase 23 v3.17.362 — **OPTIONAL AI** incident summarization.
+
+    Gated by `SystemSetting.psa_ai_enabled`. When disabled, returns a
+    flash-error and redirects to the incident detail page. When
+    enabled, calls the pluggable summarizer and stores the summary as a
+    timeline note.
+    """
+    from .ai_summarizer import summarize_incident
+
+    orgs = _user_orgs(request.user)
+    incident = get_object_or_404(
+        SecurityIncident, pk=pk, organization__in=orgs,
+    )
+    result = summarize_incident(incident, requested_by=request.user)
+    if not result['enabled']:
+        messages.error(request, result['reason'])
+    elif not result['ok']:
+        messages.error(request, f'AI summarization failed: {result["reason"]}')
+    else:
+        messages.success(request, 'AI summary added to incident timeline.')
+    return redirect('security_alerts:incident_detail', pk=incident.pk)
+
+
+@login_required
 @require_perm('security_alerts_view')
 def threat_overview(request):
     """Phase 23 v3.17.359 — Threat visibility dashboard.

@@ -500,7 +500,7 @@ Planned capabilities:
 - Security dashboarding *(shipped v3.17.168 via Phase 9.3 — `/security/alerts/`)*
 - Threat visibility *(shipped v3.17.361 — `/security/threat-overview/` single-pane dashboard with severity rollups, top-exposed orgs, playbook activity, week-over-week trend)*
 - Security event reporting *(shipped v3.17.168 via Phase 9.4 — MTTA + suppression + digest framework)*
-- AI-assisted incident summarization (**OPTIONAL AI**)
+- AI-assisted incident summarization (**OPTIONAL AI**) *(shipped v3.17.362 — gated by `psa_ai_enabled`; pluggable provider; POST `/security/incidents/<id>/ai-summarize/` writes summary as timeline note)*
 
 Potential integrations:
 - Huntress

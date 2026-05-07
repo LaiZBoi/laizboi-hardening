@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.362] - 2026-05-07
+
+### Added — Phase 23 v7: AI-assisted incident summarization (OPTIONAL AI)
+Seventh Phase 23 release. **OPTIONAL AI** — gated by `SystemSetting.psa_ai_enabled`. Given a `SecurityIncident`, produce a 1-paragraph executive summary plus suggested next steps. The summarizer is pluggable via `set_provider(...)`; the default heuristic implementation is deterministic (no network) so the feature degrades gracefully when no LLM is configured. A new POST endpoint `/security/incidents/<id>/ai-summarize/` triggers summarization and stores the result as a timeline note.
+
+- New module `security_alerts/ai_summarizer.py` with `is_ai_enabled()`, `summarize_incident(incident, requested_by=...)`, and `set_provider(callable)`.
+- New view `incident_ai_summarize` — when AI is disabled returns a flash error; when enabled, produces a summary and posts it to the incident timeline as a `note` event.
+- Provider-call layer is mockable so production deployments can swap in the existing `psa_ai/services` Anthropic plumbing.
+
+### Tests
+- 3 new tests covering the gate-off branch (no provider call, no timeline write), gate-on happy path (summary + timeline note recorded), and provider-error handling.
+
 ## [3.17.361] - 2026-05-07
 
 ### Added — Phase 23 v6: Threat visibility dashboard

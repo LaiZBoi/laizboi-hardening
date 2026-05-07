@@ -709,6 +709,63 @@ class ThreatOverviewTests(TestCase):
         self.assertEqual(r.context['wow_pct'], 100.0)
 
 
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.362 — OPTIONAL AI incident summarization
+# ---------------------------------------------------------------------------
+
+class AISummarizationTests(TestCase):
+    def setUp(self):
+        self.org = _make_org()
+        self.incident = SecurityIncident.objects.create(
+            organization=self.org, title='Suspicious login burst', severity='high',
+            asset_hint='workstation-7', status='open',
+        )
+
+    def test_disabled_when_psa_ai_off(self):
+        from core.models import SystemSetting
+        from security_alerts.ai_summarizer import summarize_incident
+        ss = SystemSetting.get_settings()
+        ss.psa_ai_enabled = False
+        ss.save()
+        result = summarize_incident(self.incident)
+        self.assertFalse(result['ok'])
+        self.assertFalse(result['enabled'])
+        self.assertIn('disabled', result['reason'].lower())
+        # No timeline note added.
+        self.assertEqual(self.incident.events.filter(kind='note').count(), 0)
+
+    def test_enabled_returns_summary_and_writes_timeline(self):
+        from core.models import SystemSetting
+        from security_alerts.ai_summarizer import summarize_incident
+        ss = SystemSetting.get_settings()
+        ss.psa_ai_enabled = True
+        ss.save()
+        result = summarize_incident(self.incident)
+        self.assertTrue(result['ok'])
+        self.assertTrue(result['enabled'])
+        self.assertIn('workstation-7', result['summary'])
+        self.assertGreater(len(result['next_steps']), 0)
+        # Timeline note recorded.
+        self.assertEqual(self.incident.events.filter(kind='note').count(), 1)
+
+    def test_provider_error_returns_failure(self):
+        from core.models import SystemSetting
+        from security_alerts import ai_summarizer
+        ss = SystemSetting.get_settings()
+        ss.psa_ai_enabled = True
+        ss.save()
+        def raise_provider(incident, **kwargs):
+            raise RuntimeError('boom')
+        ai_summarizer.set_provider(raise_provider)
+        try:
+            result = ai_summarizer.summarize_incident(self.incident)
+        finally:
+            ai_summarizer.set_provider(None)
+        self.assertFalse(result['ok'])
+        self.assertTrue(result['enabled'])
+        self.assertIn('boom', result['reason'])
+
+
 class MTTAQueryTests(TestCase):
     def test_unacked_alerts_counted(self):
         from reports.queries import security_alert_mtta
