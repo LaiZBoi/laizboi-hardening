@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.354] - 2026-05-07
+
+### Added — Phase 8 mobile app v1: scaffold + auth client
+First release of the Expo React Native + TypeScript client under `mobile/`. Targets the `/api/mobile/v1/` backend the concurrent backend agent is shipping in v3.17.345–353.
+
+- New `mobile/` Expo SDK 51 project with TypeScript strict-mode, Expo Router file-based routing, TanStack Query, axios, zod.
+- Server URL + auth token persisted in `expo-secure-store`. Vault secrets are NEVER persisted, never logged.
+- Login screen supports server URL override, email/password, and the MFA second-step flow that the backend `/auth/login/` + `/auth/mfa/` endpoints emit.
+- API client at `mobile/src/api/client.ts` with auth-header injection and 401 -> re-login handler.
+- Typed serializer mirrors at `mobile/src/types/api.ts` for User, Organization, Asset, Ticket, KBArticle, VaultEntry, Monitor, ExpirationItem, SecuritySummary, DashboardSummary.
+- Reusable components — `Screen`, `TextField`, `Button`, `ErrorBanner`.
+- Does NOT touch any Django code; no migrations, no urls. Web app behavior is unchanged.
+
+### Tests
+- `cd mobile && npx tsc --noEmit` passes with strict mode.
+- Backend API tests are owned by the concurrent mobile-API release.
+
 ## [3.17.339] - 2026-05-07
 
 ### Added — Phase 23 v3: Exposure scoring
