@@ -368,3 +368,72 @@ class AutoDocumentFieldVisitsTests(TestCase):
         out = StringIO()
         call_command('auto_document_field_visits', stdout=out)
         self.assertIn('skipped=1', out.getvalue())
+
+
+# ---------------------------------------------------------------------------
+# v3.17.413 — Timeclock dashboard + payroll export views
+# ---------------------------------------------------------------------------
+
+from django.conf import settings as _django_settings
+from django.test import Client, override_settings
+
+_TEST_MIDDLEWARE = [
+    m for m in _django_settings.MIDDLEWARE
+    if 'Enforce2FAMiddleware' not in m and 'AxesMiddleware' not in m
+]
+
+
+_TEST_STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
+
+
+@override_settings(
+    MIDDLEWARE=_TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+    STORAGES=_TEST_STORAGES,
+)
+class TimeclockDashboardTests(TestCase):
+    """v3.17.413 — staff-only timeclock dashboard + CSV payroll export."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username='staff', password='x', is_staff=True,
+        )
+        self.tech = User.objects.create_user(username='tech-d', password='x')
+        self.guest = User.objects.create_user(username='guest', password='x')
+        self.org = Organization.objects.create(name='Dash Org')
+        self.client = Client()
+
+    def test_non_staff_blocked(self):
+        self.client.force_login(self.guest)
+        resp = self.client.get('/field-ops/timeclock/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_staff_dashboard_shows_open_entries(self):
+        TimeclockEntry.objects.create(
+            tech=self.tech, organization=self.org, source='web',
+        )
+        self.client.force_login(self.staff)
+        resp = self.client.get('/field-ops/timeclock/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'tech-d')
+        self.assertContains(resp, 'Dash Org')
+
+    def test_payroll_export_csv_columns(self):
+        # Closed entry to populate the export
+        start = timezone.now() - timedelta(days=2, hours=1)
+        end = timezone.now() - timedelta(days=2)
+        TimeclockEntry.objects.create(
+            tech=self.tech, organization=self.org,
+            clocked_in_at=start, clocked_out_at=end, source='web',
+        )
+        self.client.force_login(self.staff)
+        resp = self.client.get('/field-ops/timeclock/payroll-export.csv')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'text/csv')
+        body = resp.content.decode('utf-8')
+        # Header row
+        self.assertIn('tech,week_start,hours,overtime_hours,org', body)
+        self.assertIn('tech-d', body)
+        self.assertIn('Dash Org', body)

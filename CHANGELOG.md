@@ -5,6 +5,19 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.413] - 2026-05-07
+
+### Added — Phase 8.3 Web Timeclock dashboard + payroll CSV export
+First half of Sub-phase 8.3. Staff get a dashboard showing who is currently on the clock; payroll runs an export.
+
+- `/field-ops/timeclock/` (staff-only) — table of currently-clocked-in techs (tech, org, ticket, started, duration). Per-row exception flags: **long shift &gt;12h** and **missing clock-out &gt;8h**. Pay-period (last 7 days) hours-per-tech rollup beneath.
+- `/field-ops/timeclock/payroll-export.csv` (staff-only) — last 4 weeks bucketed by `(tech, week_start, organization)`. Columns `tech, week_start, hours, overtime_hours, org`. Compatible with QuickBooks Time / Gusto manual import.
+- `field_ops/views.py` and template `templates/field_ops/timeclock_dashboard.html` (Bootstrap, no JS).
+- New `field_ops/urls.py` mounted at `/field-ops/` in `config/urls.py`.
+
+### Tests
+- 3 new tests: non-staff returns 403, staff dashboard renders with open entries, CSV export has the correct header + tech/org rows.
+
 ## [3.17.412] - 2026-05-07
 
 ### Added — Phase 8.2 GPS auto-documentation engine

@@ -57,6 +57,9 @@ urlpatterns = [
     path('crm/', include('crm.urls')),
     path('security/', include('security_alerts.urls')),
 
+    # Phase 8 — Field Ops + Timeclock + privacy
+    path('field-ops/', include('field_ops.urls')),
+
     # API
     path('api/', include('api.urls')),
 

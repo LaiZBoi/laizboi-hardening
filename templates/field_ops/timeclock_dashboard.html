@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Timeclock dashboard — Client St0r{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0"><i class="fa-solid fa-clock me-2"></i>Timeclock dashboard</h1>
+    <a href="{% url 'field_ops:timeclock_payroll_export' %}"
+       class="btn btn-sm btn-outline-primary">
+      <i class="fa-solid fa-file-csv me-1"></i>Payroll export (CSV)
+    </a>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Currently clocked in</strong>
+      <span class="badge bg-secondary ms-2">{{ rows|length }}</span>
+    </div>
+    <div class="card-body p-0">
+      {% if rows %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Tech</th>
+                <th>Organization</th>
+                <th>Ticket</th>
+                <th>Started</th>
+                <th>Duration</th>
+                <th>Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td>{{ r.entry.tech.get_full_name|default:r.entry.tech.username }}</td>
+                  <td>{{ r.entry.organization.name|default:"—" }}</td>
+                  <td>
+                    {% if r.entry.ticket %}
+                      {{ r.entry.ticket.ticket_number|default:r.entry.ticket.id }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>{{ r.entry.clocked_in_at|date:"Y-m-d H:i" }}</td>
+                  <td>{{ r.duration_hours }}h</td>
+                  <td>
+                    {% if r.long_shift %}
+                      <span class="badge bg-warning text-dark">long shift &gt;12h</span>
+                    {% endif %}
+                    {% if r.missing_clockout %}
+                      <span class="badge bg-danger">missing clock-out &gt;8h</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-4 text-muted text-center">No techs are currently clocked in.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <strong>Pay-period totals</strong>
+      <small class="text-muted ms-2">since {{ period_start|date:"Y-m-d" }}</small>
+    </div>
+    <div class="card-body p-0">
+      {% if period_totals %}
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr><th>Tech</th><th>Hours</th></tr>
+            </thead>
+            <tbody>
+              {% for t in period_totals %}
+                <tr>
+                  <td>{{ t.tech.get_full_name|default:t.tech.username }}</td>
+                  <td>{{ t.hours }}h</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-4 text-muted text-center">No closed entries in the last 7 days.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -832,10 +832,10 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 - Audit log every auto-time event so disputed billing can be traced. *(shipped v3.17.412)*
 
 ### Sub-phase 8.3 — Timeclock feature
-- Web UI: Timeclock dashboard at `/timeclock/` for staff to view who's clocked in, total hours per pay period, exception flags (long shifts, missing clock-out).
+- Web UI: Timeclock dashboard at `/timeclock/` for staff to view who's clocked in, total hours per pay period, exception flags (long shifts, missing clock-out). *(shipped v3.17.413 — `/field-ops/timeclock/`)*
 - Mobile UI: prominent "Clock in / Clock out" button on the app home screen. Optional tie to the active ticket.
 - Selectable per-org and per-tech: required vs optional, with vs without GPS context, separate from per-ticket time tracking.
-- Payroll export — CSV per pay period, hooks for QuickBooks Time / Gusto / etc. (defer the integration; just structured export first).
+- Payroll export — CSV per pay period, hooks for QuickBooks Time / Gusto / etc. (defer the integration; just structured export first). *(shipped v3.17.413)*
 
 ### Sub-phase 8.4 — App build
 - React Native (Expo SDK 51+ with EAS cloud build — revisits the earlier "no Expo accounts" rejection; required for store submission). *(read-heavy field-use slice complete: scaffold + auth v3.17.354; dashboard + orgs + assets v3.17.356; tickets + KB v3.17.357; vault + monitoring + security + settings v3.17.359; docs + EAS profiles + placeholder icons v3.17.360 — `mobile/` Expo TypeScript app. Phase 8 stays `[in progress]` because Sub-phases 8.2 (GPS auto-time), 8.3 (timeclock UI), and 8.5 (privacy hardening) are deferred.)*
