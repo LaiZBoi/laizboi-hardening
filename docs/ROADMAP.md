@@ -823,7 +823,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 - `TimeclockEntry` model — clock-in / clock-out events with tech, organization, location, optional ticket, optional project, source (`'mobile'` / `'web'` / `'manual'`); derives a `TimeEntry` row on clock-out so existing billing rolls up unchanged.
 - `ClientSiteGeofence` model — per-client polygon or radius around their physical address(es). Used to auto-detect "tech is on site" for ticket time tracking.
 - REST API additions: `/api/v2/mobile/locations/`, `/api/v2/mobile/timeclock/`, `/api/v2/mobile/active-ticket/`.
-- Token auth (long-lived per-device tokens stored in `MobileDevice` model with revoke-on-demand). *(API plan doc shipped v3.17.345; auth endpoints shipped v3.17.346; dashboard + organizations endpoints shipped v3.17.347; assets / tickets / KB / vault / monitoring / profile endpoints land v3.17.348 → v3.17.353)*
+- Token auth (long-lived per-device tokens stored in `MobileDevice` model with revoke-on-demand). *(API plan doc shipped v3.17.345; auth endpoints shipped v3.17.346; dashboard + organizations endpoints shipped v3.17.347; assets endpoints shipped v3.17.348; tickets / KB / vault / monitoring / profile endpoints land v3.17.349 → v3.17.353)*
 
 ### Sub-phase 8.2 — GPS auto-documentation engine
 - Background worker: every GPS ping with the tech "inside a client geofence" auto-starts a `TicketTimeEntry` against their currently-active ticket for that client (or creates a placeholder if no ticket open).
