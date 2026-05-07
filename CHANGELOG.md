@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.348] - 2026-05-07
+
+### Added — Mobile API: assets endpoints
+Fourth release in the mobile-API train.
+
+- New endpoint `GET /api/mobile/v1/assets/?search=&organization_id=&type=&page=` — paginated list scoped to the user's accessible organizations. Search matches `name`, `hostname`, `ip_address`, `serial_number`, `asset_tag`. Filters: `organization_id` (rejected if not in caller's accessible orgs), `type` (asset_type slug).
+- New endpoint `GET /api/mobile/v1/assets/<id>/` — detail. Cross-org reads return 404. Detail body includes `mac_address`, `os_name`, `os_version`, `manufacturer`, `model`, `warranty_status`, `created_at`.
+
+### Tests
+- 6 new tests: list scoped to user orgs (cross-org rows excluded), detail returns my asset, detail cross-org blocked (404), list search by hostname narrows results, list filter by `type`, list requires auth.
+
 ## [3.17.380] - 2026-05-07
 
 ### Added — Admin "Mobile Apps" landing page for sideload distribution

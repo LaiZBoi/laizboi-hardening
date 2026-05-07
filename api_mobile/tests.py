@@ -219,3 +219,72 @@ class MobileDashboardOrgsTests(TestCase):
         url = f'/api/mobile/v1/organizations/{self.org_b.id}/'
         resp = _auth_get(self.client, url, self.token)
         self.assertEqual(resp.status_code, 404)
+
+
+# v3.17.348 — assets endpoints
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileAssetsTests(TestCase):
+    """Asset list + detail respect org-scoping; search + filters work."""
+
+    def setUp(self):
+        _clear_throttle_cache()
+        from assets.models import Asset
+        self.org_a = Organization.objects.create(name='OrgA-Asset', slug='orga-asset')
+        self.org_b = Organization.objects.create(name='OrgB-Asset', slug='orgb-asset')
+        self.user_a = User.objects.create_user('assetuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user_a, organization=self.org_a, role=Role.OWNER, is_active=True,
+        )
+        self.asset_a = Asset.objects.create(
+            organization=self.org_a, name='ServerA', hostname='srv-a.local',
+            asset_type='server',
+        )
+        self.asset_b = Asset.objects.create(
+            organization=self.org_b, name='ServerB', hostname='srv-b.local',
+            asset_type='workstation',
+        )
+        self.client = Client()
+        resp = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'assetuser', 'password': 'hunter2',
+        })
+        self.token = resp.json()['token']
+
+    def test_asset_list_scoped_to_user_orgs(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/assets/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        names = [a['name'] for a in body['results']]
+        self.assertIn('ServerA', names)
+        self.assertNotIn('ServerB', names)
+
+    def test_asset_detail_returns_my_asset(self):
+        url = f'/api/mobile/v1/assets/{self.asset_a.id}/'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['hostname'], 'srv-a.local')
+
+    def test_asset_detail_cross_org_blocked(self):
+        url = f'/api/mobile/v1/assets/{self.asset_b.id}/'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_asset_list_search_by_hostname(self):
+        url = '/api/mobile/v1/assets/?search=srv-a'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()['results']), 1)
+
+    def test_asset_list_filter_by_type(self):
+        from assets.models import Asset
+        Asset.objects.create(
+            organization=self.org_a, name='LaptopA', asset_type='laptop',
+        )
+        url = '/api/mobile/v1/assets/?type=server'
+        resp = _auth_get(self.client, url, self.token)
+        self.assertEqual(resp.status_code, 200)
+        types = {a['asset_type'] for a in resp.json()['results']}
+        self.assertEqual(types, {'server'})
+
+    def test_asset_list_requires_auth(self):
+        c = Client()
+        self.assertIn(c.get('/api/mobile/v1/assets/').status_code, (401, 403))
