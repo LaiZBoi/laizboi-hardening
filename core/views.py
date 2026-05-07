@@ -832,6 +832,7 @@ def mobile_apps_admin(request):
     """
     import os
     import json
+    import datetime as _dt
     from django.conf import settings as dj_settings
 
     builds_dir = os.path.join(dj_settings.BASE_DIR, 'mobile-app', 'builds')
@@ -851,8 +852,8 @@ def mobile_apps_admin(request):
             try:
                 st = os.stat(binary_path)
                 state['size_mb'] = round(st.st_size / (1024 * 1024), 1)
-                state['mtime'] = timezone.datetime.fromtimestamp(
-                    st.st_mtime, tz=timezone.utc,
+                state['mtime'] = _dt.datetime.fromtimestamp(
+                    st.st_mtime, tz=_dt.timezone.utc,
                 )
             except OSError:
                 pass

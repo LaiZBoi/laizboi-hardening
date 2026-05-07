@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.381] - 2026-05-07
+
+### Fixed — Mobile Apps admin page 500
+The v3.17.380 view used `django.utils.timezone.utc` to format the APK build mtime, which was removed in Django 5. We're on Django 6 — page returned 500 with `AttributeError: module 'django.utils.timezone' has no attribute 'utc'`. Replaced with stdlib `datetime.timezone.utc`.
+
+### Tests
+None — single-line fix; verified by hitting `/core/mobile-apps/` after restart.
+
 ## [3.17.348] - 2026-05-07
 
 ### Added — Mobile API: assets endpoints
