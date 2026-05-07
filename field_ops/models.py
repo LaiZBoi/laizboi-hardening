@@ -3,14 +3,14 @@ Phase 8 (Field Ops) — models.
 
 Backend foundation for GPS auto-documentation + timeclock + privacy.
 
-Built across the v3.17.386 → v3.17.395 release train. This module is split
+Built across the v3.17.397 → v3.17.417 release train. This module is split
 across releases:
 
-- v3.17.386 — TechnicianLocation + ClientSiteGeofence (this file)
-- v3.17.387 — TimeclockEntry + MobileDevice
-- v3.17.389 — LocationRetentionPolicy
-- v3.17.390 — AutoTimePreference
-- v3.17.393 — OrganizationFieldOpsSettings (geofence-only mode flag)
+- v3.17.397 — TechnicianLocation + ClientSiteGeofence
+- v3.17.409 — TimeclockEntry + MobileDevice
+- v3.17.411 — LocationRetentionPolicy
+- v3.17.412 — AutoTimePreference
+- v3.17.415 — OrganizationFieldOpsSettings + GeofenceVisit (geofence-only mode)
 """
 from __future__ import annotations
 
@@ -180,3 +180,170 @@ class ClientSiteGeofence(models.Model):
             return inside
 
         return False
+
+
+# -----------------------------------------------------------------------------
+# Sub-phase 8.1 (part 2) — TimeclockEntry + MobileDevice (v3.17.409)
+# -----------------------------------------------------------------------------
+
+TIMECLOCK_SOURCE_CHOICES = (
+    ('mobile', 'Mobile app'),
+    ('web', 'Web browser'),
+    ('manual', 'Manual entry'),
+)
+
+
+class TimeclockEntry(models.Model):
+    """
+    Tech clock-in / clock-out event.
+
+    `clocked_out_at` null = currently on the clock. On save with both
+    `clocked_out_at` AND `ticket` set, we derive a `psa.TicketTimeEntry`
+    so the existing billing rollup works unchanged.
+    """
+
+    tech = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='timeclock_entries',
+    )
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='timeclock_entries',
+    )
+    location = models.ForeignKey(
+        'locations.Location',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='timeclock_entries',
+    )
+    ticket = models.ForeignKey(
+        'psa.Ticket',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='timeclock_entries',
+    )
+    project = models.ForeignKey(
+        'psa.Project',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='timeclock_entries',
+    )
+    clocked_in_at = models.DateTimeField(default=timezone.now, db_index=True)
+    clocked_out_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    source = models.CharField(max_length=12, choices=TIMECLOCK_SOURCE_CHOICES, default='mobile')
+    notes = models.TextField(blank=True)
+    # Tracks the auto-derived TicketTimeEntry created on clock-out so a re-save
+    # doesn't double-bill.
+    derived_time_entry = models.ForeignKey(
+        'psa.TicketTimeEntry',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Timeclock entry'
+        verbose_name_plural = 'Timeclock entries'
+        ordering = ['-clocked_in_at']
+        indexes = [
+            models.Index(fields=['tech', '-clocked_in_at']),
+            models.Index(fields=['organization', '-clocked_in_at']),
+        ]
+        constraints = [
+            # Only one open clock-in per tech.
+            models.UniqueConstraint(
+                fields=['tech'],
+                condition=models.Q(clocked_out_at__isnull=True),
+                name='field_ops_one_open_timeclock_per_tech',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        state = 'open' if self.clocked_out_at is None else 'closed'
+        return f'TC#{self.pk or "?"} {self.tech_id} ({state})'
+
+    @property
+    def duration_minutes(self) -> int:
+        end = self.clocked_out_at or timezone.now()
+        delta = end - self.clocked_in_at
+        return max(0, int(delta.total_seconds() // 60))
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # On clock-out + ticket attached: derive TicketTimeEntry once.
+        if (
+            self.clocked_out_at
+            and self.ticket_id
+            and self.derived_time_entry_id is None
+        ):
+            try:
+                from psa.models import TicketTimeEntry
+                tte = TicketTimeEntry.objects.create(
+                    ticket_id=self.ticket_id,
+                    user=self.tech,
+                    started_at=self.clocked_in_at,
+                    ended_at=self.clocked_out_at,
+                    notes=(self.notes or '')[:500],
+                    is_billable=True,
+                )
+                # Bypass our own save() — direct UPDATE to avoid recursion.
+                TimeclockEntry.objects.filter(pk=self.pk).update(
+                    derived_time_entry=tte
+                )
+                self.derived_time_entry_id = tte.pk
+            except Exception:
+                # Never block timeclock on billing-derivation failures.
+                pass
+
+
+MOBILE_PLATFORM_CHOICES = (
+    ('ios', 'iOS'),
+    ('android', 'Android'),
+)
+
+
+class MobileDevice(models.Model):
+    """
+    A registered mobile device for a user. Tied to a DRF Token for
+    long-lived bearer auth + revoke-on-demand.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='mobile_devices',
+    )
+    device_id = models.UUIDField(unique=True)
+    platform = models.CharField(max_length=10, choices=MOBILE_PLATFORM_CHOICES)
+    name = models.CharField(max_length=200, blank=True)
+    token = models.ForeignKey(
+        'authtoken.Token',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    revoked = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Mobile device'
+        verbose_name_plural = 'Mobile devices'
+        ordering = ['-last_seen_at']
+        indexes = [
+            models.Index(fields=['user', '-last_seen_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.user_id}/{self.platform}/{self.name or self.device_id}'

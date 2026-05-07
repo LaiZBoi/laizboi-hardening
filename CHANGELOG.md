@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.409] - 2026-05-07
+
+### Added — Phase 8.1 backend foundation (part 2): TimeclockEntry + MobileDevice
+Second concrete deliverable on the Phase 8 backend train. The remaining REST endpoints land in v3.17.410.
+
+- `field_ops.TimeclockEntry` — clock-in / clock-out events with `tech` FK, optional `organization` / `location` / `ticket` / `project` FKs, `clocked_in_at`, nullable `clocked_out_at`, `source` choices (`mobile` / `web` / `manual`), and `notes`. A partial unique constraint enforces one open clock-in per tech.
+- On clock-out (`clocked_out_at` becomes non-null) AND a ticket is attached, the model automatically derives a `psa.TicketTimeEntry` row so existing billing rolls up unchanged. The derived entry is tracked via `derived_time_entry` so a re-save doesn't double-bill.
+- `field_ops.MobileDevice` — registered mobile devices for long-lived bearer auth. UUID `device_id` (unique), platform (`ios` / `android`), name, optional FK to `authtoken.Token` for revoke-on-demand, `last_seen_at`, `revoked` flag.
+- Admin registration for both models.
+- Migration `field_ops/0002_timeclockentry_mobiledevice.py`.
+
+### Tests
+- 5 new tests: TimeclockEntry open-state behavior, partial-unique-constraint enforcement, clock-out-with-ticket derives a TicketTimeEntry, clock-out-without-ticket skips derivation; MobileDevice creation + device_id uniqueness.
+
 ## [3.17.408] - 2026-05-07
 
 ### Fixed — APK build failed in 12s with "SDK location not found"

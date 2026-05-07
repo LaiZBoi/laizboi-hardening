@@ -3,16 +3,23 @@ field_ops tests — Phase 8 (GPS auto-time + Timeclock + privacy).
 """
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
 from core.models import Organization
 
-from .models import ClientSiteGeofence, TechnicianLocation
+from .models import (
+    ClientSiteGeofence,
+    MobileDevice,
+    TechnicianLocation,
+    TimeclockEntry,
+)
 
 
 class TechnicianLocationTests(TestCase):
@@ -102,3 +109,85 @@ class ClientSiteGeofenceTests(TestCase):
             radius_meters=100,
         )
         self.assertIn('HQ', str(fence))
+
+
+class TimeclockEntryTests(TestCase):
+    """v3.17.409 — TimeclockEntry model + auto-derive TicketTimeEntry."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='tech-tc', password='x')
+        self.org = Organization.objects.create(name='TC Org')
+
+    def test_open_entry_no_clock_out(self):
+        entry = TimeclockEntry.objects.create(
+            tech=self.user, organization=self.org, source='mobile',
+        )
+        self.assertIsNone(entry.clocked_out_at)
+        self.assertEqual(entry.duration_minutes, 0)
+
+    def test_unique_open_entry_per_tech(self):
+        TimeclockEntry.objects.create(tech=self.user, organization=self.org)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                TimeclockEntry.objects.create(tech=self.user, organization=self.org)
+
+    def test_clock_out_with_ticket_derives_time_entry(self):
+        from psa.models import Queue, Ticket, TicketPriority, TicketStatus, TicketType
+        status_new = TicketStatus.objects.create(name='New', slug='new', sort_order=1)
+        priority = TicketPriority.objects.create(code='P3', name='Normal')
+        ttype = TicketType.objects.create(name='Incident', slug='incident')
+        queue = Queue.objects.create(name='Default', slug='default')
+        ticket = Ticket.objects.create(
+            organization=self.org,
+            subject='TC test ticket',
+            status=status_new, priority=priority,
+            ticket_type=ttype, queue=queue,
+        )
+        start = timezone.now() - timedelta(hours=1)
+        entry = TimeclockEntry.objects.create(
+            tech=self.user, organization=self.org,
+            ticket=ticket, clocked_in_at=start, source='mobile',
+        )
+        self.assertIsNone(entry.derived_time_entry)
+        # Clock out
+        entry.clocked_out_at = timezone.now()
+        entry.save()
+        entry.refresh_from_db()
+        self.assertIsNotNone(entry.derived_time_entry_id)
+        self.assertEqual(entry.derived_time_entry.ticket_id, ticket.pk)
+
+    def test_clock_out_without_ticket_no_derive(self):
+        start = timezone.now() - timedelta(minutes=30)
+        entry = TimeclockEntry.objects.create(
+            tech=self.user, organization=self.org,
+            clocked_in_at=start, source='mobile',
+        )
+        entry.clocked_out_at = timezone.now()
+        entry.save()
+        entry.refresh_from_db()
+        self.assertIsNone(entry.derived_time_entry)
+
+
+class MobileDeviceTests(TestCase):
+    """v3.17.409 — MobileDevice model."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='tech-md', password='x')
+
+    def test_create_device(self):
+        device = MobileDevice.objects.create(
+            user=self.user,
+            device_id=uuid.uuid4(),
+            platform='android',
+            name='Pixel 9',
+        )
+        self.assertFalse(device.revoked)
+        self.assertEqual(device.platform, 'android')
+
+    def test_unique_device_id(self):
+        did = uuid.uuid4()
+        MobileDevice.objects.create(user=self.user, device_id=did, platform='ios')
+        u2 = User.objects.create_user(username='tech-md2', password='x')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                MobileDevice.objects.create(user=u2, device_id=did, platform='ios')
