@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.356] - 2026-05-07
+
+### Added — Phase 8 mobile app v2: Dashboard + Organizations + Assets
+Second mobile-app release. Adds the read-heavy MSP-field views needed for daily use. All screens consume the `/api/mobile/v1/` endpoints the backend agent is shipping in v3.17.345-353.
+
+- New screens: `app/dashboard.tsx` (stat tiles + recent tickets / assets / alerts with pull-to-refresh), `app/organizations/index.tsx` (search + list), `app/organizations/[id].tsx` (detail + related-counts shortcuts), `app/assets/index.tsx` (list + filters: org / type / status), `app/assets/[id].tsx` (detail).
+- New TanStack Query hooks: `useDashboard`, `useOrganizations`, `useOrganization(id)`, `useAssets(filters)`, `useAsset(id)`.
+- New reusable components: `Card`, `StatTile`, `ListRow`, `StatusPill` (with severity / ticket-status / monitor-status helpers).
+- Stat tiles act as drilldowns into Tickets / Monitoring / Security screens (full implementations land in v3.17.357 + v3.17.358).
+- Filters and search debounce naturally via React Query's `queryKey`-based caching.
+- No Django code touched. `cd mobile && npx tsc --noEmit` is clean under strict mode.
+
+### Tests
+- `cd mobile && npx tsc --noEmit` clean.
+
 ## [3.17.346] - 2026-05-07
 
 ### Added — Mobile API: DRF setup + auth endpoints
