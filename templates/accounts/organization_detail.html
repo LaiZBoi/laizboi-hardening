@@ -113,6 +113,20 @@
                     <dd class="col-sm-7">
                         <strong>{{ members|length }}</strong> active member{{ members|length|pluralize }}
                     </dd>
+
+                    <dt class="col-sm-5">Security Exposure:</dt>
+                    <dd class="col-sm-7">
+                        {% if organization.exposure_score >= 200 %}
+                            <span class="badge bg-danger">{{ organization.exposure_score }}</span> high
+                        {% elif organization.exposure_score >= 50 %}
+                            <span class="badge bg-warning text-dark">{{ organization.exposure_score }}</span> moderate
+                        {% else %}
+                            <span class="badge bg-success">{{ organization.exposure_score }}</span> low
+                        {% endif %}
+                        {% if organization.exposure_score_updated_at %}
+                            <small class="text-muted">· updated {{ organization.exposure_score_updated_at|date:"M j, H:i" }}</small>
+                        {% endif %}
+                    </dd>
                 </dl>
             </div>
         </div>

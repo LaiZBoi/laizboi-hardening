@@ -421,6 +421,69 @@ class SecurityIncidentViewTests(TestCase):
         self.assertEqual(self.incident.events.filter(kind='acknowledged').count(), 1)
 
 
+# ---------------------------------------------------------------------------
+# Phase 23 v3.17.339 — Exposure scoring
+# ---------------------------------------------------------------------------
+
+class ExposureScoringTests(TestCase):
+    def setUp(self):
+        self.org = _make_org()
+        self.conn = _make_conn(self.org)
+
+    def test_zero_for_clean_org(self):
+        from security_alerts.exposure import compute_exposure_score
+        self.assertEqual(compute_exposure_score(self.org), 0)
+
+    def test_severity_weights_increase_score(self):
+        from security_alerts.exposure import compute_exposure_score
+        # One critical alert → weight 25.
+        SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id='sev-c', severity='critical', title='c',
+        )
+        score_after_critical = compute_exposure_score(self.org)
+        self.assertGreaterEqual(score_after_critical, 25)
+        # Adding a low alert raises it further.
+        SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id='sev-l', severity='low', title='l',
+        )
+        score_after_low = compute_exposure_score(self.org)
+        self.assertGreater(score_after_low, score_after_critical)
+
+    def test_resolved_alerts_dont_count(self):
+        from security_alerts.exposure import compute_exposure_score
+        SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id='r-1', severity='critical', title='resolved',
+            status='resolved',
+        )
+        self.assertEqual(compute_exposure_score(self.org), 0)
+
+    def test_recompute_for_org_persists(self):
+        from security_alerts.exposure import recompute_for_org
+        SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id='p-1', severity='high', title='h',
+        )
+        score = recompute_for_org(self.org)
+        self.assertGreater(score, 0)
+        self.org.refresh_from_db()
+        self.assertEqual(self.org.exposure_score, score)
+        self.assertIsNotNone(self.org.exposure_score_updated_at)
+
+    def test_management_command_updates_all_orgs(self):
+        from io import StringIO
+        SecurityAlert.objects.create(
+            connection=self.conn, organization=self.org,
+            external_id='m-1', severity='medium', title='m',
+        )
+        out = StringIO()
+        call_command('recompute_exposure_scores', stdout=out)
+        self.org.refresh_from_db()
+        self.assertGreater(self.org.exposure_score, 0)
+
+
 class MTTAQueryTests(TestCase):
     def test_unacked_alerts_counted(self):
         from reports.queries import security_alert_mtta

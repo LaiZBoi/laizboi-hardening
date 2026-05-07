@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.339] - 2026-05-07
+
+### Added — Phase 23 v3: Exposure scoring
+Third Phase 23 release. Each Organization now carries a cached `exposure_score` (0–1000) computed from open SecurityAlerts (severity-weighted), open SecurityIncidents, open Vulnerabilities (per-org and global advisories), plus an asset-count surface-area bonus. The score is recomputed in batch by `manage.py recompute_exposure_scores` (cron-friendly) and surfaced as a colored badge on the organization detail page.
+
+- New fields `core.Organization.exposure_score` + `exposure_score_updated_at`.
+- New module `security_alerts/exposure.py` — pure-function scoring with `compute_exposure_score(org)` and `recompute_for_org(org)`.
+- New mgmt cmd `manage.py recompute_exposure_scores [--org-id=N] [--dry-run]`.
+- Severity weights: SecurityAlerts critical=25 / high=12 / medium=5 / low=2 / info=1; open Incidents 2× alert weight; Vulnerabilities critical=30 / high=15 / medium=6 / low=2; asset-count bonus +1 per 5 assets capped at +50; total capped at 1000.
+- New migration `core/0060_organization_exposure_score_and_more.py`.
+- Org detail template card shows a green / amber / red badge and last-updated timestamp.
+
+### Tests
+- 5 new tests covering zero-state, severity weighting, resolved-alert exclusion, recompute persistence, and the management command.
+
 ## [3.17.338] - 2026-05-07
 
 ### Added — Phase 23 v2: Security incident model + timelines

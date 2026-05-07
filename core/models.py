@@ -139,6 +139,15 @@ class Organization(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
 
+    # Phase 23 v3.17.339 — exposure score
+    exposure_score = models.PositiveIntegerField(
+        default=0,
+        help_text='Cached rolling security exposure score (0–1000). Recomputed by '
+                  '`manage.py recompute_exposure_scores`. Severity-weighted sum of '
+                  'open SecurityAlerts + open Vulnerabilities, scaled by asset count.',
+    )
+    exposure_score_updated_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = 'organizations'
         ordering = ['name']
