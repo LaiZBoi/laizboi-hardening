@@ -347,3 +347,36 @@ class MobileDevice(models.Model):
 
     def __str__(self) -> str:
         return f'{self.user_id}/{self.platform}/{self.name or self.device_id}'
+
+
+# -----------------------------------------------------------------------------
+# Sub-phase 8.5 (part 1) — LocationRetentionPolicy (v3.17.411)
+# -----------------------------------------------------------------------------
+
+
+class LocationRetentionPolicy(models.Model):
+    """
+    Per-organization retention policy for `TechnicianLocation` rows.
+
+    A nightly mgmt cmd uses this to derive the `retention_until` deadline
+    for new pings, and prunes older rows. Default is 90 days. When
+    `apply_to_geofence_only` is True, regular ping rows are pruned but
+    geofence-visit aggregates (introduced in v3.17.415) are kept.
+    """
+
+    organization = models.OneToOneField(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='location_retention_policy',
+    )
+    retention_days = models.PositiveIntegerField(default=90)
+    apply_to_geofence_only = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Location retention policy'
+        verbose_name_plural = 'Location retention policies'
+
+    def __str__(self) -> str:
+        return f'{self.organization_id}: {self.retention_days}d'

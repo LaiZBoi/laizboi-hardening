@@ -5,6 +5,7 @@ from django.contrib import admin
 
 from .models import (
     ClientSiteGeofence,
+    LocationRetentionPolicy,
     MobileDevice,
     TechnicianLocation,
     TimeclockEntry,
@@ -34,6 +35,13 @@ class TimeclockEntryAdmin(admin.ModelAdmin):
     search_fields = ('tech__username', 'tech__email', 'notes')
     date_hierarchy = 'clocked_in_at'
     raw_id_fields = ('tech', 'organization', 'location', 'ticket', 'project', 'derived_time_entry')
+
+
+@admin.register(LocationRetentionPolicy)
+class LocationRetentionPolicyAdmin(admin.ModelAdmin):
+    list_display = ('organization', 'retention_days', 'apply_to_geofence_only', 'updated_at')
+    list_filter = ('apply_to_geofence_only',)
+    search_fields = ('organization__name',)
 
 
 @admin.register(MobileDevice)

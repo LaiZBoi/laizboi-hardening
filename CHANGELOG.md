@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.411] - 2026-05-07
+
+### Added — Phase 8.5 retention: LocationRetentionPolicy + prune mgmt cmd
+First slice of Sub-phase 8.5 (privacy hardening). Org admins can now bound how long GPS pings live in the database; a nightly mgmt cmd reaps anything past its `retention_until`.
+
+- `field_ops.LocationRetentionPolicy` — `OneToOneField(Organization)`, `retention_days` PositiveInt default 90, `apply_to_geofence_only` bool default False (informational flag for v3.17.415's geofence-only mode). Admin registered.
+- `python manage.py prune_technician_locations [--dry-run]` — deletes `TechnicianLocation` rows where `retention_until < today()`. Prints summary count. Works as a cron-friendly one-shot WHERE clause, no per-org join (the deadline is pre-computed on insert in v3.17.397).
+- Migration `field_ops/0003_locationretentionpolicy.py`.
+
+### Tests
+- 4 new tests: defaults applied, expired rows pruned, fresh rows kept, dry-run keeps rows, no-op when nothing expired.
+
 ## [3.17.410] - 2026-05-07
 
 ### Added — Phase 8.1 mobile REST surface: locations / timeclock / active-ticket

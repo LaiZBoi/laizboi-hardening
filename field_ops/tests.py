@@ -16,6 +16,7 @@ from core.models import Organization
 
 from .models import (
     ClientSiteGeofence,
+    LocationRetentionPolicy,
     MobileDevice,
     TechnicianLocation,
     TimeclockEntry,
@@ -191,3 +192,57 @@ class MobileDeviceTests(TestCase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 MobileDevice.objects.create(user=u2, device_id=did, platform='ios')
+
+
+class LocationRetentionPolicyTests(TestCase):
+    """v3.17.411 — LocationRetentionPolicy model + prune mgmt cmd."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='tech-rp', password='x')
+        self.org = Organization.objects.create(name='RP Org')
+
+    def test_policy_created_with_defaults(self):
+        policy = LocationRetentionPolicy.objects.create(organization=self.org)
+        self.assertEqual(policy.retention_days, 90)
+        self.assertFalse(policy.apply_to_geofence_only)
+
+    def test_prune_deletes_expired_rows(self):
+        from io import StringIO
+        from django.core.management import call_command
+        # Expired row
+        expired = TechnicianLocation.objects.create(
+            tech=self.user, lat=Decimal('40.0'), lon=Decimal('-73.0'),
+            retention_until=timezone.now().date() - timedelta(days=1),
+        )
+        # Fresh row
+        fresh = TechnicianLocation.objects.create(
+            tech=self.user, lat=Decimal('40.1'), lon=Decimal('-73.1'),
+            retention_until=timezone.now().date() + timedelta(days=10),
+        )
+        out = StringIO()
+        call_command('prune_technician_locations', stdout=out)
+        self.assertIn('Deleted 1', out.getvalue())
+        self.assertFalse(TechnicianLocation.objects.filter(pk=expired.pk).exists())
+        self.assertTrue(TechnicianLocation.objects.filter(pk=fresh.pk).exists())
+
+    def test_prune_dry_run_keeps_rows(self):
+        from io import StringIO
+        from django.core.management import call_command
+        TechnicianLocation.objects.create(
+            tech=self.user, lat=Decimal('40.0'), lon=Decimal('-73.0'),
+            retention_until=timezone.now().date() - timedelta(days=5),
+        )
+        out = StringIO()
+        call_command('prune_technician_locations', '--dry-run', stdout=out)
+        self.assertIn('Would delete 1', out.getvalue())
+        self.assertEqual(TechnicianLocation.objects.count(), 1)
+
+    def test_prune_no_op_when_nothing_expired(self):
+        from io import StringIO
+        from django.core.management import call_command
+        TechnicianLocation.objects.create(
+            tech=self.user, lat=Decimal('40.0'), lon=Decimal('-73.0'),
+        )
+        out = StringIO()
+        call_command('prune_technician_locations', stdout=out)
+        self.assertIn('Deleted 0', out.getvalue())
