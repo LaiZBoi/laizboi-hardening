@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ framework.name }} — {{ organization.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .item-row { border: 1px solid var(--bs-border-color); border-radius: 6px;
+        padding: 12px 16px; margin-bottom: 8px;
+        background: var(--bs-card-bg, var(--bs-body-bg)); }
+    .item-row.compliant      { border-left: 4px solid #198754; }
+    .item-row.partial        { border-left: 4px solid #fd7e14; }
+    .item-row.non_compliant  { border-left: 4px solid #dc3545; }
+    .item-row.not_applicable { border-left: 4px solid #6c757d; }
+    .item-row.unanswered     { border-left: 4px solid #adb5bd; }
+    .item-name { font-weight: 600; }
+    .item-desc { color: var(--bs-secondary-color); font-size: 0.9rem; }
+    .evidence-hint { color: var(--bs-info); font-size: 0.85rem;
+        font-style: italic; margin-top: 4px; }
+    .category-head { padding: 14px 18px; background: var(--bs-tertiary-bg);
+        border-radius: 6px; margin: 24px 0 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container my-4" style="max-width: 1100px;">
+
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb small">
+            <li class="breadcrumb-item">
+                <a href="{% url 'compliance:org_dashboard' org_id=organization.pk %}">
+                    Compliance — {{ organization.name }}
+                </a>
+            </li>
+            <li class="breadcrumb-item active">{{ framework.name }}</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <h2 class="mb-1">{{ framework.name }} {{ framework.version }}</h2>
+            <p class="text-muted mb-0">{{ organization.name }}</p>
+        </div>
+        <div class="text-end">
+            <a href="{% url 'compliance:report_pdf' org_id=organization.pk framework_slug=framework.slug %}"
+               class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-file-pdf me-1"></i> Download report (PDF)
+            </a>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <strong>Compliance progress</strong>
+                <span><strong>{{ percent_compliant }}%</strong></span>
+            </div>
+            <div class="progress mb-2" style="height: 10px;">
+                <div class="progress-bar bg-success"
+                     style="width: {{ percent_compliant }}%;"></div>
+            </div>
+            <div class="d-flex flex-wrap gap-3 small text-muted">
+                <span><strong>{{ counts.compliant }}</strong> compliant</span>
+                <span><strong>{{ counts.partial }}</strong> partial</span>
+                <span><strong>{{ counts.non_compliant }}</strong> non-compliant</span>
+                <span><strong>{{ counts.not_applicable }}</strong> N/A</span>
+                <span><strong>{{ counts.unanswered }}</strong> unanswered</span>
+                <span class="ms-auto">
+                    Total: <strong>{{ counts.total }}</strong>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for m in messages %}
+            <div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {% for cat_block in categories %}
+    <div class="category-head">
+        <h4 class="mb-1">{{ cat_block.category.name }}</h4>
+        {% if cat_block.category.description %}
+            <p class="small text-muted mb-0">{{ cat_block.category.description }}</p>
+        {% endif %}
+    </div>
+
+    {% for row in cat_block.items %}
+    <form method="post" action="{% url 'compliance:checklist_save' org_id=organization.pk framework_slug=framework.slug %}"
+          class="item-row {{ row.status }}" id="item-{{ row.item.pk }}">
+        {% csrf_token %}
+        <input type="hidden" name="item_id" value="{{ row.item.pk }}">
+
+        <div class="d-flex align-items-start justify-content-between">
+            <div class="flex-grow-1 me-3">
+                <div class="item-name">{{ row.item.name }}</div>
+                <div class="item-desc">{{ row.item.description }}</div>
+                {% if row.item.evidence_hint %}
+                    <div class="evidence-hint">
+                        <i class="fas fa-lightbulb me-1"></i>
+                        Evidence: {{ row.item.evidence_hint }}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="text-end" style="min-width: 200px;">
+                <select name="status" class="form-select form-select-sm">
+                    {% for code, label in STATUS_CHOICES %}
+                        <option value="{{ code }}" {% if row.status == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="row g-2 mt-2">
+            <div class="col-md-7">
+                <label class="form-label small text-muted mb-1">Notes</label>
+                <textarea name="notes" rows="2" class="form-control form-control-sm">{{ row.notes }}</textarea>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small text-muted mb-1">Evidence link (URL)</label>
+                <input type="url" name="evidence_link" value="{{ row.evidence_link }}"
+                       placeholder="https://…" class="form-control form-control-sm">
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-2 small">
+            <span class="text-muted">
+                {% if row.attestation.last_reviewed_at %}
+                    Last reviewed {{ row.attestation.last_reviewed_at|date:"Y-m-d H:i" }}
+                    {% if row.attestation.last_reviewed_by %} by {{ row.attestation.last_reviewed_by.username }}{% endif %}
+                {% else %}
+                    Never reviewed
+                {% endif %}
+            </span>
+            <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fas fa-save me-1"></i> Save
+            </button>
+        </div>
+    </form>
+    {% endfor %}
+    {% endfor %}
+
+</div>
+{% endblock %}

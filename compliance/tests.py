@@ -346,7 +346,7 @@ class OrgComplianceDashboardTests(TestCase):
     @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
     def test_dashboard_lists_frameworks(self):
         c = Client()
-        c.login(username='tester', password='x')
+        c.force_login(self.user)
         url = f'/compliance/organizations/{self.org.pk}/'
         resp = c.get(url)
         self.assertEqual(resp.status_code, 200)
@@ -359,7 +359,7 @@ class OrgComplianceDashboardTests(TestCase):
             OrganizationCompliance, OrganizationComplianceItem,
         )
         c = Client()
-        c.login(username='tester', password='x')
+        c.force_login(self.user)
         url = f'/compliance/organizations/{self.org.pk}/enroll/pci-dss-v4/'
         resp = c.post(url)
         self.assertEqual(resp.status_code, 302)  # redirect to dashboard
@@ -382,7 +382,7 @@ class OrgComplianceDashboardTests(TestCase):
     def test_enroll_idempotent(self):
         from compliance.models import OrganizationCompliance
         c = Client()
-        c.login(username='tester', password='x')
+        c.force_login(self.user)
         url = f'/compliance/organizations/{self.org.pk}/enroll/pci-dss-v4/'
         c.post(url)
         c.post(url)  # second call should be no-op
@@ -399,7 +399,108 @@ class OrgComplianceDashboardTests(TestCase):
         outsider = User.objects.create_user('outsider', password='x')
         other_org = Organization.objects.create(name='Other')
         c = Client()
-        c.login(username='outsider', password='x')
+        c.force_login(outsider)
         url = f'/compliance/organizations/{other_org.pk}/'
         resp = c.get(url)
+        self.assertEqual(resp.status_code, 404)
+
+
+class ChecklistViewTests(TestCase):
+    """Phase 41 v3.17.440: checklist render + per-item save."""
+
+    def setUp(self):
+        from core.models import Organization
+        from accounts.models import Membership
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from compliance.models import (
+            ComplianceFramework, OrganizationCompliance,
+            OrganizationComplianceItem,
+        )
+        self.org = Organization.objects.create(name='ACME-CL')
+        self.user = User.objects.create_user(
+            'cl-tester', email='c@example.com', password='x', is_staff=True,
+        )
+        Membership.objects.create(
+            user=self.user, organization=self.org, role='admin',
+            is_active=True,
+        )
+        call_command('seed_pci_dss')
+        self.fw = ComplianceFramework.objects.get(slug='pci-dss-v4')
+        self.oc = OrganizationCompliance.objects.create(
+            organization=self.org, framework=self.fw,
+            enrolled_by=self.user,
+        )
+        # Bulk-create attestations
+        items = list(self.fw.categories.first().items.all()[:3])
+        self.attestations = [
+            OrganizationComplianceItem.objects.create(
+                org_compliance=self.oc, item=i, status='unanswered',
+            )
+            for i in items
+        ]
+        self.target_item = self.attestations[0].item
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_checklist_renders(self):
+        c = Client()
+        c.force_login(self.user)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/'
+        resp = c.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'PCI-DSS')
+        # First category should appear
+        first_cat = self.fw.categories.first()
+        self.assertContains(resp, first_cat.name)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_save_updates_status_and_audits(self):
+        from audit.models import AuditLog
+        c = Client()
+        c.force_login(self.user)
+        save_url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/save/'
+        resp = c.post(save_url, {
+            'item_id': self.target_item.pk,
+            'status': 'compliant',
+            'notes': 'firewall config exported and stored in vault',
+            'evidence_link': 'https://example.com/evidence/firewall.pdf',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.attestations[0].refresh_from_db()
+        self.assertEqual(self.attestations[0].status, 'compliant')
+        self.assertEqual(
+            self.attestations[0].evidence_link,
+            'https://example.com/evidence/firewall.pdf',
+        )
+        # Audit row written
+        log_count = AuditLog.objects.filter(
+            object_type='compliance.OrganizationComplianceItem',
+            description__icontains='compliant',
+        ).count()
+        self.assertGreaterEqual(log_count, 1)
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_save_invalid_status_falls_back_to_unanswered(self):
+        c = Client()
+        c.force_login(self.user)
+        save_url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/save/'
+        resp = c.post(save_url, {
+            'item_id': self.target_item.pk,
+            'status': 'totally-bogus',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.attestations[0].refresh_from_db()
+        self.assertEqual(self.attestations[0].status, 'unanswered')
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_save_outsider_blocked(self):
+        from django.contrib.auth.models import User
+        outsider = User.objects.create_user('cl-outsider', password='x')
+        c = Client()
+        c.force_login(outsider)
+        save_url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/save/'
+        resp = c.post(save_url, {
+            'item_id': self.target_item.pk,
+            'status': 'compliant',
+        })
         self.assertEqual(resp.status_code, 404)

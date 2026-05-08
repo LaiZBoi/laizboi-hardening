@@ -5,6 +5,35 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.440] - 2026-05-08
+
+### Added — Phase 41 v4: checklist UI + per-row attestation save
+The dashboard's "Open checklist" button now lands on a working page. New view at `/compliance/organizations/<org_id>/<framework_slug>/` renders the full checklist grouped by category, with each item showing:
+
+- Title + description (verbatim control text from the seed)
+- Evidence hint (yellow lightbulb)
+- Status dropdown (compliant / partial / non-compliant / N/A / unanswered)
+- Notes textarea
+- Evidence link URL field
+- "Last reviewed" timestamp + reviewer username
+
+Items are color-coded by left border: green compliant, orange partial, red non-compliant, grey N/A, light-grey unanswered.
+
+Per-row save POSTs to `/compliance/organizations/<org_id>/<framework_slug>/save/`. Server validates the status against the model's `STATUS_CHOICES` (invalid input falls back to `unanswered`), updates `last_reviewed_at` + `last_reviewed_by`, and writes an `AuditLog` entry on every status change with description `"Status: <old> -> <new>"`. Redirect lands the user back on the same item via fragment anchor (`#item-<id>`) so they don't lose place after save.
+
+Header card shows live progress (`percent_compliant` + status counts).
+
+### Fixed — view tests using `c.login()` triggered django-axes
+Earlier compliance tests called `c.login(username, password)` which goes through django-axes's authentication backend; that backend requires a `request` object and raises `AxesBackendRequestParameterRequired` from the test client. Switched all 8 calls to `c.force_login(user)` which bypasses the auth backend chain (test-only — production unaffected).
+
+### Tests
+4 new checklist tests + 8 existing rewritten to use `force_login`. **Ran 28, OK.**
+
+### Side fixes (orthogonal to Phase 41)
+- AAB delete capability: red **Delete** button next to each row in the play_publish dashboard's Built AABs table; new `/play_publish/delete/<filename>` POST view with path-traversal guard.
+- Build progress panel auto-clears on success (was leaving stale "complete" state on the page); upload progress panel auto-hides 5s after success. Both via dashboard JS only — local-only.
+- `mobile/app.json` package + bundleIdentifier changed from `com.clientstor.mobile` → `com.clientstor.mspreboot` to match the Play Console listing the user created.
+
 ## [3.17.439] - 2026-05-08
 
 ### Added — Phase 41 v3: per-org compliance dashboard

@@ -476,25 +476,115 @@ def enroll_framework(request, org_id, framework_slug):
     return redirect('compliance:org_dashboard', org_id=org.pk)
 
 
-# Stubs — real implementations in v3.17.440 / v3.17.441.
+# ---------------------------------------------------------------------------
+# Phase 41 v3.17.440 — checklist view + per-row attestation save
+# ---------------------------------------------------------------------------
+
 @login_required
 def checklist_view(request, org_id, framework_slug):
-    """Real implementation lands in v3.17.440."""
-    from django.http import HttpResponse
-    return HttpResponse(
-        f'Compliance checklist for org {org_id} / {framework_slug} — '
-        'view ships in v3.17.440 (coming up).',
-        content_type='text/plain',
+    """Show the full checklist for a framework, grouped by category."""
+    from .models import (
+        ComplianceFramework, OrganizationCompliance,
+        OrganizationComplianceItem,
     )
+
+    org = get_object_or_404(Organization, pk=org_id)
+    if not _user_can_manage_compliance(request.user, org):
+        raise Http404('Not allowed')
+
+    fw = get_object_or_404(ComplianceFramework, slug=framework_slug)
+    oc = get_object_or_404(
+        OrganizationCompliance, organization=org, framework=fw,
+    )
+
+    categories = []
+    for cat in fw.categories.order_by('order', 'slug'):
+        item_rows = []
+        for item in cat.items.order_by('order', 'slug'):
+            attest = OrganizationComplianceItem.objects.filter(
+                org_compliance=oc, item=item,
+            ).first()
+            item_rows.append({
+                'item': item,
+                'attestation': attest,
+                'status': attest.status if attest else 'unanswered',
+                'notes': attest.notes if attest else '',
+                'evidence_link': attest.evidence_link if attest else '',
+            })
+        categories.append({
+            'category': cat,
+            'items': item_rows,
+        })
+
+    return render(request, 'compliance/checklist.html', {
+        'organization': org,
+        'framework': fw,
+        'enrollment': oc,
+        'categories': categories,
+        'percent_compliant': oc.percent_compliant(),
+        'counts': oc.status_counts(),
+        'STATUS_CHOICES': OrganizationComplianceItem.STATUS_CHOICES,
+    })
 
 
 @login_required
 @require_POST
 def checklist_save(request, org_id, framework_slug):
-    from django.http import HttpResponseNotAllowed
-    return HttpResponseNotAllowed(['POST'])
+    """Save one item's attestation. POST fields: item_id, status, notes, evidence_link."""
+    from .models import (
+        ComplianceFramework, OrganizationCompliance,
+        OrganizationComplianceItem,
+    )
+
+    org = get_object_or_404(Organization, pk=org_id)
+    if not _user_can_manage_compliance(request.user, org):
+        raise Http404('Not allowed')
+
+    fw = get_object_or_404(ComplianceFramework, slug=framework_slug)
+    oc = get_object_or_404(OrganizationCompliance, organization=org, framework=fw)
+
+    try:
+        item_id = int(request.POST.get('item_id', '0'))
+    except (TypeError, ValueError):
+        item_id = 0
+    attest = get_object_or_404(
+        OrganizationComplianceItem,
+        org_compliance=oc, item_id=item_id,
+    )
+
+    new_status = request.POST.get('status', '').strip() or 'unanswered'
+    valid_statuses = {s for s, _ in OrganizationComplianceItem.STATUS_CHOICES}
+    if new_status not in valid_statuses:
+        new_status = 'unanswered'
+
+    old_status = attest.status
+    attest.status = new_status
+    attest.notes = request.POST.get('notes', '').strip()
+    attest.evidence_link = request.POST.get('evidence_link', '').strip()
+    attest.last_reviewed_at = timezone.now()
+    attest.last_reviewed_by = request.user
+    attest.save()
+
+    if old_status != new_status:
+        AuditLog.log(
+            user=request.user, action='update',
+            organization=org,
+            object_type='compliance.OrganizationComplianceItem',
+            object_id=attest.pk,
+            object_repr=f'{attest.item.slug}',
+            description=f'Status: {old_status} -> {new_status}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+
+    return redirect(
+        reverse(
+            'compliance:checklist',
+            kwargs={'org_id': org.pk, 'framework_slug': fw.slug},
+        ) + f'#item-{attest.item_id}'
+    )
 
 
+# Stub — real implementation in v3.17.441.
 @login_required
 def compliance_report_pdf(request, org_id, framework_slug):
     """Real implementation lands in v3.17.441."""
