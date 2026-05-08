@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.432] - 2026-05-08
+
+### Added — Generic local-app loader (`local_apps/`)
+A new auto-discovery hook lets you drop a Django app at `<BASE_DIR>/local_apps/<name>/` and have it loaded on the next gunicorn restart. Used for environment-specific extensions that don't belong in the public repo (custom auth backends, internal-only dashboards, etc.).
+
+The loader is **generic** — it does not name any specific app, and it's fully backwards-compatible (no `local_apps/` directory means no behavior change).
+
+Implementation (~25 lines total):
+
+- `config/settings.py` — appends a small block at the end that walks `<BASE_DIR>/local_apps/`, prepends it to `sys.path`, and adds any subdirectory containing `apps.py` to `INSTALLED_APPS`. Skips entries beginning with `_` or `.`.
+- `config/urls.py` — appends a similar block that mounts each subdirectory's `urls.py` at `/<name>/` if present.
+
+Whatever lives under `local_apps/` is intentionally NOT tracked. The directory is gitignored via `.git/info/exclude` (per-clone, not in the repo's tracked `.gitignore`) so a fresh clone has no traces.
+
+### Tests
+None — generic plugin scaffolding; no behavior change for fresh clones.
+
 ## [3.17.431] - 2026-05-08
 
 ### Added — Live build progress bar (real percentage, not just animated stripes)

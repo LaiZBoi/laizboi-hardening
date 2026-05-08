@@ -661,3 +661,28 @@ PSA_EMAIL_ATTACHMENT_MIME_ALLOWLIST = [
     # Archives commonly seen with logs / screenshots
     'application/zip',
 ]
+
+
+# ---------------------------------------------------------------------------
+# Local-only app loader (v3.17.432).
+# Auto-discovers Django apps in `<BASE_DIR>/local_apps/<name>/` and adds
+# them to INSTALLED_APPS. Used for environment-specific extensions that
+# don't belong in the public repo (custom auth backends, internal-only
+# dashboards, etc.).
+#
+# Drop a Django app at `local_apps/<name>/` with the standard layout
+# (apps.py, urls.py, etc.) and it will be picked up automatically on
+# next gunicorn restart. The directory itself is gitignored via
+# `.git/info/exclude`. Nothing here is loaded if the directory doesn't
+# exist — safe default for fresh clones.
+# ---------------------------------------------------------------------------
+import sys as _sys
+_LOCAL_APPS_DIR = BASE_DIR / 'local_apps'
+if _LOCAL_APPS_DIR.is_dir():
+    _local_apps_path = str(_LOCAL_APPS_DIR)
+    if _local_apps_path not in _sys.path:
+        _sys.path.insert(0, _local_apps_path)
+    for _entry in sorted(_LOCAL_APPS_DIR.iterdir()):
+        if _entry.is_dir() and (_entry / 'apps.py').exists() \
+                and not _entry.name.startswith(('_', '.')):
+            INSTALLED_APPS.append(_entry.name)

@@ -79,3 +79,28 @@ except ImportError:
 # Serve media files in development and production
 if settings.DEBUG or True:  # Allow media serving
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+
+# ---------------------------------------------------------------------------
+# Local-only app URL loader (v3.17.432).
+# For each app in `<BASE_DIR>/local_apps/<name>/` that has a `urls.py`,
+# mount it at `/<name>/`. Mirrors the INSTALLED_APPS auto-discover in
+# settings.py. Generic — does not name any specific app.
+# ---------------------------------------------------------------------------
+from pathlib import Path as _PPath
+_LOCAL_APPS_DIR = _PPath(settings.BASE_DIR) / 'local_apps'
+if _LOCAL_APPS_DIR.is_dir():
+    for _entry in sorted(_LOCAL_APPS_DIR.iterdir()):
+        if _entry.is_dir() and (_entry / 'urls.py').exists() \
+                and not _entry.name.startswith(('_', '.')):
+            try:
+                urlpatterns.append(
+                    path(f'{_entry.name}/', include(f'{_entry.name}.urls'))
+                )
+            except Exception:
+                # Don't crash the whole URL conf if one local app's
+                # urls.py raises — just log and skip.
+                import logging as _logging
+                _logging.getLogger(__name__).exception(
+                    'Local app %s urls.py failed to import', _entry.name
+                )
