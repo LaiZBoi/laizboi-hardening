@@ -810,20 +810,29 @@ Dependencies: `monitoring/` app (uptime data), `psa.Ticket` (incident history wi
 
 **Goal:** Take the "is anything broken?" call volume out of the queue by giving clients somewhere to look first.
 
-## Phase 41 — Compliance Frameworks & Recertification **(M)** [in progress]
+## Phase 41 — Compliance Frameworks & Recertification **(M)** [shipped — v3.17.444]
 
 MSPs increasingly need to attest to PCI-DSS or HIPAA on behalf of their clients. Phase 39 (Compliance Evidence Packs) handles the evidence collection side; this phase adds the *workflow* side: opt an org into one or more frameworks, walk through a checklist of real controls, attest per-control with notes + evidence, generate a customer-ready PDF, and drive recertification on a configurable cadence.
 
-Planned capabilities:
-- **Framework catalog** — `ComplianceFramework` model. Pre-seeded with PCI-DSS v4.0 (Requirements 1-12) and HIPAA Security Rule (Administrative + Physical + Technical Safeguards). Each framework carries categories + check items keyed to real control numbers (`1.2.1`, `164.308(a)(1)`, etc.).
-- **Per-org enrollment** — `OrganizationCompliance`. One org can be enrolled in multiple frameworks. Tracks the `recertification_interval_days` (default 365 = annual; 30 / 90 / 180 also supported) and a `recertification_emails_enabled` flag.
-- **Per-control attestation UI** — checklist grouped by category, status dropdown (compliant / partial / non-compliant / N-A / unanswered), notes textarea, evidence URL. Every change audit-logged.
-- **Customer-facing PDF report** — exec summary + per-category table with each control's status, notes, evidence link.
-- **Monthly recertification cron** — `send_compliance_recertifications` mgmt cmd. Idempotent + 7-day dedup so techs aren't spammed.
+Capabilities:
+- **Framework catalog** — `ComplianceFramework` model with `ComplianceCategory` + `ComplianceCheckItem`. *(shipped v3.17.436)* Pre-seeded with PCI-DSS v4.0 (12 categories, 38 check items, real control numbers like `1.2.1`, `8.4.2`, `11.3.2`) *(shipped v3.17.437 — `python manage.py seed_pci_dss`)* and HIPAA Security Rule (3 safeguard categories, 33 check items, real CFR refs like `164.308(a)(1)(ii)(A)`) *(shipped v3.17.438 — `python manage.py seed_hipaa`)*.
+- **Per-org enrollment** — `OrganizationCompliance`. One org can be enrolled in multiple frameworks. Tracks `recertification_interval_days` (30 / 60 / 90 / 180 / 365), `recertification_emails_enabled`, `notify_email`. *(shipped v3.17.439 — dashboard at `/compliance/organizations/<org_id>/` + Enroll button)*
+- **Per-control attestation UI** — checklist grouped by category, status dropdown (compliant / partial / non-compliant / N-A / unanswered), notes textarea, evidence URL. Color-coded by status. Every change audit-logged with `Status: <old> -> <new>`. *(shipped v3.17.440)*
+- **Customer-facing PDF report** — exec summary + KPI grid + per-category table with each control's status, notes, evidence link. Audit-logged on every download. *(shipped v3.17.441 — `/compliance/.../report.pdf` using Phase 19's `reports.pdf_export.render_pdf`)*
+- **Recertification reminder cron** — `python manage.py send_compliance_recertifications`. Idempotent + 7-day dedup. Resolves recipient via `notify_email` → first owner/admin Membership → `DEFAULT_FROM_EMAIL`. `--dry-run` for testing. *(shipped v3.17.442)*
+- **Toggle UI + Mark Recertified Now button** — settings card on the checklist page lets org admins flip email reminders, change interval (30/60/90/180/365 days), set notify_email override, and stamp `last_recertified_at = now()` after a quarterly review. *(shipped v3.17.443)*
 
 Dependencies: `accounts.Organization`, `audit.AuditLog`, `reports.pdf_export.render_pdf` (Phase 19).
 
 **Goal:** Give the MSP one place to track every client's compliance state and one button to produce the report when an auditor asks for it.
+
+**Operator setup:**
+1. `python manage.py seed_pci_dss && python manage.py seed_hipaa` — populate the catalog (idempotent, safe to re-run after upgrades).
+2. Add to crontab for daily recertification reminders:
+   ```
+   0 9 * * * cd /home/administrator && /home/administrator/venv/bin/python manage.py send_compliance_recertifications
+   ```
+3. For each client org needing compliance: `/compliance/organizations/<org_id>/` → click **Enroll** on the framework → walk the checklist.
 
 ---
 
@@ -922,6 +931,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 38 — Client Onboarding / Offboarding Runbooks | M | 2-3 weeks | extends `processes/` + Phase 14 |
 | 39 — Compliance Evidence Packs | M | 2-3 weeks | extends Phase 9 + vault + monitoring + psa |
 | 40 — Public / Client-Facing Status Page | M | 2-3 weeks | extends monitoring + psa Tickets |
+| 41 — Compliance Frameworks & Recertification | M | shipped v3.17.435–444 | extends accounts + audit + reports.pdf_export (Phase 19); built atop Phase 39 evidence-pack infra |
 | 8 — Mobile apps + GPS auto-time + Timeclock | L | **shipped v3.17.354–417 (extends Phase 2 + 18 + 21)** | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.

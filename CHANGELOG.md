@@ -5,6 +5,40 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.444] - 2026-05-08
+
+### Phase 41 — Compliance Frameworks & Recertification: shipped
+Phase 41 is now fully shipped. Roadmap header advances from `[in progress]` → `[shipped — v3.17.444]`. Sizing-table row added: `41 — Compliance Frameworks & Recertification | M | shipped v3.17.435–444 | extends accounts + audit + reports.pdf_export`.
+
+What landed across the train (10 releases):
+
+| Release | Slice |
+| --- | --- |
+| v3.17.435 | Phase 41 roadmap entry + app stub |
+| v3.17.436 | Models: ComplianceFramework, Category, CheckItem, OrganizationCompliance, OrganizationComplianceItem, RecertificationReminder + migration + admin |
+| v3.17.437 | `seed_pci_dss` mgmt cmd → 1 framework, 12 categories (PCI Requirements 1-12), 38 check items keyed to real PCI-DSS v4.0 control numbers |
+| v3.17.438 | `seed_hipaa` mgmt cmd → 1 framework, 3 categories (Administrative + Physical + Technical Safeguards), 33 check items keyed to real CFR refs |
+| v3.17.439 | Per-org dashboard `/compliance/organizations/<org_id>/` + Enroll button + status pills + progress bar per framework |
+| v3.17.440 | Checklist UI `/compliance/.../<framework_slug>/` with per-row attestation save + audit logging on status change |
+| v3.17.441 | Customer-facing PDF report (KPI grid + per-category table) using Phase 19's `reports.pdf_export.render_pdf` |
+| v3.17.442 | `send_compliance_recertifications` cron (idempotent + 7-day dedup) + `RecertificationReminder` audit row |
+| v3.17.443 | Settings card on checklist (toggle / interval / notify_email) + "Mark recertified now" button |
+| v3.17.444 | Phase close (this release) |
+
+Total: 36+ tests across 7 test classes in `compliance/tests.py`, all passing.
+
+### Operator quick-start
+```bash
+# Seed the framework catalog (idempotent — safe to re-run)
+python manage.py seed_pci_dss
+python manage.py seed_hipaa
+
+# Add daily recertification cron (crontab -e)
+0 9 * * * cd /home/administrator && /home/administrator/venv/bin/python manage.py send_compliance_recertifications
+```
+
+Then for each client org needing compliance: `/compliance/organizations/<org_id>/` → **Enroll** the framework → walk the checklist → **Mark recertified now** when done. The cron handles future reminders.
+
 ## [3.17.443] - 2026-05-08
 
 ### Added — Phase 41 v7: recertification toggle UI + Mark Recertified button
