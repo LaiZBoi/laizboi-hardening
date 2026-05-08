@@ -57,6 +57,13 @@
                     </span>
                 </div>
 
+                {# v3.17.429 — single-button UX. The previous design had
+                   two separate flows (Rebuild + Build & download) which
+                   confused the workflow. Now there's one primary action
+                   per state: Download (when ready) or Build (when not).
+                   Rebuild is folded into the build flow — clicking Build
+                   while an APK exists triggers wipe-then-rebuild via the
+                   `?rebuild=1` query parameter handled by `download_mobile_app`. #}
                 {% if android.available %}
                     <p class="build-meta mb-2">
                         {{ android.size_mb }} MB · {% trans "Built" %} {{ android.mtime|timesince }} {% trans "ago" %}
@@ -64,23 +71,20 @@
                     <a href="{% url 'core:download_mobile_app' 'android' %}" class="btn btn-success me-1">
                         <i class="fas fa-download me-1"></i> {% trans "Download APK" %}
                     </a>
-                    <form method="post" action="{% url 'core:mobile_apps_admin' %}" class="d-inline" onsubmit="return confirm('{% trans "Wipe the cached APK and rebuild from the current source tree? Next download will trigger a fresh build (~10–20 min on first run)." %}');">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="rebuild">
-                        <input type="hidden" name="platform" value="android">
-                        <button type="submit" class="btn btn-outline-warning">
-                            <i class="fas fa-redo me-1"></i> {% trans "Rebuild from latest code" %}
-                        </button>
-                    </form>
+                    <a href="{% url 'core:download_mobile_app' 'android' %}?rebuild=1"
+                       class="btn btn-outline-warning"
+                       onclick="return confirm('{% trans "Wipe the cached APK and rebuild from the current source tree? Build takes ~3-5 minutes." %}');">
+                        <i class="fas fa-redo me-1"></i> {% trans "Rebuild from latest code" %}
+                    </a>
                 {% elif android.status == 'building' %}
                     <p class="build-meta mb-2">{{ android.message|default:_("Build in progress…") }}</p>
                     <a href="{% url 'core:download_mobile_app' 'android' %}" class="btn btn-outline-warning">
                         <i class="fas fa-spinner fa-spin me-1"></i> {% trans "View build progress" %}
                     </a>
                 {% else %}
-                    <p class="build-meta mb-2">{% trans "No APK built yet. Clicking the button below triggers an automatic build on the server." %}</p>
+                    <p class="build-meta mb-2">{% trans "No APK built yet. Click the button below to start the build (~3-5 min on subsequent runs, longer on first run while NDK + npm download)." %}</p>
                     <a href="{% url 'core:download_mobile_app' 'android' %}" class="btn btn-outline-primary">
-                        <i class="fas fa-hammer me-1"></i> {% trans "Build & download APK" %}
+                        <i class="fas fa-hammer me-1"></i> {% trans "Build APK from latest code" %}
                     </a>
                 {% endif %}
 

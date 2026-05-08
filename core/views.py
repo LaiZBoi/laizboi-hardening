@@ -933,6 +933,25 @@ def download_mobile_app(request, app_type):
         apk_path = os.path.join(MOBILE_APP_DIR, 'clientst0r.apk')
         status_file = os.path.join(MOBILE_APP_DIR, 'android_build_status.json')
 
+        # v3.17.429 — single-button rebuild. ?rebuild=1 wipes the cached
+        # APK + status + log so the rest of this view's flow falls through
+        # to a fresh build kickoff. Replaces the separate POST /core/mobile-apps/
+        # `action=rebuild` round-trip that the user had to do before.
+        if request.GET.get('rebuild') == '1':
+            for fpath in (apk_path, status_file,
+                          os.path.join(MOBILE_APP_DIR, 'android_build.log')):
+                try:
+                    os.remove(fpath)
+                except OSError:
+                    pass
+            AuditLog.objects.create(
+                user=request.user,
+                action='mobile_app_rebuild_requested',
+                object_type='mobile_app',
+                description='Wiped cached android build artifacts via single-button rebuild',
+            )
+            # Fall through — APK is gone, no status file, will trigger build.
+
         # Check if APK exists
         if os.path.exists(apk_path):
             # Serve the APK file
@@ -1149,56 +1168,85 @@ def download_mobile_app(request, app_type):
                 """, content_type='text/html; charset=utf-8')
 
             elif status_data['status'] == 'failed':
-                # Build failed - allow retry
+                # v3.17.429 — Show the actual failure with build log so the
+                # user can see WHY it failed. Previously we deleted the
+                # status file and rendered a generic "Not Created Yet" page,
+                # which discarded the error. The page no longer auto-refreshes
+                # so the error stays put until the user explicitly retries.
                 if request.GET.get('retry') == '1':
                     # Clear status and trigger new build
-                    os.remove(status_file)
-                    # Fall through to trigger build below
-                else:
-                    # Delete failed status file so we show clean state
                     try:
                         os.remove(status_file)
-                    except Exception:
+                    except OSError:
                         pass
+                    # Fall through to trigger build below
+                else:
+                    # Read the build log so we can show what actually failed.
+                    log_file = os.path.join(MOBILE_APP_DIR, f'{app_type}_build.log')
+                    fail_log = ''
+                    if os.path.exists(log_file):
+                        try:
+                            with open(log_file, 'r') as f:
+                                raw = f.read()
+                            lines = [ln for ln in raw.split('\n') if ln.strip()]
+                            fail_log = '\n'.join(lines[-80:])
+                        except OSError:
+                            fail_log = '(could not read build log)'
+                    else:
+                        fail_log = '(no build log on disk)'
 
-                    # Show friendly "not created yet" page instead of error
+                    err_msg = status_data.get('message') or 'Build failed.'
+                    # Escape HTML in the log so error markers show as text
+                    import html as _html
+                    safe_log = _html.escape(fail_log)
+                    safe_msg = _html.escape(err_msg)
                     return HttpResponse(f"""
                         <!DOCTYPE html>
                         <html>
                         <head>
-                            <title>Android App - Client St0r</title>
+                            <title>Android Build Failed - Client St0r</title>
                             <meta charset="UTF-8">
                             <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-                            <meta http-equiv="Pragma" content="no-cache">
-                            <meta http-equiv="Expires" content="0">
                             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
                             <style>
                                 body {{ background: #0d1117; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
-                                .container {{ max-width: 800px; margin: 50px auto; padding: 40px; text-align: center; }}
-                                .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 40px; }}
+                                .container {{ max-width: 1100px; margin: 30px auto; padding: 20px; }}
+                                .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 25px; margin-bottom: 20px; }}
+                                .card.danger {{ border-color: #da3633; }}
                                 h1, h2, h3, h4, h5 {{ color: #ffffff !important; }}
-                                p, .lead {{ color: #ffffff !important; font-size: 1.1rem; }}
-                                strong {{ color: #ffffff; }}
+                                h1 {{ color: #f85149; margin-top: 0; }}
+                                p, .lead {{ color: #c9d1d9; }}
                                 .text-muted {{ color: #8b949e !important; }}
-                                h1 {{ color: #58a6ff; margin-bottom: 20px; }}
-                                .info-icon {{ font-size: 64px; margin-bottom: 20px; }}
-                                .btn-build {{ background: #238636; border: 1px solid #2ea043; color: white; padding: 12px 32px; font-size: 16px; border-radius: 6px; text-decoration: none; display: inline-block; margin-top: 20px; }}
-                                .btn-build:hover {{ background: #2ea043; color: white; }}
-                                .btn-secondary {{ background: #30363d; border: 1px solid #484f58; color: white; padding: 12px 32px; font-size: 16px; border-radius: 6px; text-decoration: none; display: inline-block; margin-top: 20px; margin-left: 10px; }}
+                                .btn-retry {{ background: #238636; border: 1px solid #2ea043; color: white; padding: 10px 24px; font-size: 16px; border-radius: 6px; text-decoration: none; display: inline-block; margin-right: 10px; }}
+                                .btn-retry:hover {{ background: #2ea043; color: white; }}
+                                .btn-secondary {{ background: #30363d; border: 1px solid #484f58; color: white; padding: 10px 24px; font-size: 16px; border-radius: 6px; text-decoration: none; display: inline-block; margin-right: 10px; }}
                                 .btn-secondary:hover {{ background: #484f58; color: white; }}
+                                .log-container {{ background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 18px; max-height: 520px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12.5px; line-height: 1.45; color: #c9d1d9; white-space: pre-wrap; word-break: break-word; }}
+                                .err-msg {{ background: #2d1010; border-left: 4px solid #f85149; padding: 12px 16px; margin: 15px 0; border-radius: 4px; color: #ffa198; }}
                             </style>
+                            <script>
+                                // Auto-scroll log to bottom on load
+                                window.addEventListener('load', function() {{
+                                    var c = document.getElementById('log-container');
+                                    if (c) c.scrollTop = c.scrollHeight;
+                                }});
+                            </script>
                         </head>
                         <body>
                             <div class="container">
-                                <div class="card">
-                                    <div class="info-icon">📱</div>
-                                    <h1>Android App Not Created Yet</h1>
-                                    <p class="lead">The mobile app hasn't been built yet.</p>
-                                    <p class="text-muted">Click the button below to start building the Android app. This process takes about 10-15 minutes.</p>
-                                    <div class="mt-4">
-                                        <a href="?build=1" class="btn-build">Build Android App</a>
-                                        <a href="javascript:history.back()" class="btn-secondary">Go Back</a>
+                                <div class="card danger">
+                                    <h1>❌ Android Build Failed</h1>
+                                    <div class="err-msg"><strong>Error:</strong> {safe_msg}</div>
+                                    <p class="text-muted" style="margin-bottom: 0;">The build log is below. Read the last lines for the actual cause — usually a Gradle, NDK, or expo-modules error.</p>
+                                    <div style="margin-top: 18px;">
+                                        <a href="?retry=1" class="btn-retry">🔁 Retry build</a>
+                                        <a href="/core/mobile-apps/" class="btn-secondary">← Back to Mobile Apps</a>
                                     </div>
+                                </div>
+
+                                <div class="card">
+                                    <h3 style="margin-top: 0;">📝 Build Log (last 80 non-blank lines)</h3>
+                                    <div id="log-container" class="log-container">{safe_log if safe_log else '(empty)'}</div>
                                 </div>
                             </div>
                         </body>

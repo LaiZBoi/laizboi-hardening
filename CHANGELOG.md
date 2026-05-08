@@ -5,6 +5,26 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.429] - 2026-05-08
+
+### Fixed — Mobile Apps page: single-button rebuild + visible build errors
+Two genuine UX bugs that the previous releases didn't catch:
+
+1. **Two buttons, two flows for "rebuild"** — the admin page had a "Rebuild from latest code" button that POSTed to wipe the cache, AND a separate "Build & download APK" link that triggered the actual build. User had to click two things in sequence. Now a single `?rebuild=1` query param on the existing download URL handles both wipe + kickoff atomically. The admin page renders one button per state: **Download APK** + **Rebuild from latest code** when an APK exists; **Build APK from latest code** when not.
+
+2. **Build errors disappeared on auto-refresh.** When a build failed, `download_mobile_app`'s failed-status branch deleted the status file and rendered a generic "Android App Not Created Yet" page — discarding the error message AND the build log. The user couldn't see why the build had failed because the failure UI was the same as the no-build-yet UI. Now the failed branch:
+   - Keeps the status file
+   - Reads the last 80 non-blank lines of `android_build.log`
+   - Renders a red "❌ Android Build Failed" card with the error message + scrollable log + a single **🔁 Retry build** button (which clicks through to `?retry=1` to wipe the failure and start fresh)
+   - **Does NOT auto-refresh**, so the error stays put until the user explicitly retries or navigates away
+
+### Files
+- `core/views.py::download_mobile_app` — `?rebuild=1` short-circuit; new failed-status page with embedded log
+- `templates/core/mobile_apps_admin.html` — consolidated to one primary button per state, links to `?rebuild=1`
+
+### Tests
+None — UI consolidation; verified by tracing the `?rebuild=1` short-circuit and the failed-status template render path.
+
 ## [3.17.428] - 2026-05-08
 
 ### Smaller — APK 49MB → ~20-25MB (R8 minify + resource shrink on debug)
