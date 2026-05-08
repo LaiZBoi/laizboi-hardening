@@ -5,6 +5,37 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.430] - 2026-05-08
+
+### Fixed — APK build failed on `getDefaultProguardFile()`
+v3.17.428 appended the minify+shrink patch to `android/app/build.gradle` as bare property setters:
+
+```gradle
+android.buildTypes.debug.proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+```
+
+That fails with `Could not find method getDefaultProguardFile() for arguments [...] on project ':app'` because outside an `android { }` block the receiver of `getDefaultProguardFile` is the bare `Project`, which doesn't have that method. The method belongs to the `AndroidExtension` (the object the `android { }` block configures).
+
+Fix: wrap the patch in a proper nested `android { buildTypes { debug { ... } } }` block so Gradle's resolver hits the right receiver:
+
+```gradle
+// CST-DEBUG-MINIFY
+android {
+    buildTypes {
+        debug {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+}
+```
+
+The block form is also the canonical idiom in the Android Gradle Plugin docs.
+
+### Tests
+None — Gradle config syntax fix; verified against AGP docs for `getDefaultProguardFile()` scope.
+
 ## [3.17.429] - 2026-05-08
 
 ### Fixed — Mobile Apps page: single-button rebuild + visible build errors

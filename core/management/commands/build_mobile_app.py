@@ -247,19 +247,34 @@ class Command(BaseCommand):
                                     "android.defaultConfig.ndk.abiFilters 'arm64-v8a'"
                                 )
 
-                            # v3.17.428: enable R8 minification + resource
+                            # v3.17.430: enable R8 minification + resource
                             # shrinking on debug builds. Default Expo debug
                             # builds skip these (151MB → 49MB on this app).
                             # Forcing them on (with the standard Android
                             # proguard-android-optimize rules + the RN/Expo
-                            # proguard-rules.pro) gets us to ~20-25MB without
-                            # needing a release keystore.
+                            # proguard-rules.pro) gets us closer to 20-25MB
+                            # without needing a release keystore.
+                            #
+                            # Wrap the patch in `android { buildTypes { debug
+                            # { ... } } }` so `getDefaultProguardFile` resolves
+                            # against the AndroidExtension instead of the
+                            # Project (v3.17.428 failed because the bare
+                            # `android.buildTypes.debug.proguardFiles
+                            # getDefaultProguardFile(...)` line called the
+                            # method on the Project — `Could not find method
+                            # getDefaultProguardFile() … on project ':app'`).
                             if minify_marker not in gradle_src:
                                 patches.append(
-                                    f'{minify_marker} — shrink resources + R8 on debug too (v3.17.428)\n'
-                                    'android.buildTypes.debug.minifyEnabled = true\n'
-                                    'android.buildTypes.debug.shrinkResources = true\n'
-                                    'android.buildTypes.debug.proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"'
+                                    f'{minify_marker} — shrink resources + R8 on debug too (v3.17.430)\n'
+                                    'android {\n'
+                                    '    buildTypes {\n'
+                                    '        debug {\n'
+                                    '            minifyEnabled true\n'
+                                    '            shrinkResources true\n'
+                                    '            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"\n'
+                                    '        }\n'
+                                    '    }\n'
+                                    '}'
                                 )
 
                             if patches:
