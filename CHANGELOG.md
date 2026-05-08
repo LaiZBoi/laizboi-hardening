@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.433] - 2026-05-08
+
+### Fixed — `bundleRelease` failed with `Unable to resolve module crypto from axios`
+The signed-AAB build (`./gradlew bundleRelease`) was failing at `:app:createBundleReleaseJsAndAssets`. Root cause: Metro (the React Native bundler) was resolving axios via its `dist/node/axios.cjs` entry, which imports Node built-ins (`crypto`, `url`, `http`) that don't exist in the React Native runtime.
+
+The debug build worked because `expo prebuild` for debug uses a different code path that picks axios's RN-friendly entry by default. Release builds went through Metro's full resolver and picked the wrong export.
+
+Fix: new `mobile/metro.config.js` sets `resolver.unstable_conditionNames = ['require', 'react-native', 'browser']` so Metro consults the `react-native` / `browser` conditional exports in package.json before falling back to `node`. axios + any similar dual-build dep now resolves correctly under release.
+
+### Tests
+None — Metro resolver config; verified by reading the v3.17.432 build log error at `:app:createBundleReleaseJsAndAssets` and the axios package.json `exports` map.
+
 ## [3.17.432] - 2026-05-08
 
 ### Added — Generic local-app loader (`local_apps/`)
