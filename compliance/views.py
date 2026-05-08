@@ -366,3 +366,141 @@ def _zip_response(pack):
         f'attachment; filename="evidence-pack-{safe_org}-{stamp}.zip"'
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# Phase 41 — Compliance Frameworks & Recertification (v3.17.439+)
+# Per-org dashboard + enrollment.
+# ---------------------------------------------------------------------------
+
+from django.contrib import messages as _messages
+from django.shortcuts import redirect
+from django.urls import reverse
+from django.views.decorators.http import require_POST
+
+
+def _user_can_manage_compliance(user, org):
+    """Same gate as evidence pack — owner/admin of the org or staff."""
+    return _user_can_access_pack(user, org)
+
+
+@login_required
+def org_compliance_dashboard(request, org_id):
+    """List every framework + the org's enrollment status."""
+    from .models import (
+        ComplianceFramework, OrganizationCompliance,
+    )
+
+    org = get_object_or_404(Organization, pk=org_id)
+    if not _user_can_manage_compliance(request.user, org):
+        raise Http404('Not allowed')
+
+    frameworks = []
+    for fw in ComplianceFramework.objects.filter(active=True).order_by('name'):
+        try:
+            oc = OrganizationCompliance.objects.get(
+                organization=org, framework=fw,
+            )
+            counts = oc.status_counts()
+            pct = oc.percent_compliant()
+            days_left = oc.days_until_recertification
+        except OrganizationCompliance.DoesNotExist:
+            oc = None
+            counts = None
+            pct = None
+            days_left = None
+
+        frameworks.append({
+            'framework': fw,
+            'enrollment': oc,
+            'counts': counts,
+            'percent_compliant': pct,
+            'days_until_recertification': days_left,
+        })
+
+    return render(request, 'compliance/org_dashboard.html', {
+        'organization': org,
+        'frameworks': frameworks,
+    })
+
+
+@login_required
+@require_POST
+def enroll_framework(request, org_id, framework_slug):
+    """Enroll the org in a framework. Creates OrganizationCompliance +
+    one OrganizationComplianceItem per check item (status=unanswered)."""
+    from .models import (
+        ComplianceCheckItem, ComplianceFramework, OrganizationCompliance,
+        OrganizationComplianceItem,
+    )
+
+    org = get_object_or_404(Organization, pk=org_id)
+    if not _user_can_manage_compliance(request.user, org):
+        raise Http404('Not allowed')
+
+    fw = get_object_or_404(ComplianceFramework, slug=framework_slug, active=True)
+
+    oc, created = OrganizationCompliance.objects.get_or_create(
+        organization=org, framework=fw,
+        defaults={
+            'enrolled_by': request.user,
+            'recertification_interval_days': fw.recertification_default_days,
+        },
+    )
+    if created:
+        items = ComplianceCheckItem.objects.filter(category__framework=fw)
+        OrganizationComplianceItem.objects.bulk_create([
+            OrganizationComplianceItem(org_compliance=oc, item=item)
+            for item in items
+        ])
+        AuditLog.log(
+            user=request.user, action='create',
+            organization=org,
+            object_type='compliance.OrganizationCompliance',
+            object_id=oc.pk,
+            object_repr=f'{org.name} :: {fw.name}',
+            description=f'Enrolled in {fw.name} {fw.version}',
+            ip_address=_client_ip(request), path=request.path,
+        )
+        _messages.success(
+            request,
+            f'Enrolled {org.name} in {fw.name}. '
+            f'Open the checklist below to start the attestation.'
+        )
+    else:
+        _messages.info(
+            request,
+            f'{org.name} is already enrolled in {fw.name}.'
+        )
+
+    return redirect('compliance:org_dashboard', org_id=org.pk)
+
+
+# Stubs — real implementations in v3.17.440 / v3.17.441.
+@login_required
+def checklist_view(request, org_id, framework_slug):
+    """Real implementation lands in v3.17.440."""
+    from django.http import HttpResponse
+    return HttpResponse(
+        f'Compliance checklist for org {org_id} / {framework_slug} — '
+        'view ships in v3.17.440 (coming up).',
+        content_type='text/plain',
+    )
+
+
+@login_required
+@require_POST
+def checklist_save(request, org_id, framework_slug):
+    from django.http import HttpResponseNotAllowed
+    return HttpResponseNotAllowed(['POST'])
+
+
+@login_required
+def compliance_report_pdf(request, org_id, framework_slug):
+    """Real implementation lands in v3.17.441."""
+    from django.http import HttpResponse
+    return HttpResponse(
+        f'PDF report for org {org_id} / {framework_slug} — '
+        'view ships in v3.17.441 (coming up).',
+        content_type='text/plain',
+    )

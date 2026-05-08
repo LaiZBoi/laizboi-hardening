@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.439] - 2026-05-08
+
+### Added — Phase 41 v3: per-org compliance dashboard
+New view at `/compliance/organizations/<org_id>/` lists every active framework with the org's enrollment status. For unenrolled frameworks, an **Enroll** button creates the OrganizationCompliance row + bulk-creates an OrganizationComplianceItem (status=`unanswered`) for every check item in the framework — so the operator can immediately walk the checklist.
+
+For enrolled frameworks, the card shows:
+- **Compliance progress bar** (`percent_compliant`)
+- Status counts (compliant / partial / non-compliant / N-A / unanswered)
+- **Recertification due** with days remaining (red text if overdue)
+- **Open checklist** + **Report (PDF)** buttons (real implementations land in v3.17.440 + v3.17.441; URLs stubbed in this release so the dashboard renders)
+
+### Audit
+Enrollment writes an `AuditLog` entry with action `create`, object_type `compliance.OrganizationCompliance`, and a description naming the framework + version.
+
+### Tests
+4 new view tests in `compliance/tests.py`:
+- Dashboard renders + lists frameworks
+- Enroll creates the right number of attestation items (38 for PCI-DSS)
+- Enrollment is idempotent (re-POST is no-op)
+- Outsider users get 404 on cross-org dashboard access
+
+All compliance tests pass.
+
 ## [3.17.438] - 2026-05-08
 
 ### Added — Phase 41: HIPAA Security Rule seed

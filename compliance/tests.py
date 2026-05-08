@@ -322,3 +322,84 @@ class SeedHipaaTests(TestCase):
         second = ComplianceCheckItem.objects.filter(
             category__framework__slug='hipaa-security-rule').count()
         self.assertEqual(first, second)
+
+
+class OrgComplianceDashboardTests(TestCase):
+    """Phase 41 v3.17.439: per-org dashboard + enrollment."""
+
+    def setUp(self):
+        from core.models import Organization
+        from accounts.models import Membership
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        self.org = Organization.objects.create(name='ACME')
+        self.user = User.objects.create_user(
+            'tester', email='t@example.com', password='x', is_staff=True,
+        )
+        Membership.objects.create(
+            user=self.user, organization=self.org, role='admin',
+            is_active=True,
+        )
+        # Seed PCI so we have a framework to enroll in
+        call_command('seed_pci_dss')
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_dashboard_lists_frameworks(self):
+        c = Client()
+        c.login(username='tester', password='x')
+        url = f'/compliance/organizations/{self.org.pk}/'
+        resp = c.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'PCI-DSS')
+        self.assertContains(resp, 'Not enrolled')
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_enroll_creates_attestation_items(self):
+        from compliance.models import (
+            OrganizationCompliance, OrganizationComplianceItem,
+        )
+        c = Client()
+        c.login(username='tester', password='x')
+        url = f'/compliance/organizations/{self.org.pk}/enroll/pci-dss-v4/'
+        resp = c.post(url)
+        self.assertEqual(resp.status_code, 302)  # redirect to dashboard
+        oc = OrganizationCompliance.objects.get(
+            organization=self.org, framework__slug='pci-dss-v4',
+        )
+        # 38 items per the PCI seed
+        self.assertEqual(
+            OrganizationComplianceItem.objects.filter(org_compliance=oc).count(),
+            38,
+        )
+        # All start as 'unanswered'
+        self.assertEqual(
+            OrganizationComplianceItem.objects.filter(
+                org_compliance=oc, status='unanswered').count(),
+            38,
+        )
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_enroll_idempotent(self):
+        from compliance.models import OrganizationCompliance
+        c = Client()
+        c.login(username='tester', password='x')
+        url = f'/compliance/organizations/{self.org.pk}/enroll/pci-dss-v4/'
+        c.post(url)
+        c.post(url)  # second call should be no-op
+        self.assertEqual(
+            OrganizationCompliance.objects.filter(
+                organization=self.org, framework__slug='pci-dss-v4').count(),
+            1,
+        )
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_dashboard_requires_membership(self):
+        from django.contrib.auth.models import User
+        from core.models import Organization
+        outsider = User.objects.create_user('outsider', password='x')
+        other_org = Organization.objects.create(name='Other')
+        c = Client()
+        c.login(username='outsider', password='x')
+        url = f'/compliance/organizations/{other_org.pk}/'
+        resp = c.get(url)
+        self.assertEqual(resp.status_code, 404)

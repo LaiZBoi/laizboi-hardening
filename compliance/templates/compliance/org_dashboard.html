@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Compliance — {{ organization.name }}{% endblock %}
+
+{% block content %}
+<div class="container my-4" style="max-width: 1100px;">
+
+    <h2 class="mb-3">
+        <i class="fas fa-shield-halved me-2"></i>
+        Compliance — {{ organization.name }}
+    </h2>
+
+    <p class="text-muted">
+        Pick a framework below to enroll {{ organization.name }} and walk
+        through the attestation checklist. Once enrolled, you can attest
+        to each control, attach evidence, generate a customer-facing PDF
+        report, and configure recertification reminders.
+    </p>
+
+    {% if messages %}
+        {% for m in messages %}
+            <div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="row g-3 mt-2">
+        {% for f in frameworks %}
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-start justify-content-between">
+                        <div>
+                            <h5 class="card-title mb-1">{{ f.framework.name }}</h5>
+                            <p class="text-muted small mb-2">
+                                {{ f.framework.version }} ·
+                                {{ f.framework.categories.count }} categories
+                            </p>
+                        </div>
+                        {% if f.enrollment %}
+                            <span class="badge bg-success">Enrolled</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Not enrolled</span>
+                        {% endif %}
+                    </div>
+
+                    <p class="small">{{ f.framework.description }}</p>
+
+                    {% if f.enrollment %}
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between small text-muted mb-1">
+                                <span>Compliance progress</span>
+                                <strong>{{ f.percent_compliant }}%</strong>
+                            </div>
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-success"
+                                     style="width: {{ f.percent_compliant }}%;"></div>
+                            </div>
+                        </div>
+                        <ul class="list-unstyled small text-muted mb-3">
+                            <li><strong>{{ f.counts.compliant }}</strong> compliant ·
+                                <strong>{{ f.counts.partial }}</strong> partial ·
+                                <strong>{{ f.counts.non_compliant }}</strong> non-compliant ·
+                                <strong>{{ f.counts.not_applicable }}</strong> N/A ·
+                                <strong>{{ f.counts.unanswered }}</strong> unanswered</li>
+                            <li>Recertification due in
+                                {% if f.days_until_recertification > 0 %}
+                                    <strong>{{ f.days_until_recertification }}</strong> days
+                                {% elif f.days_until_recertification == 0 %}
+                                    <strong class="text-warning">today</strong>
+                                {% else %}
+                                    <strong class="text-danger">{{ f.days_until_recertification }} days overdue</strong>
+                                {% endif %}
+                            </li>
+                        </ul>
+                        <a href="{% url 'compliance:checklist' org_id=organization.pk framework_slug=f.framework.slug %}"
+                           class="btn btn-primary btn-sm">
+                            <i class="fas fa-list-check me-1"></i> Open checklist
+                        </a>
+                        <a href="{% url 'compliance:report_pdf' org_id=organization.pk framework_slug=f.framework.slug %}"
+                           class="btn btn-outline-secondary btn-sm ms-1">
+                            <i class="fas fa-file-pdf me-1"></i> Report (PDF)
+                        </a>
+                    {% else %}
+                        <form method="post"
+                              action="{% url 'compliance:enroll_framework' org_id=organization.pk framework_slug=f.framework.slug %}"
+                              class="m-0"
+                              onsubmit="return confirm('Enroll {{ organization.name|escapejs }} in {{ f.framework.name|escapejs }}? This creates {{ f.framework.categories.count }} categories of attestation items.');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-success btn-sm">
+                                <i class="fas fa-circle-plus me-1"></i> Enroll in {{ f.framework.name }}
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted mb-2">No compliance frameworks available yet.</p>
+                    <p class="small text-muted mb-0">
+                        An administrator can seed the catalog by running
+                        <code>python manage.py seed_pci_dss</code> and
+                        <code>python manage.py seed_hipaa</code> from the project root.
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endblock %}
