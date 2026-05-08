@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.420] - 2026-05-08
+
+### Improved — Post-update reload UX
+The v3.17.418/419 line-of-text countdown didn't make it clear progress was happening, and the 2-minute hard cap was too short on first-time-after-deploy gunicorn restarts. Rewrote `waitForServerThenReload()` in `templates/core/system_updates.html`:
+
+- **Visible progress bar** (Bootstrap progress-bar-striped/animated) that fills 0→95% over ~30s of expected restart time, then holds at 95% until the server actually responds. Independent 250ms ticker so the bar keeps moving even if a single probe stalls.
+- **Live elapsed timer** in the corner ("12s") so you always see the page is alive.
+- **Manual "Reload now" button** appears after 15 seconds. Gives an escape hatch without making the user wait for the auto-detect.
+- **5-minute max wait** (was 2 minutes). On expiry, the bar turns red and the message points at `journalctl -u huduglue-gunicorn.service` for diagnosis.
+- **Two consecutive 200s still required** (avoids catching a single half-up worker), but the message now says "Server responded — confirming health (1/2)…" instead of the cryptic "(#1/2)".
+- 4s per-fetch abort (was 3s) — slightly more tolerant of a slow first response.
+
+### CodeQL — stale `java` and `cpp` databases purged
+The repo's CodeQL scan dashboard kept showing a "language:java-kotlin" configuration with errors ("No Java/Kotlin code found") even though the Advanced workflow at `.github/workflows/codeql.yml` only scans `[python, javascript-typescript, actions]` and the Default setup is `not-configured`. The cause was leftover CodeQL `java` (82MB) and `cpp` databases on the repo from before the Advanced workflow took over. Purged via `gh api -X DELETE /repos/agit8or1/clientst0r/code-scanning/codeql/databases/{java,cpp}`. The dashboard's java-kotlin row will clear after the GitHub UI cache refreshes (a few minutes).
+
+### Tests
+None — frontend UX rewrite + GitHub API cleanup; verified by reading the JS and confirming the API delete returned cleanly.
+
 ## [3.17.419] - 2026-05-08
 
 ### Fixed — Update reload countdown stopped after attempt 1

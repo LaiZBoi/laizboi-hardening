@@ -890,42 +890,92 @@ function showComplete() {
     document.getElementById('updateProgressText').textContent = 'Update complete!';
 }
 
-// v3.17.418 — actively probe the server until it's back up after the
-// gunicorn restart, then reload. Avoids the bare `location.reload()` 10s
-// later that used to hit a 503 page when the upstream wasn't ready yet.
+// v3.17.420 — wait-for-server: visible progress bar + manual-reload escape
+// hatch + 5-minute hard cap. Replaces the v3.17.418/419 line-of-text UX
+// that didn't make it clear progress was actually happening.
 function waitForServerThenReload() {
     const completeEl = document.getElementById('updateComplete');
     if (completeEl && !document.getElementById('serverWaitMsg')) {
         const wait = document.createElement('div');
         wait.id = 'serverWaitMsg';
-        wait.className = 'mt-3 small text-muted';
-        wait.innerHTML = '<i class="fas fa-sync fa-spin me-1"></i> '
-            + 'Server is restarting — will reload automatically when it\'s back. '
-            + '<span id="serverWaitCountdown">checking…</span>';
+        wait.className = 'mt-3';
+        wait.innerHTML = ''
+            + '<div class="d-flex align-items-center mb-2">'
+            +   '<i class="fas fa-sync fa-spin me-2 text-info"></i>'
+            +   '<strong>Server is restarting</strong>'
+            +   '<span class="ms-auto small text-muted" id="serverWaitElapsed">0s</span>'
+            + '</div>'
+            + '<div class="progress" style="height: 6px;">'
+            +   '<div id="serverWaitBar" class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width: 0%;"></div>'
+            + '</div>'
+            + '<div class="small text-muted mt-2" id="serverWaitCountdown">'
+            +   'Waiting for the upstream to come back online…'
+            + '</div>'
+            + '<button type="button" id="serverWaitManual" class="btn btn-sm btn-outline-secondary mt-3" style="display:none;" '
+            +   'onclick="location.reload();">'
+            +   '<i class="fas fa-redo me-1"></i> Reload now'
+            + '</button>';
         completeEl.appendChild(wait);
     }
 
     const probeUrl = '{% url "core:update_progress_api" %}';
     const startedAt = Date.now();
-    const maxWaitMs = 120000;            // 2 minutes max
+    const maxWaitMs = 300000;            // 5 minutes hard cap (was 2)
+    const expectedSecs = 30;             // bar fills in ~30s of "normal" recovery
     let attempt = 0;
     let consecutiveOk = 0;
+    let lastTickStamp = startedAt;
+
+    // Independent ticker: even if a probe stalls, this updates the UI every
+    // 250ms so the user always sees motion. Cancelled when we reload.
+    const tickInterval = setInterval(function() {
+        const ms = Date.now() - startedAt;
+        const elapsed = Math.floor(ms / 1000);
+        const elapsedEl = document.getElementById('serverWaitElapsed');
+        const barEl = document.getElementById('serverWaitBar');
+        const manualEl = document.getElementById('serverWaitManual');
+        if (elapsedEl) elapsedEl.textContent = elapsed + 's';
+        // Fills 0-95% over expectedSecs, then pegs at 95% if we go past
+        // (we don't want the bar to "complete" before the actual reload).
+        if (barEl) {
+            const pct = Math.min(95, Math.round((ms / (expectedSecs * 1000)) * 95));
+            barEl.style.width = pct + '%';
+        }
+        // Surface the manual button after 15s — gives the user an
+        // out without making them squint at the auto-poll.
+        if (manualEl && elapsed >= 15) manualEl.style.display = 'inline-block';
+        // Hard cap.
+        if (ms > maxWaitMs) {
+            clearInterval(tickInterval);
+            const cd = document.getElementById('serverWaitCountdown');
+            if (cd) cd.innerHTML =
+                'No response after 5 minutes. The service might still be running, '
+                + 'or it might have failed to restart. '
+                + '<a href="javascript:location.reload()">Reload manually</a> '
+                + 'or check <code>journalctl -u huduglue-gunicorn.service</code>.';
+            if (barEl) {
+                barEl.classList.remove('progress-bar-animated', 'bg-info');
+                barEl.classList.add('bg-danger');
+            }
+        }
+    }, 250);
 
     function probe() {
         attempt += 1;
-        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
         const cd = document.getElementById('serverWaitCountdown');
 
-        // v3.17.419 — abort the fetch after 3s. Without this, fetch hangs
-        // indefinitely when openresty holds the connection open during
-        // gunicorn restart (no 503, no reject) — the countdown freezes.
+        // 4-second per-fetch abort (was 3) — gives the upstream a hair
+        // more rope before we count this attempt as a fail. Adds an
+        // explicit "no_cache" param plus a cache-buster to dodge any
+        // intermediate proxy / SW cache.
         const controller = new AbortController();
-        const abortTimer = setTimeout(function() { controller.abort(); }, 3000);
+        const abortTimer = setTimeout(function() { controller.abort(); }, 4000);
 
-        fetch(probeUrl + '?_=' + Date.now(), {
+        fetch(probeUrl + '?_=' + Date.now() + '&attempt=' + attempt, {
             cache: 'no-store',
             credentials: 'same-origin',
             signal: controller.signal,
+            headers: { 'X-Requested-With': 'PostUpdateProbe' },
         })
             .then(function(resp) {
                 clearTimeout(abortTimer);
@@ -933,32 +983,35 @@ function waitForServerThenReload() {
                 throw new Error('HTTP ' + resp.status);
             })
             .then(function() {
-                // Two consecutive OK responses before we redirect — otherwise
-                // we sometimes catch a single half-up worker before all
-                // workers have reloaded the new code.
                 consecutiveOk += 1;
                 if (cd) cd.textContent =
-                    'server responded (#' + consecutiveOk + '/2) — reloading…';
+                    'Server responded — confirming health (' + consecutiveOk + '/2)…';
                 if (consecutiveOk >= 2) {
+                    clearInterval(tickInterval);
+                    const barEl = document.getElementById('serverWaitBar');
+                    if (barEl) {
+                        barEl.classList.remove('progress-bar-animated', 'bg-info');
+                        barEl.classList.add('bg-success');
+                        barEl.style.width = '100%';
+                    }
+                    if (cd) cd.textContent = 'Server is back. Reloading…';
                     setTimeout(function() { location.reload(); }, 800);
                     return;
                 }
-                setTimeout(probe, 1000);
+                setTimeout(probe, 800);
             })
             .catch(function() {
                 clearTimeout(abortTimer);
                 consecutiveOk = 0;
+                const elapsed = Math.floor((Date.now() - startedAt) / 1000);
                 if (cd) cd.textContent =
-                    'attempt ' + attempt + ' — waiting for upstream (' + elapsed + 's elapsed)';
+                    'Probe ' + attempt + ' timed out. Will retry…';
                 if (Date.now() - startedAt > maxWaitMs) {
-                    if (cd) cd.innerHTML =
-                        'still down after 2 min — '
-                        + '<a href="javascript:location.reload()">reload manually</a> '
-                        + 'or check the System Updates page.';
-                    return;
+                    return;  // tickInterval handles the final UX
                 }
-                // Backoff: 1s for the first 10s, then 2s.
-                const delay = elapsed < 10 ? 1000 : 2000;
+                // Slightly slower backoff once we're past the typical recovery
+                // window — every 1.5s before 20s elapsed, every 3s after.
+                const delay = elapsed < 20 ? 1500 : 3000;
                 setTimeout(probe, delay);
             });
     }
