@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.435] - 2026-05-08
+
+### Fixed — Play Console rejected uploads as duplicate versionCode
+Expo's default Android `versionCode` is `1`. Once Play Console accepts a versionCode for an app, it can't be reused — the next upload gets a cryptic `"This release does not add or remove any app bundles"` and `"You can't rollout this release because it doesn't allow any existing users to upgrade to the newly added app bundles"`.
+
+Fix in `mobile/app.json` + `local_apps/play_publish/scripts/build-aab.sh` (local-only): pin `android.versionCode = 3170435` and have the build script auto-derive the value from `config/version.py` on every build using `major × 1,000,000 + minor × 10,000 + patch`. Each release-version-bump now yields a unique higher versionCode automatically. Max Android versionCode is 2.1 billion — plenty of headroom.
+
+### Chore — version bump triggers gunicorn restart
+The play_publish app's view-layer changes from earlier (Python uploader, expanded GCP walkthrough, no-cache headers) need a gunicorn restart to load. Apply v3.17.435 from Settings → Updates picks them up.
+
 ## [3.17.434] - 2026-05-08
 
 ### Chore — version bump for gunicorn restart
