@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.427] - 2026-05-08
+
+### Fixed — APK build looked hung even when running fine
+Three cosmetic bugs in `download_mobile_app`'s "Building..." page combined to make the build look hung even though it always finished in 1-2 min:
+
+1. **Log filter stripped Gradle output.** The filter only kept lines containing `===`, `Step`, `Building`, `Installing`, `> npx`, `> ./gradlew`, `Error:`, `failed`, or `complete`. Gradle's actual progress (`> Task :react-native-screens:assembleDebug`, etc.) didn't match any of those, so the visible log froze at the last marker line for the whole build. Widened the filter to keep almost everything except `npm warn` / `warning:` noise. Now keeps the last **60 lines** instead of 20.
+2. **"Elapsed Time: Calculating…" never updated.** The JS that ticks the elapsed counter only existed on the "starting a fresh build" page, not on the "build in progress" page (the one users actually see during a build). Added the same `setInterval(tickElapsed, 1000)` to the in-progress page, sourced from `status_data['timestamp']`.
+3. **"Showing last 100 lines"** label was a lie (the filter only kept 20). Updated to "Showing last 60 lines of build output" and added a link to `/core/mobile-apps/` so users can navigate back to the admin landing page if they want the explicit Download button instead of waiting for the auto-refresh + auto-download.
+
+The `mobile_apps_admin` page at `/core/mobile-apps/` already detects the APK on disk correctly (`os.path.exists(binary_path)`) — if you reach that URL in a fresh tab right now, it shows the green "Ready" badge with the Download APK button. The "stuck" feeling came from the building page's stale snapshot, not from the admin page.
+
+### Tests
+None — UI cosmetic fixes; verified by reading the build log filter logic and the JS update path.
+
 ## [3.17.426] - 2026-05-08
 
 ### Fixed (third try) — 502s on `/static/...` after Apply reload

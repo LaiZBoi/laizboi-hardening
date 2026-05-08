@@ -991,20 +991,25 @@ def download_mobile_app(request, app_type):
                 if os.path.exists(log_file):
                     with open(log_file, 'r') as f:
                         build_log = f.read()
-                        # Filter log: show only major steps and current command
+                        # v3.17.427 — widened filter. Previously stripped all
+                        # `> Task :` lines (Gradle's actual progress) so the
+                        # page looked frozen even while Gradle ran for
+                        # minutes. Now keep almost everything and drop only
+                        # npm-warn noise.
                         log_lines = []
                         for line in build_log.split('\n'):
-                            # Skip verbose output
-                            skip_patterns = ['npm warn', 'warning', '[10:', 'cleared', 'created', 'added', 'removed', '✔', '✓', '-', '›']
-                            if any(pattern in line.lower() for pattern in skip_patterns):
+                            stripped = line.strip()
+                            if not stripped:
                                 continue
-                            # Keep only major markers
-                            if any(marker in line for marker in ['===', 'Started at:', '> npx', '> ./gradlew', 'Step', 'Building', 'Installing', 'Error:', 'failed', 'complete']):
-                                log_lines.append(line)
-                        # Show last 20 lines (major steps only)
-                        build_log = '\n'.join(log_lines[-20:]) if len(log_lines) > 20 else '\n'.join(log_lines)
+                            low = stripped.lower()
+                            if low.startswith('npm warn') or low.startswith('warning:'):
+                                continue
+                            log_lines.append(line)
+                        # Show the last 60 lines so the page conveys ongoing
+                        # work — gradle emits many `> Task :` lines.
+                        build_log = '\n'.join(log_lines[-60:]) if len(log_lines) > 60 else '\n'.join(log_lines)
                         if not build_log.strip():
-                            build_log = 'Build in progress... (details filtered for clarity)'
+                            build_log = 'Build in progress…'
 
                 # Build in progress - show status page with live log
                 return HttpResponse(f"""
@@ -1039,6 +1044,29 @@ def download_mobile_app(request, app_type):
                             @keyframes progressSlide {{ 0% {{ background-position: 100% 0; }} 100% {{ background-position: -100% 0; }} }}
                         </style>
                         <script>
+                            // v3.17.427 — actually calculate elapsed time
+                            // (was stuck on "Calculating…"). Uses the
+                            // status_data['timestamp'] embedded server-side.
+                            var buildStartedAt = {status_data.get('timestamp', 0)} * 1000;
+                            function tickElapsed() {{
+                                var el = document.getElementById('elapsed-time');
+                                if (!el || !buildStartedAt) return;
+                                var s = Math.max(0, Math.floor((Date.now() - buildStartedAt) / 1000));
+                                var m = Math.floor(s / 60);
+                                var ss = s % 60;
+                                el.textContent = m + 'm ' + (ss < 10 ? '0' : '') + ss + 's';
+                            }}
+                            tickElapsed();
+                            setInterval(tickElapsed, 1000);
+
+                            var refreshIn = 5;
+                            setInterval(function() {{
+                                refreshIn--;
+                                if (refreshIn < 0) refreshIn = 5;
+                                var rc = document.getElementById('refresh-countdown');
+                                if (rc) rc.textContent = refreshIn;
+                            }}, 1000);
+
                             // Auto-scroll to bottom of log
                             window.onload = function() {{
                                 var logContainer = document.getElementById('log-container');
@@ -1059,7 +1087,7 @@ def download_mobile_app(request, app_type):
                                 <div class="progress-bar-container">
                                     <div class="progress-bar"></div>
                                 </div>
-                                <p class="text-center"><strong>Elapsed Time:</strong> <span id="elapsed-time" style="color: #58a6ff; font-size: 1.2em;">Calculating...</span></p>
+                                <p class="text-center"><strong>Elapsed Time:</strong> <span id="elapsed-time" style="color: #58a6ff; font-size: 1.2em;">Calculating…</span></p>
                                 <p class="text-center text-muted"><small>Page refreshes in <span id="refresh-countdown">5</span> seconds • You can close this tab</small></p>
                             </div>
 
@@ -1068,7 +1096,7 @@ def download_mobile_app(request, app_type):
                                 <div id="log-container" class="log-container">
                                     <pre style="margin: 0; color: #c9d1d9;">{build_log if build_log else 'Waiting for build to start...'}</pre>
                                 </div>
-                                <p class="text-muted text-center" style="margin-top: 15px; margin-bottom: 0;"><small>Showing last 100 lines of build output</small></p>
+                                <p class="text-muted text-center" style="margin-top: 15px; margin-bottom: 0;"><small>Showing last 60 lines of build output. <a href="/core/mobile-apps/" style="color: #58a6ff;">View Mobile Apps page</a></small></p>
                             </div>
                         </div>
                     </body>
@@ -1344,20 +1372,25 @@ def download_mobile_app(request, app_type):
                 if os.path.exists(log_file):
                     with open(log_file, 'r') as f:
                         build_log = f.read()
-                        # Filter log: show only major steps and current command
+                        # v3.17.427 — widened filter. Previously stripped all
+                        # `> Task :` lines (Gradle's actual progress) so the
+                        # page looked frozen even while Gradle ran for
+                        # minutes. Now keep almost everything and drop only
+                        # npm-warn noise.
                         log_lines = []
                         for line in build_log.split('\n'):
-                            # Skip verbose output
-                            skip_patterns = ['npm warn', 'warning', '[10:', 'cleared', 'created', 'added', 'removed', '✔', '✓', '-', '›']
-                            if any(pattern in line.lower() for pattern in skip_patterns):
+                            stripped = line.strip()
+                            if not stripped:
                                 continue
-                            # Keep only major markers
-                            if any(marker in line for marker in ['===', 'Started at:', '> npx', '> ./gradlew', 'Step', 'Building', 'Installing', 'Error:', 'failed', 'complete']):
-                                log_lines.append(line)
-                        # Show last 20 lines (major steps only)
-                        build_log = '\n'.join(log_lines[-20:]) if len(log_lines) > 20 else '\n'.join(log_lines)
+                            low = stripped.lower()
+                            if low.startswith('npm warn') or low.startswith('warning:'):
+                                continue
+                            log_lines.append(line)
+                        # Show the last 60 lines so the page conveys ongoing
+                        # work — gradle emits many `> Task :` lines.
+                        build_log = '\n'.join(log_lines[-60:]) if len(log_lines) > 60 else '\n'.join(log_lines)
                         if not build_log.strip():
-                            build_log = 'Build in progress... (details filtered for clarity)'
+                            build_log = 'Build in progress…'
 
                 return HttpResponse(f"""
                     <!DOCTYPE html>
@@ -1420,7 +1453,7 @@ def download_mobile_app(request, app_type):
                                 <div id="log-container" class="log-container">
                                     <pre style="margin: 0; color: #c9d1d9;">{build_log if build_log else 'Waiting for build to start...'}</pre>
                                 </div>
-                                <p class="text-muted text-center" style="margin-top: 15px; margin-bottom: 0;"><small>Showing last 100 lines of build output</small></p>
+                                <p class="text-muted text-center" style="margin-top: 15px; margin-bottom: 0;"><small>Showing last 60 lines of build output. <a href="/core/mobile-apps/" style="color: #58a6ff;">View Mobile Apps page</a></small></p>
                             </div>
                         </div>
                     </body>
