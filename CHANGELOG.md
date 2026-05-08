@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.434] - 2026-05-08
+
+### Chore — version bump for gunicorn restart
+No code change in this commit. Used as the Apply trigger to graceful-restart gunicorn so it picks up local-only Django app changes outside the public repo. The build_aab + upload_aab Python wrappers were updated locally; this version bump exposes a fresh "Update available" so the operator can click **Apply** and pull the new code into running workers.
+
 ## [3.17.433] - 2026-05-08
 
 ### Fixed — `bundleRelease` failed with `Unable to resolve module crypto from axios`
