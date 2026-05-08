@@ -584,13 +584,98 @@ def checklist_save(request, org_id, framework_slug):
     )
 
 
-# Stub — real implementation in v3.17.441.
+# ---------------------------------------------------------------------------
+# Phase 41 v3.17.441 — customer-facing PDF report
+# ---------------------------------------------------------------------------
+
 @login_required
 def compliance_report_pdf(request, org_id, framework_slug):
-    """Real implementation lands in v3.17.441."""
-    from django.http import HttpResponse
-    return HttpResponse(
-        f'PDF report for org {org_id} / {framework_slug} — '
-        'view ships in v3.17.441 (coming up).',
-        content_type='text/plain',
+    """Render the compliance attestation as a PDF for a customer auditor."""
+    from .models import (
+        ComplianceFramework, OrganizationCompliance,
+        OrganizationComplianceItem,
+    )
+    from reports.pdf_export import render_pdf
+
+    org = get_object_or_404(Organization, pk=org_id)
+    if not _user_can_manage_compliance(request.user, org):
+        raise Http404('Not allowed')
+
+    fw = get_object_or_404(ComplianceFramework, slug=framework_slug)
+    oc = get_object_or_404(
+        OrganizationCompliance, organization=org, framework=fw,
+    )
+
+    counts = oc.status_counts()
+    pct = oc.percent_compliant()
+
+    # KPI summary across the top
+    kpis = [
+        {'label': 'Compliance', 'value': f'{pct}%'},
+        {'label': 'Compliant', 'value': str(counts.get('compliant', 0))},
+        {'label': 'Partial',   'value': str(counts.get('partial', 0))},
+        {'label': 'Non-compliant', 'value': str(counts.get('non_compliant', 0))},
+        {'label': 'N/A',        'value': str(counts.get('not_applicable', 0))},
+        {'label': 'Unanswered', 'value': str(counts.get('unanswered', 0))},
+        {'label': 'Total controls', 'value': str(counts.get('total', 0))},
+        {'label': 'Recertify in',
+         'value': f"{oc.days_until_recertification} days"},
+    ]
+
+    # One table per category. Rows: control name / status / evidence / notes.
+    tables = []
+    status_label = dict(OrganizationComplianceItem.STATUS_CHOICES)
+    for cat in fw.categories.order_by('order', 'slug'):
+        body_rows = []
+        for item in cat.items.order_by('order', 'slug'):
+            attest = OrganizationComplianceItem.objects.filter(
+                org_compliance=oc, item=item,
+            ).first()
+            status_str = status_label.get(
+                attest.status if attest else 'unanswered',
+                'Unanswered',
+            )
+            evidence = (attest.evidence_link if attest else '') or '—'
+            notes = (attest.notes if attest else '') or ''
+            # Trim long notes to keep the PDF readable.
+            if len(notes) > 280:
+                notes = notes[:277] + '…'
+            body_rows.append([
+                item.name,
+                status_str,
+                evidence,
+                notes,
+            ])
+        tables.append({
+            'heading': cat.name,
+            'header_row': ['Control', 'Status', 'Evidence', 'Notes'],
+            'body_rows': body_rows,
+        })
+
+    AuditLog.log(
+        user=request.user, action='view',
+        organization=org,
+        object_type='compliance.OrganizationCompliance',
+        object_id=oc.pk,
+        object_repr=f'{org.name} :: {fw.name}',
+        description=f'Generated PDF compliance report for {fw.name}',
+        ip_address=_client_ip(request), path=request.path,
+    )
+
+    safe_org = ''.join(c if c.isalnum() else '_' for c in org.name)[:60]
+    stamp = timezone.now().strftime('%Y%m%d')
+    return render_pdf(
+        title=f'{fw.name} Compliance Report',
+        subtitle=(
+            f'{org.name} — {fw.name} {fw.version}. '
+            f'Generated {timezone.now():%Y-%m-%d %H:%M UTC}. '
+            f'Last recertified: {oc.last_recertified_at:%Y-%m-%d}'
+            if oc.last_recertified_at else
+            f'{org.name} — {fw.name} {fw.version}. '
+            f'Generated {timezone.now():%Y-%m-%d %H:%M UTC}. '
+            f'Never recertified.'
+        ),
+        kpis=kpis,
+        tables=tables,
+        filename=f'{safe_org}-{framework_slug}-{stamp}.pdf',
     )

@@ -504,3 +504,76 @@ class ChecklistViewTests(TestCase):
             'status': 'compliant',
         })
         self.assertEqual(resp.status_code, 404)
+
+
+class ReportPdfTests(TestCase):
+    """Phase 41 v3.17.441: PDF report generator."""
+
+    def setUp(self):
+        from core.models import Organization
+        from accounts.models import Membership
+        from django.contrib.auth.models import User
+        from django.core.management import call_command
+        from compliance.models import (
+            ComplianceFramework, OrganizationCompliance,
+            OrganizationComplianceItem,
+        )
+        self.org = Organization.objects.create(name='ACME-PDF')
+        self.user = User.objects.create_user(
+            'pdf-tester', email='p@example.com', password='x', is_staff=True,
+        )
+        Membership.objects.create(
+            user=self.user, organization=self.org, role='admin',
+            is_active=True,
+        )
+        call_command('seed_pci_dss')
+        fw = ComplianceFramework.objects.get(slug='pci-dss-v4')
+        self.oc = OrganizationCompliance.objects.create(
+            organization=self.org, framework=fw,
+        )
+        # Bulk-create attestations
+        items = list(fw.categories.first().items.all()[:2])
+        for i in items:
+            OrganizationComplianceItem.objects.create(
+                org_compliance=self.oc, item=i, status='compliant',
+                notes='ok', evidence_link='https://example.com/ev',
+            )
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_report_returns_pdf(self):
+        c = Client()
+        c.force_login(self.user)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/report.pdf'
+        resp = c.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        # PDF magic header
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'%PDF'),
+            msg=f'response body does not start with %PDF (got {body[:8]!r})')
+        self.assertGreater(len(body), 1000, msg='PDF body suspiciously short')
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_report_audit_logged(self):
+        from audit.models import AuditLog
+        c = Client()
+        c.force_login(self.user)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/report.pdf'
+        c.get(url)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action='view',
+                object_type='compliance.OrganizationCompliance',
+                description__icontains='compliance report',
+            ).exists()
+        )
+
+    @override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False)
+    def test_report_outsider_blocked(self):
+        from django.contrib.auth.models import User
+        outsider = User.objects.create_user('pdf-outsider', password='x')
+        c = Client()
+        c.force_login(outsider)
+        url = f'/compliance/organizations/{self.org.pk}/pci-dss-v4/report.pdf'
+        resp = c.get(url)
+        self.assertEqual(resp.status_code, 404)

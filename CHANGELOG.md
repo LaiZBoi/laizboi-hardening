@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.441] - 2026-05-08
+
+### Added — Phase 41 v5: customer-facing PDF compliance report
+The dashboard's **Report (PDF)** button + the checklist's **Download report (PDF)** button now produce a real PDF instead of a placeholder. New view at `/compliance/organizations/<org_id>/<framework_slug>/report.pdf`.
+
+Layout (using the Phase 19 `reports.pdf_export.render_pdf` helper):
+- **Title**: `<Framework> Compliance Report`
+- **Subtitle**: org name + framework version + generated timestamp + last-recertified date
+- **KPI cards** (4-column grid): Compliance %, Compliant count, Partial count, Non-compliant count, N/A count, Unanswered count, Total controls, Days until recertification
+- **One table per category** with columns: Control / Status / Evidence (URL) / Notes (truncated to 280 chars per cell)
+
+Generates an `AuditLog` entry on every PDF download (action=view, description="Generated PDF compliance report for <framework>") so the audit trail captures who pulled the report.
+
+Filename pattern: `<org_slug>-<framework-slug>-<YYYYMMDD>.pdf`.
+
+### Tests
+3 new tests: PDF response returns 200 + correct Content-Type + valid `%PDF` magic header + body length sanity check; audit log row written; outsider users blocked (404).
+
 ## [3.17.440] - 2026-05-08
 
 ### Added — Phase 41 v4: checklist UI + per-row attestation save
