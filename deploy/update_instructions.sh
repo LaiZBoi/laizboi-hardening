@@ -250,12 +250,47 @@ fi
 # Step 5: Clear Python bytecode cache + graceful reload
 # =====================================================================
 log ""
-log "Step 5/5: Clearing bytecode cache and reloading service..."
+log "Step 5/5: Scheduling service restart..."
 
 # Purge __pycache__ and .pyc files so no stale bytecode survives the update.
 find "$BASE_DIR" -type f -name "*.pyc" -delete 2>/dev/null || true
 find "$BASE_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 log "Bytecode cache cleared"
+
+# v3.17.421 — write the "completed" status to the progress JSON file
+# DIRECTLY from bash, BEFORE the reload signal is sent. The Python
+# worker that's reading our stdout will be SIGHUP'd by `systemctl
+# reload` and won't survive long enough to process the "Update
+# complete!" line, so the status_completed step would otherwise stay
+# stuck at 4/5 forever in the UI. By writing the JSON ourselves we
+# decouple the front-end from the Python reader's lifetime.
+PROGRESS_FILE="/tmp/clientst0r_update_progress_current.json"
+PYTHON_BIN=$(command -v python3 || command -v python || true)
+if [ -n "$PYTHON_BIN" ] && [ -f "$PROGRESS_FILE" ]; then
+    "$PYTHON_BIN" - <<EOF || true
+import json, time, os
+p = "$PROGRESS_FILE"
+try:
+    with open(p) as f:
+        d = json.load(f)
+except Exception:
+    d = {}
+steps = d.get('steps_completed') or []
+for s in ('Git Pull','Install Dependencies','Run Migrations','Collect Static Files','Restart Service'):
+    if s not in steps:
+        steps.append(s)
+d['status'] = 'completed'
+d['steps_completed'] = steps
+d['current_step'] = ''
+d['total_steps'] = 5
+d['finished_at'] = time.time()
+tmp = p + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(d, f)
+os.replace(tmp, p)
+EOF
+    log "Step 5/5: Marked progress=completed before reload"
+fi
 
 SYSTEMCTL=$(command -v systemctl 2>/dev/null || true)
 SYSTEMD_RUN=$(command -v systemd-run 2>/dev/null || true)

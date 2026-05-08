@@ -406,7 +406,15 @@ class UpdateService:
                 ('Step 3/5: Migrations completed',   'complete', 'Run Migrations'),
                 ('Step 4/5: Collecting static',      'start',    'Collect Static Files'),
                 ('Step 4/5: Static files collected', 'complete', 'Collect Static Files'),
+                # v3.17.421 — bash script now writes status=completed to
+                # the progress JSON directly before the reload, so the
+                # front-end is safe even if `systemctl reload` SIGHUPs
+                # this Python reader before it processes the final lines.
+                # These triggers are still useful for the live progress
+                # log as long as the reader survives.
                 ('Step 5/5: Scheduling',             'start',    'Restart Service'),
+                ('Step 5/5: Marked progress',        'complete', 'Restart Service'),
+                ('Step 5/5: Graceful reload',        'complete', 'Restart Service'),
                 ('Update complete!',                 'complete', 'Restart Service'),
             ]
 

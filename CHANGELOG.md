@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.421] - 2026-05-08
+
+### Fixed — Update hung at "4 of 5 steps complete" forever
+Two bugs in the Step 5 (Restart Service) progress signaling:
+
+1. **Trigger string mismatch.** `core/updater.py::step_triggers` watched for `Step 5/5: Scheduling` to mark step-5 as started, but `deploy/update_instructions.sh` wrote `Step 5/5: Clearing bytecode cache and reloading service...`. The start trigger never fired, so the UI never even showed step 5 as in-progress.
+2. **Reader killed before "Update complete!"** The bash script issues `sudo systemctl reload huduglue-gunicorn.service` inside step 5, which SIGHUPs the very gunicorn worker that's reading the bash subprocess's stdout. The worker shuts down gracefully — but its daemon thread (the one watching for trigger strings) dies with it, BEFORE the bash script gets to log `Update complete!`. So the `complete` trigger never fired either. Result: front-end stuck at 4/5.
+
+Fixes:
+
+- `deploy/update_instructions.sh` now writes the completed status directly into `/tmp/clientst0r_update_progress_current.json` (atomic `os.replace`) IMMEDIATELY before issuing the reload signal. The front-end poller reads `status: 'completed'` regardless of whether the Python reader survives the restart.
+- `deploy/update_instructions.sh` also changes the `Step 5/5:` opening line from `Clearing bytecode cache...` to `Scheduling service restart...` so the `'start'` trigger string in `core/updater.py` matches.
+- `core/updater.py::step_triggers` adds two extra `'complete'` matchers (`Step 5/5: Marked progress`, `Step 5/5: Graceful reload`) as defense-in-depth so even if the bash JSON-write fails, the live log still resolves step 5 if the reader survives.
+
+If you're currently looking at a hung "4 of 5 steps" screen, the underlying gunicorn restart most likely DID happen — manual refresh should bring you to the new version. v3.17.421 prevents the screen from hanging on future updates.
+
+### Tests
+None — bash + signal-handling fix; verified by tracing the restart kill chain.
+
 ## [3.17.420] - 2026-05-08
 
 ### Improved — Post-update reload UX
