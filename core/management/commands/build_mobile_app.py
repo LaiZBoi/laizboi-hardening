@@ -205,8 +205,8 @@ class Command(BaseCommand):
                         timeout=600  # 10 minute timeout
                     )
 
-                    self._update_status(status_file, 'building', 'Building debug APK with Gradle (5-10 minutes)...')
-                    self._log('\n=== Building debug APK with Gradle (skips ProGuard for speed) ===\n')
+                    self._update_status(status_file, 'building', 'Building debug APK (arm64 only, ~3-5 minutes)...')
+                    self._log('\n=== Building debug APK with Gradle (arm64-v8a only, skips ProGuard) ===\n')
 
                     # Build APK using Gradle
                     android_dir = os.path.join(mobile_app_dir, 'android')
@@ -223,16 +223,19 @@ class Command(BaseCommand):
                         except OSError as exc:
                             self._log(f'Could not write local.properties: {exc}\n')
 
-                    # v3.17.419: assembleDebug instead of assembleRelease.
-                    # Debug builds skip ProGuard/minification (3-5 min) and
-                    # don't require a release keystore — both fine for the
-                    # internal sideload use-case. Switch back to Release if
-                    # we ever target an open distribution channel.
-                    # --daemon + --parallel + --build-cache cuts another
-                    # 30-60s off subsequent builds.
+                    # v3.17.419: assembleDebug skips ProGuard/minification.
+                    # v3.17.424: -PreactNativeArchitectures=arm64-v8a tells
+                    #   Gradle to bundle only the arm64-v8a native libs.
+                    #   Default debug builds ship 4 ABIs (armeabi-v7a +
+                    #   arm64-v8a + x86 + x86_64) ~ 30-40MB each → 151MB
+                    #   APK. arm64-v8a covers every Android phone from
+                    #   2017 onward, which is the entire sideload audience.
+                    #   Drops the APK to ~40MB.
                     self._run_command_with_logging(
                         ['./gradlew', '--daemon', '--parallel',
-                         '--max-workers=4', '--build-cache', 'assembleDebug'],
+                         '--max-workers=4', '--build-cache',
+                         '-PreactNativeArchitectures=arm64-v8a',
+                         'assembleDebug'],
                         cwd=android_dir,
                         timeout=1800  # 30 minute timeout
                     )

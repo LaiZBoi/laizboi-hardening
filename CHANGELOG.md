@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.424] - 2026-05-08
+
+### Fixed — APK was 151MB, now ~40MB
+The v3.17.419 switch to `assembleDebug` shipped 4 native-library architectures by default (`armeabi-v7a + arm64-v8a + x86 + x86_64`) so the build would also work on Android emulators. Each ABI is ~30-40MB of compiled native libs (React Native runtime, Reanimated, Hermes, etc.) — total APK ballooned to 151MB.
+
+For sideload to internal field techs, only `arm64-v8a` matters — every Android phone shipped since 2017 uses arm64. Adding `-PreactNativeArchitectures=arm64-v8a` to the Gradle invocation in `core/management/commands/build_mobile_app.py` strips the other three ABIs out of the APK.
+
+Expected APK size: **~40-50MB** (down from 151MB). Build time also drops by ~1 minute since there are 75% fewer native libs to compile.
+
+If we ever need x86 support (Android emulators, ChromeOS, some Lenovo tablets), bump the property to `arm64-v8a,x86_64` and rebuild.
+
+### Tests
+None — Gradle config switch; verified by reading the React Native build doc + the current APK output size.
+
 ## [3.17.423] - 2026-05-08
 
 ### Fixed — APK build died on gunicorn restart, status stuck at "Building"
