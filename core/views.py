@@ -957,6 +957,33 @@ def download_mobile_app(request, app_type):
             with open(status_file, 'r') as f:
                 status_data = json.load(f)
 
+            # v3.17.423 — stale-status detection. If neither status file
+            # nor log file has been touched in 5+ minutes while marked
+            # as "building", the build process died (gunicorn restart,
+            # OOM, etc.) — flip to 'failed' so the user can retry.
+            log_file = os.path.join(MOBILE_APP_DIR, f'{app_type}_build.log')
+            try:
+                last_status = os.path.getmtime(status_file)
+                last_log = (
+                    os.path.getmtime(log_file)
+                    if os.path.exists(log_file) else 0
+                )
+                quiet_secs = time.time() - max(last_status, last_log)
+                if (status_data.get('status') == 'building'
+                        and quiet_secs > 300):
+                    minutes = int(quiet_secs / 60)
+                    status_data['status'] = 'failed'
+                    status_data['message'] = (
+                        f'Build process appears to have died (no log activity '
+                        f'for {minutes} min). Most likely cause: gunicorn was '
+                        'restarted while the build was running. Click Retry '
+                        'to start a fresh build.'
+                    )
+                    with open(status_file, 'w') as f:
+                        json.dump(status_data, f)
+            except OSError:
+                pass
+
             if status_data['status'] == 'building':
                 # Read build log for real-time progress
                 log_file = os.path.join(MOBILE_APP_DIR, f'{app_type}_build.log')
@@ -1150,27 +1177,29 @@ def download_mobile_app(request, app_type):
                         </html>
                     """, content_type='text/html; charset=utf-8')
 
-        # No APK and no build in progress - start build
-        def build_app_background():
-            import logging
-            logger = logging.getLogger(__name__)
-            try:
-                venv_python = os.path.join(settings.BASE_DIR, 'venv', 'bin', 'python')
-                result = subprocess.run(
-                    [venv_python, 'manage.py', 'build_mobile_app', 'android'],
-                    cwd=settings.BASE_DIR,
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode != 0:
-                    logger.error(f'Build failed: {result.stderr}')
-            except Exception as e:
-                logger.error(f'Build exception: {str(e)}')
-
-        # Start build in background thread
-        build_thread = threading.Thread(target=build_app_background)
-        build_thread.daemon = True
-        build_thread.start()
+        # v3.17.423 — detach the build into its own process group / session
+        # so it survives a gunicorn restart. Previously the daemon-thread +
+        # subprocess.run setup made the build a child of the gunicorn worker;
+        # any subsequent `systemctl reload huduglue-gunicorn.service` would
+        # SIGTERM the worker's process tree and kill the gradle build mid-
+        # flight, leaving the status file stuck on "building" forever.
+        #
+        # Use start_new_session=True (Python wrapper around setsid()) so the
+        # subprocess becomes its own session leader, detached from the gunicorn
+        # worker's controlling terminal + process group.
+        venv_python = os.path.join(settings.BASE_DIR, 'venv', 'bin', 'python')
+        try:
+            subprocess.Popen(
+                [venv_python, 'manage.py', 'build_mobile_app', 'android'],
+                cwd=settings.BASE_DIR,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+        except Exception as exc:
+            logger.error(f'Failed to launch detached build: {exc}')
 
         # Log build initiation
         AuditLog.objects.create(

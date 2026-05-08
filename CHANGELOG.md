@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.423] - 2026-05-08
+
+### Fixed — APK build died on gunicorn restart, status stuck at "Building"
+The Android APK build was launched as a daemon thread that ran `subprocess.run([..., 'build_mobile_app', 'android'])`. The subprocess inherited the gunicorn worker's process group — so when a subsequent `systemctl reload huduglue-gunicorn.service` (e.g. from applying a Django update) sent SIGTERM through the worker's process tree, the gradle build was killed mid-flight. The build log + status file froze and the UI looped forever showing "Building debug APK with Gradle (5-10 minutes)…".
+
+Two fixes in `core/views.py::download_mobile_app`:
+
+- **Detached subprocess**: switched `subprocess.run(... capture_output=True)` to `subprocess.Popen(..., start_new_session=True, close_fds=True)` with stdin/stdout/stderr redirected to `DEVNULL`. `start_new_session=True` calls `setsid()` on the child so it becomes its own session leader, fully decoupled from gunicorn's process group. Future gunicorn restarts will not kill running APK builds.
+
+- **Stale-status detection**: when the page is hit while a build is "in progress", the view now checks the mtime of both `<platform>_build_status.json` and `<platform>_build.log`. If neither has been touched in 5+ minutes, the build process is presumed dead and the status is flipped to `failed` with a friendly message ("Build process appears to have died… most likely cause: gunicorn was restarted while the build was running. Click Retry to start a fresh build."). The existing failed-branch UI then offers a Retry button.
+
+### Tests
+None — process-group + filesystem timing fix; verified by tracing the original death (no gradle/cmake/java processes after gunicorn reload) and confirming `start_new_session=True` documented behavior.
+
 ## [3.17.422] - 2026-05-08
 
 ### Fixed — 502s on static files after Apply reload
