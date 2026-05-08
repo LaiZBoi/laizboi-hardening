@@ -5,6 +5,27 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.436] - 2026-05-08
+
+### Added — Phase 41: compliance framework + per-org attestation models
+First release of the new Phase 41 (Compliance Frameworks & Recertification). Adds the data model the rest of the train builds on. Existing Phase 39 evidence-pack flow is untouched.
+
+- `ComplianceFramework` — system-defined framework (PCI-DSS, HIPAA, etc.). Pre-seed via mgmt cmds in v3.17.437/438.
+- `ComplianceCategory` — group of controls within a framework (PCI Requirement 1, HIPAA Administrative Safeguards, etc.). FK framework + slug + order.
+- `ComplianceCheckItem` — individual control. FK category + slug + name + description + evidence_hint + order.
+- `OrganizationCompliance` — per-org enrollment in a framework. Tracks `recertification_interval_days` (default 365), `recertification_emails_enabled`, `last_recertified_at`, `notify_email`. `recertification_due_at` + `percent_compliant()` helpers.
+- `OrganizationComplianceItem` — per-org attestation for a single control. Status (compliant / partial / non_compliant / not_applicable / unanswered) + notes + evidence URL + last_reviewed_at/by.
+- `RecertificationReminder` — audit row recording sent reminder emails.
+
+### Migration
+`compliance/0001_initial.py` adds all five tables. Backwards-compatible (existing evidence-pack functionality unaffected).
+
+### Roadmap
+- New phase header `## Phase 41 — Compliance Frameworks & Recertification **(M)** [in progress]` inserted before the `---` divider that precedes Phase 8.
+
+### Tests
+6 new model tests in `compliance/tests.py`: framework create + str, category/item chain, org enrollment + status_counts(), percent_compliant(), recertification_due_at, unique constraint per (org, framework).
+
 ## [3.17.435] - 2026-05-08
 
 ### Fixed — Play Console rejected uploads as duplicate versionCode

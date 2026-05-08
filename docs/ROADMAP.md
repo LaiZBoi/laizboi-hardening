@@ -810,6 +810,21 @@ Dependencies: `monitoring/` app (uptime data), `psa.Ticket` (incident history wi
 
 **Goal:** Take the "is anything broken?" call volume out of the queue by giving clients somewhere to look first.
 
+## Phase 41 — Compliance Frameworks & Recertification **(M)** [in progress]
+
+MSPs increasingly need to attest to PCI-DSS or HIPAA on behalf of their clients. Phase 39 (Compliance Evidence Packs) handles the evidence collection side; this phase adds the *workflow* side: opt an org into one or more frameworks, walk through a checklist of real controls, attest per-control with notes + evidence, generate a customer-ready PDF, and drive recertification on a configurable cadence.
+
+Planned capabilities:
+- **Framework catalog** — `ComplianceFramework` model. Pre-seeded with PCI-DSS v4.0 (Requirements 1-12) and HIPAA Security Rule (Administrative + Physical + Technical Safeguards). Each framework carries categories + check items keyed to real control numbers (`1.2.1`, `164.308(a)(1)`, etc.).
+- **Per-org enrollment** — `OrganizationCompliance`. One org can be enrolled in multiple frameworks. Tracks the `recertification_interval_days` (default 365 = annual; 30 / 90 / 180 also supported) and a `recertification_emails_enabled` flag.
+- **Per-control attestation UI** — checklist grouped by category, status dropdown (compliant / partial / non-compliant / N-A / unanswered), notes textarea, evidence URL. Every change audit-logged.
+- **Customer-facing PDF report** — exec summary + per-category table with each control's status, notes, evidence link.
+- **Monthly recertification cron** — `send_compliance_recertifications` mgmt cmd. Idempotent + 7-day dedup so techs aren't spammed.
+
+Dependencies: `accounts.Organization`, `audit.AuditLog`, `reports.pdf_export.render_pdf` (Phase 19).
+
+**Goal:** Give the MSP one place to track every client's compliance state and one button to produce the report when an auditor asks for it.
+
 ---
 
 ## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)** [shipped — v3.17.417]

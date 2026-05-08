@@ -174,3 +174,90 @@ class EvidencePackTests(TestCase):
             object_type='compliance.EvidencePack',
         ).count()
         self.assertEqual(after, before + 1)
+
+
+class ComplianceFrameworkModelTests(TestCase):
+    def test_framework_create_and_str(self):
+        from compliance.models import ComplianceFramework
+        f = ComplianceFramework.objects.create(
+            slug='pci-dss-v4', name='PCI-DSS', version='v4.0',
+            description='Payment Card Industry Data Security Standard',
+        )
+        self.assertEqual(str(f), 'PCI-DSS v4.0')
+        self.assertEqual(f.recertification_default_days, 365)
+
+    def test_category_and_item_chain(self):
+        from compliance.models import (
+            ComplianceFramework, ComplianceCategory, ComplianceCheckItem,
+        )
+        f = ComplianceFramework.objects.create(slug='hipaa', name='HIPAA')
+        cat = ComplianceCategory.objects.create(
+            framework=f, slug='admin', name='Administrative Safeguards', order=1,
+        )
+        item = ComplianceCheckItem.objects.create(
+            category=cat, slug='164-308-a-1', name='Security Management Process',
+            description='Policies and procedures to prevent, detect, contain, and correct security violations.',
+            evidence_hint='Risk assessment, sanction policy, info system activity review.',
+            order=1,
+        )
+        self.assertEqual(item.category.framework, f)
+        self.assertIn('Administrative', str(item))
+
+
+class OrganizationComplianceModelTests(TestCase):
+    def setUp(self):
+        from core.models import Organization
+        from compliance.models import (
+            ComplianceFramework, ComplianceCategory, ComplianceCheckItem,
+        )
+        self.org = Organization.objects.create(name='Test Co')
+        self.fw = ComplianceFramework.objects.create(slug='pci', name='PCI-DSS')
+        cat = ComplianceCategory.objects.create(
+            framework=self.fw, slug='r1', name='Network', order=1,
+        )
+        self.item1 = ComplianceCheckItem.objects.create(
+            category=cat, slug='1-1', name='Item 1', order=1,
+        )
+        self.item2 = ComplianceCheckItem.objects.create(
+            category=cat, slug='1-2', name='Item 2', order=2,
+        )
+
+    def test_org_enrollment_and_status_counts(self):
+        from compliance.models import (
+            OrganizationCompliance, OrganizationComplianceItem,
+        )
+        oc = OrganizationCompliance.objects.create(
+            organization=self.org, framework=self.fw,
+        )
+        OrganizationComplianceItem.objects.create(
+            org_compliance=oc, item=self.item1, status='compliant',
+        )
+        OrganizationComplianceItem.objects.create(
+            org_compliance=oc, item=self.item2, status='unanswered',
+        )
+        counts = oc.status_counts()
+        self.assertEqual(counts['total'], 2)
+        self.assertEqual(counts['compliant'], 1)
+        self.assertEqual(counts['unanswered'], 1)
+        self.assertEqual(oc.percent_compliant(), 50)
+
+    def test_recertification_due_date(self):
+        from compliance.models import OrganizationCompliance
+        oc = OrganizationCompliance.objects.create(
+            organization=self.org, framework=self.fw,
+            recertification_interval_days=30,
+        )
+        # Days until recert: ~30 (just enrolled, last_recertified is None
+        # so it uses enrolled_at).
+        self.assertGreaterEqual(oc.days_until_recertification, 29)
+        self.assertLessEqual(oc.days_until_recertification, 30)
+
+    def test_unique_per_org_per_framework(self):
+        from compliance.models import OrganizationCompliance
+        OrganizationCompliance.objects.create(
+            organization=self.org, framework=self.fw,
+        )
+        with self.assertRaises(Exception):
+            OrganizationCompliance.objects.create(
+                organization=self.org, framework=self.fw,
+            )
