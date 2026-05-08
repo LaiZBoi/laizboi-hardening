@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.418] - 2026-05-08
+
+### Fixed — System Updates Apply showed 503 mid-restart
+After the update script restarted gunicorn, the modal's JS used a fixed `setTimeout(location.reload, 10000)` to refresh the page. If gunicorn wasn't fully back at the 10s mark, the reload landed on the upstream-down page (openresty 503) and the user assumed the update had failed.
+
+Replaced the fixed timer with `waitForServerThenReload()` in `templates/core/system_updates.html`:
+- Polls `/core/api/update-progress/` every 1s (then every 2s after 10s elapsed) with `cache: 'no-store'`.
+- Shows a live `Server is restarting — attempt N — waiting for upstream (Ns elapsed)` line under the "Update complete" banner so the user knows we're not frozen.
+- Requires **two consecutive 200 responses** before reloading — avoids catching a single half-up worker before all workers have rebooted on the new code.
+- Hard cap of 2 minutes, after which the line flips to `still down after 2 min — [reload manually]` so the user can take action instead of hanging forever.
+
+### Tests
+None — frontend-only behavior change; verified by reading the polling logic and the `update_progress_api` endpoint.
+
 ## [3.17.417] - 2026-05-07
 
 ### Phase 8 — closure

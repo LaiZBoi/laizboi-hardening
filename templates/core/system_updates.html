@@ -821,10 +821,11 @@ function pollProgress() {
                 if (data.status === 'completed') {
                     clearInterval(pollInterval);
                     showComplete();
-                    // Reload page after 10 seconds to give service time to restart
-                    setTimeout(function() {
-                        location.reload();
-                    }, 10000);
+                    // v3.17.418 — instead of a fixed 10s timer + reload (which
+                    // hits the 503 if gunicorn isn't back yet), actively probe
+                    // the health endpoint until it answers 200, with a visible
+                    // countdown so the user knows we're not frozen.
+                    waitForServerThenReload();
                 } else if (data.status === 'failed') {
                     clearInterval(pollInterval);
                     showError(data.error || 'Unknown error');
@@ -887,6 +888,76 @@ function showComplete() {
     document.getElementById('updateProgressBar').classList.add('bg-success');
     document.getElementById('updateProgressBar').style.width = '100%';
     document.getElementById('updateProgressText').textContent = 'Update complete!';
+}
+
+// v3.17.418 — actively probe the server until it's back up after the
+// gunicorn restart, then reload. Avoids the bare `location.reload()` 10s
+// later that used to hit a 503 page when the upstream wasn't ready yet.
+function waitForServerThenReload() {
+    const completeEl = document.getElementById('updateComplete');
+    if (completeEl && !document.getElementById('serverWaitMsg')) {
+        const wait = document.createElement('div');
+        wait.id = 'serverWaitMsg';
+        wait.className = 'mt-3 small text-muted';
+        wait.innerHTML = '<i class="fas fa-sync fa-spin me-1"></i> '
+            + 'Server is restarting — will reload automatically when it\'s back. '
+            + '<span id="serverWaitCountdown">checking…</span>';
+        completeEl.appendChild(wait);
+    }
+
+    const probeUrl = '{% url "core:update_progress_api" %}';
+    const startedAt = Date.now();
+    const maxWaitMs = 120000;            // 2 minutes max
+    let attempt = 0;
+    let consecutiveOk = 0;
+
+    function probe() {
+        attempt += 1;
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        const cd = document.getElementById('serverWaitCountdown');
+
+        // Bypass any HTTP cache + treat the request as fresh each time.
+        fetch(probeUrl + '?_=' + Date.now(), {
+            cache: 'no-store',
+            credentials: 'same-origin',
+        })
+            .then(function(resp) {
+                if (resp.ok) return resp.json();
+                throw new Error('HTTP ' + resp.status);
+            })
+            .then(function() {
+                // Two consecutive OK responses before we redirect — otherwise
+                // we sometimes catch a single half-up worker before all
+                // workers have reloaded the new code.
+                consecutiveOk += 1;
+                if (cd) cd.textContent =
+                    'server responded (#' + consecutiveOk + '/2) — reloading…';
+                if (consecutiveOk >= 2) {
+                    setTimeout(function() { location.reload(); }, 800);
+                    return;
+                }
+                setTimeout(probe, 1000);
+            })
+            .catch(function() {
+                consecutiveOk = 0;
+                if (cd) cd.textContent =
+                    'attempt ' + attempt + ' — waiting for upstream (' + elapsed + 's elapsed)';
+                if (Date.now() - startedAt > maxWaitMs) {
+                    if (cd) cd.innerHTML =
+                        'still down after 2 min — '
+                        + '<a href="javascript:location.reload()">reload manually</a> '
+                        + 'or check the System Updates page.';
+                    return;
+                }
+                // Backoff: 1s for the first 10s, then 2s.
+                const delay = elapsed < 10 ? 1000 : 2000;
+                setTimeout(probe, delay);
+            });
+    }
+
+    // Wait a beat before the first probe — gunicorn rarely closes the socket
+    // in under 500ms.
+    setTimeout(probe, 800);
 }
 
 function showError(message) {
