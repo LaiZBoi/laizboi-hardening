@@ -916,12 +916,19 @@ function waitForServerThenReload() {
         const elapsed = Math.floor((Date.now() - startedAt) / 1000);
         const cd = document.getElementById('serverWaitCountdown');
 
-        // Bypass any HTTP cache + treat the request as fresh each time.
+        // v3.17.419 — abort the fetch after 3s. Without this, fetch hangs
+        // indefinitely when openresty holds the connection open during
+        // gunicorn restart (no 503, no reject) — the countdown freezes.
+        const controller = new AbortController();
+        const abortTimer = setTimeout(function() { controller.abort(); }, 3000);
+
         fetch(probeUrl + '?_=' + Date.now(), {
             cache: 'no-store',
             credentials: 'same-origin',
+            signal: controller.signal,
         })
             .then(function(resp) {
+                clearTimeout(abortTimer);
                 if (resp.ok) return resp.json();
                 throw new Error('HTTP ' + resp.status);
             })
@@ -939,6 +946,7 @@ function waitForServerThenReload() {
                 setTimeout(probe, 1000);
             })
             .catch(function() {
+                clearTimeout(abortTimer);
                 consecutiveOk = 0;
                 if (cd) cd.textContent =
                     'attempt ' + attempt + ' — waiting for upstream (' + elapsed + 's elapsed)';

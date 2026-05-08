@@ -205,8 +205,8 @@ class Command(BaseCommand):
                         timeout=600  # 10 minute timeout
                     )
 
-                    self._update_status(status_file, 'building', 'Building APK with Gradle (10-20 minutes)...')
-                    self._log('\n=== Building APK with Gradle ===\n')
+                    self._update_status(status_file, 'building', 'Building debug APK with Gradle (5-10 minutes)...')
+                    self._log('\n=== Building debug APK with Gradle (skips ProGuard for speed) ===\n')
 
                     # Build APK using Gradle
                     android_dir = os.path.join(mobile_app_dir, 'android')
@@ -223,14 +223,22 @@ class Command(BaseCommand):
                         except OSError as exc:
                             self._log(f'Could not write local.properties: {exc}\n')
 
+                    # v3.17.419: assembleDebug instead of assembleRelease.
+                    # Debug builds skip ProGuard/minification (3-5 min) and
+                    # don't require a release keystore — both fine for the
+                    # internal sideload use-case. Switch back to Release if
+                    # we ever target an open distribution channel.
+                    # --daemon + --parallel + --build-cache cuts another
+                    # 30-60s off subsequent builds.
                     self._run_command_with_logging(
-                        ['./gradlew', 'assembleRelease'],
+                        ['./gradlew', '--daemon', '--parallel',
+                         '--max-workers=4', '--build-cache', 'assembleDebug'],
                         cwd=android_dir,
                         timeout=1800  # 30 minute timeout
                     )
 
-                    # Find the generated APK
-                    apk_path = os.path.join(android_dir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk')
+                    # Find the generated APK (debug variant)
+                    apk_path = os.path.join(android_dir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk')
                     if os.path.exists(apk_path):
                         # Copy to builds directory
                         dest_path = os.path.join(builds_dir, 'clientst0r.apk')

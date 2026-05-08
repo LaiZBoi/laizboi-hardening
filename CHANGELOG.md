@@ -5,6 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.419] - 2026-05-08
+
+### Fixed — Update reload countdown stopped after attempt 1
+The `waitForServerThenReload()` polling helper from v3.17.418 used `fetch()` with no per-request timeout. When openresty holds the connection open during the gunicorn restart window (instead of returning 503), the fetch never resolves AND never rejects — the countdown freezes at "attempt 1, 1s elapsed" because no `setTimeout(probe, …)` is ever scheduled.
+
+Fix: each fetch is now wrapped in an `AbortController` with a **3-second timeout**. If the request stalls, it aborts → `.catch` fires → countdown advances → next probe is scheduled. The timer also clears on success so we don't double-fire.
+
+### Faster — APK build now uses `assembleDebug`
+The Gradle build was running `./gradlew assembleRelease`, which spends 3–5 minutes on ProGuard/R8 minification + class shrinking + a release keystore step. For internal sideload distribution (this is the only consumer right now), that work is wasted. Switched to `assembleDebug` and added `--daemon --parallel --max-workers=4 --build-cache` for another ~30–60s saving on subsequent builds.
+
+Trade-off: debug APKs are larger (no R8 shrinking), signed with the auto-generated debug keystore (still installs cleanly, just shows "from unknown developer" — same as a release build sideloaded outside the Play Store), and are slightly slower at runtime. None of those matter for a few field techs sideloading internally. Will switch back to Release if we ever ship to a public channel.
+
+The download view + status pages already point at `app/build/outputs/apk/debug/app-debug.apk` (v3.17.419 also updated `apk_path` in `core/management/commands/build_mobile_app.py` accordingly).
+
+### Tests
+None — frontend timeout fix + build flag swap; verified by inspecting the JS / mgmt cmd diff.
+
 ## [3.17.418] - 2026-05-08
 
 ### Fixed — System Updates Apply showed 503 mid-restart
