@@ -5,6 +5,20 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.450] - 2026-05-09
+
+### Mobile ticket status/priority changes now actually persist
+
+The mobile ticket detail screen has had a status picker and priority picker since v3.17.349, and the server PATCH handler accepted them — but only if the body keyed on `status_id` / `priority_id` (FK ints). The mobile client sends `{status: 'open'}` and `{priority: 'critical'}` (friendly strings), so every PATCH silently no-op'd. Tap a status, server returns 200, ticket unchanged.
+
+`api_mobile/views_tickets.ticket_detail_view` now also accepts:
+- `status` (string) — looks up `TicketStatus` by slug (with `_` → `-` normalization), falling back to case-insensitive name match. 400 with helpful detail on miss.
+- `priority` (string) — maps mobile labels `critical/high/medium/low` to `P1/P2/P3/P4`, then looks up `TicketPriority` by code. Also accepts raw P-codes and priority names for backends that already use those.
+
+Server-only fix; the v3.17.446 AAB on Play Console starts working as soon as Apply lands this on prod.
+
+3 new tests in `MobileTicketsTests`: PATCH by slug succeeds, unknown slug → 400, priority label `'critical'` → P1.
+
 ## [3.17.449] - 2026-05-09
 
 ### Mobile vault endpoints (closes the 404 on the vault tab)

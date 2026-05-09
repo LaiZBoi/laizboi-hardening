@@ -535,6 +535,39 @@ class MobileTicketsTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()['status'], 'Closed')
 
+    def test_ticket_patch_status_by_slug(self):
+        """v3.17.450: mobile sends `status` (slug), not `status_id`."""
+        url = f'/api/mobile/v1/tickets/{self.ticket_a.id}/'
+        resp = self.client.patch(
+            url, data=json.dumps({'status': 'closed'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['status'], 'Closed')
+
+    def test_ticket_patch_status_unknown_slug_400(self):
+        url = f'/api/mobile/v1/tickets/{self.ticket_a.id}/'
+        resp = self.client.patch(
+            url, data=json.dumps({'status': 'no-such-status'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_ticket_patch_priority_by_label(self):
+        """v3.17.450: mobile sends `priority: 'critical'`, server maps to P1."""
+        url = f'/api/mobile/v1/tickets/{self.ticket_a.id}/'
+        resp = self.client.patch(
+            url, data=json.dumps({'priority': 'critical'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        # Backend's _serialize_ticket returns the P-code, not the label,
+        # so a successful 'critical' PATCH lands as 'P1' in the response.
+        self.assertEqual(resp.json()['priority'], 'P1')
+
     def test_ticket_add_comment(self):
         url = f'/api/mobile/v1/tickets/{self.ticket_a.id}/comments/'
         resp = _auth_post(self.client, url, self.token, {

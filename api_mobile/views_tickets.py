@@ -189,16 +189,53 @@ def ticket_detail_view(request, pk: int):
 
     # PATCH
     data = request.data or {}
+
+    # v3.17.450: also accept `status` and `priority` as friendly strings.
+    # The mobile UI surfaces statuses as `'open'` / `'in_progress'` /
+    # `'closed'` and priorities as `'low'` / `'medium'` / `'high'` /
+    # `'critical'`. Without these branches the mobile PATCH silently
+    # no-op'd because only `status_id` / `priority_id` keys were honored.
     if 'status_id' in data:
         try:
             ticket.status = TicketStatus.objects.get(pk=int(data['status_id']))
         except (TicketStatus.DoesNotExist, ValueError, TypeError):
             return Response({'detail': 'invalid status_id'}, status=400)
+    elif 'status' in data:
+        raw = (str(data['status']) or '').strip().lower()
+        # Mobile sends `in_progress` and friends; DB slugs use dashes.
+        slug = raw.replace('_', '-')
+        match = (TicketStatus.objects.filter(slug=slug).first()
+                 or TicketStatus.objects.filter(slug__iexact=raw).first()
+                 or TicketStatus.objects.filter(name__iexact=raw).first())
+        if match is None:
+            return Response({'detail': f'unknown status: {raw}'}, status=400)
+        ticket.status = match
     if 'priority_id' in data:
         try:
             ticket.priority = TicketPriority.objects.get(pk=int(data['priority_id']))
         except (TicketPriority.DoesNotExist, ValueError, TypeError):
             return Response({'detail': 'invalid priority_id'}, status=400)
+    elif 'priority' in data:
+        raw = (str(data['priority']) or '').strip().lower()
+        # Mobile labels → P-codes. Falls through to direct code/name match
+        # for backends that already use 'P1' / 'urgent' / etc.
+        label_to_code = {
+            'critical': 'P1', 'urgent': 'P1',
+            'high':     'P2',
+            'medium':   'P3', 'normal': 'P3',
+            'low':      'P4',
+        }
+        candidate_codes = [label_to_code[raw]] if raw in label_to_code else [raw.upper(), raw]
+        match = None
+        for code in candidate_codes:
+            match = TicketPriority.objects.filter(code__iexact=code).first()
+            if match:
+                break
+        if match is None:
+            match = TicketPriority.objects.filter(name__iexact=raw).first()
+        if match is None:
+            return Response({'detail': f'unknown priority: {raw}'}, status=400)
+        ticket.priority = match
     if 'assigned_to_id' in data:
         from django.contrib.auth.models import User
         v = data['assigned_to_id']
