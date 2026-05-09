@@ -5,6 +5,32 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.452] - 2026-05-09
+
+### GPS-attached clock-in + warn-but-allow geofence enforcement (Sub-phase 8.2 / 8.3)
+
+Tech clocks in from a phone, server now decides if that fix is inside any active `ClientSiteGeofence` for the destination org. Outside-fence clock-ins still succeed (warn-but-allow per the user's policy choice) but the response carries `geofence_override: true` so the mobile UI can surface a yellow banner and the audit log captures who clocked in where, with what GPS accuracy, and which fence (if any) matched.
+
+**Server (`api_mobile/views_field_ops.clock_in_view`):**
+- Body now optionally accepts `lat`, `lon`, `accuracy`. Bad numeric values return 400 (instead of silently dropping) since the client deliberately attached them.
+- After the entry is saved, if the org has at least one active `ClientSiteGeofence`, walks them and calls `fence.contains(lat, lon)` (existing equirectangular / ray-cast helper). First match short-circuits.
+- Response `geofence_override` is `true` only when at least one active fence existed AND none matched. No fences → no override (an org without geofences can't be "outside" anything).
+- Audit log entry now includes `gps_provided`, `gps_accuracy_m`, `geofence_match_id`, `geofence_override` so override patterns are queryable.
+
+**Mobile (`mobile/app/timeclock/index.tsx` + `src/api/timeclock.ts`):**
+- `expo-location` (~17.0.1) added to `package.json`.
+- `app.json` plugins now include `expo-location` with explicit purpose strings (Android `ACCESS_FINE_LOCATION`, iOS `NSLocationWhenInUseUsageDescription`) — phrased to be honest with the Play Console reviewer: location is only captured at clock-in time, not background.
+- Timeclock screen requests foreground permission on tap. Best-effort: permission denial / GPS off / capture timeout all degrade gracefully — clock-in succeeds without coords, just no geofence verification.
+- New `ClockInResult` type extends `TimeclockEntry` with `geofence_override` + `geofence_match_id`.
+- Yellow warn banner renders for ~one screen render when override fires. Auto-clears on next clock-in attempt.
+
+**Tests:**
+- 5 new in `MobileFieldOpsTests`: inside fence (no override + match_id set), outside fence (override + audit row), no active fence (no override), no GPS (no override), invalid GPS (400).
+
+**versionCode 3170451 → 3170452** in `mobile/app.json`. Mobile-only AAB rebuild required for the location permission to be requested at install (declared in the manifest by `expo prebuild` once `expo-location` plugin is present).
+
+This delivers the GPS-auto-time slice of Sub-phase 8.2 (foreground capture at user-initiated clock-in only) and the timeclock-with-context slice of Sub-phase 8.3. Background auto-time + always-on GPS pings remain deferred.
+
 ## [3.17.451] - 2026-05-09
 
 ### Mobile cleanup pass — remove dead screens, lock down profile, group by org

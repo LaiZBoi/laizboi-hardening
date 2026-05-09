@@ -775,3 +775,79 @@ class MobileFieldOpsTests(TestCase):
         body = resp.json()
         self.assertIsNotNone(body['ticket'])
         self.assertEqual(body['ticket']['id'], ticket.id)
+
+    # === Geofence — v3.17.452 ===
+
+    def _make_radius_geofence(self, lat, lon, radius=100):
+        from field_ops.models import ClientSiteGeofence
+        return ClientSiteGeofence.objects.create(
+            organization=self.org, name='HQ',
+            kind='radius', center_lat=lat, center_lon=lon,
+            radius_meters=radius, active=True,
+        )
+
+    def test_clock_in_inside_geofence_no_override(self):
+        self._make_radius_geofence(lat='40.000000', lon='-73.000000', radius=200)
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-in/', self.token,
+            {'organization_id': self.org.id,
+             'lat': '40.000100', 'lon': '-73.000100',  # ~14m offset, inside 200m
+             'accuracy': 8},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertFalse(body['geofence_override'])
+        self.assertIsNotNone(body['geofence_match_id'])
+
+    def test_clock_in_outside_geofence_warn_but_allow(self):
+        self._make_radius_geofence(lat='40.000000', lon='-73.000000', radius=100)
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-in/', self.token,
+            {'organization_id': self.org.id,
+             'lat': '41.000000', 'lon': '-74.000000',  # ~140km away
+             'accuracy': 12},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertTrue(body['geofence_override'])
+        self.assertIsNone(body['geofence_match_id'])
+        # Audit row records the override
+        from audit.models import AuditLog
+        rows = AuditLog.objects.filter(user=self.user)
+        self.assertTrue(any(
+            (r.extra_data or {}).get('event') == 'timeclock_in'
+            and (r.extra_data or {}).get('geofence_override') is True
+            for r in rows
+        ))
+
+    def test_clock_in_no_active_geofence_no_override(self):
+        # Org has no fences → cannot be "outside" — override stays False
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-in/', self.token,
+            {'organization_id': self.org.id,
+             'lat': '40.0', 'lon': '-73.0', 'accuracy': 10},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertFalse(body['geofence_override'])
+        self.assertIsNone(body['geofence_match_id'])
+
+    def test_clock_in_without_gps_no_override(self):
+        # No coords → server can't evaluate fence; override stays False
+        self._make_radius_geofence(lat='40.0', lon='-73.0', radius=100)
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-in/', self.token,
+            {'organization_id': self.org.id, 'notes': 'gps off'},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertFalse(body['geofence_override'])
+        self.assertIsNone(body['geofence_match_id'])
+
+    def test_clock_in_invalid_gps_400(self):
+        resp = _auth_post(
+            self.client, '/api/mobile/v1/timeclock/clock-in/', self.token,
+            {'organization_id': self.org.id,
+             'lat': 'not-a-number', 'lon': '-73.0'},
+        )
+        self.assertEqual(resp.status_code, 400)

@@ -199,8 +199,17 @@ def clock_in_view(request):
     """
     POST /api/mobile/v1/timeclock/clock-in/
 
-    Body: `{organization_id?, location_id?, ticket_id?, project_id?, notes?}`.
+    Body: `{organization_id?, location_id?, ticket_id?, project_id?, notes?,
+            lat?, lon?, accuracy?}`.
     400 if the user already has an open clock-in.
+
+    v3.17.452: optional `lat` / `lon` / `accuracy` for warn-but-allow
+    geofence enforcement. If the destination organization has at least
+    one active `ClientSiteGeofence` and the supplied point falls inside
+    none of them, the clock-in still succeeds (201) but the response
+    payload carries `geofence_override: true` so the mobile UI can show
+    a confirmation toast. The audit log captures the override and the
+    matched fence (if any).
     """
     user = request.user
     if TimeclockEntry.objects.filter(tech=user, clocked_out_at__isnull=True).exists():
@@ -210,6 +219,23 @@ def clock_in_view(request):
         )
 
     data = request.data or {}
+
+    # GPS — optional. Bad coords return 400 instead of silently dropping
+    # them, since the client deliberately attached them.
+    gps_lat = gps_lon = None
+    gps_accuracy = None
+    if data.get('lat') is not None and data.get('lon') is not None:
+        try:
+            gps_lat = Decimal(str(data['lat']))
+            gps_lon = Decimal(str(data['lon']))
+        except (InvalidOperation, ValueError, TypeError):
+            return Response({'detail': 'Invalid lat/lon'}, status=400)
+        try:
+            if data.get('accuracy') is not None:
+                gps_accuracy = max(0, int(data['accuracy']))
+        except (TypeError, ValueError):
+            gps_accuracy = None
+
     entry = TimeclockEntry(
         tech=user,
         organization_id=data.get('organization_id') or None,
@@ -220,8 +246,41 @@ def clock_in_view(request):
         source='mobile',
     )
     entry.save()
-    _audit(user, 'api_call', request, {'event': 'timeclock_in', 'entry_id': entry.id})
-    return Response(_timeclock_payload(entry), status=201)
+
+    # Geofence: warn-but-allow. Only meaningful when GPS provided AND the
+    # entry is scoped to an organization (so we know which fences to test).
+    geofence_match_id = None
+    geofence_override = False
+    if gps_lat is not None and gps_lon is not None and entry.organization_id:
+        try:
+            active = ClientSiteGeofence.objects.filter(
+                organization_id=entry.organization_id, active=True,
+            )
+            for fence in active:
+                if fence.contains(gps_lat, gps_lon):
+                    geofence_match_id = fence.id
+                    break
+            # If the org has at least one active fence and we matched none,
+            # this is an outside-fence clock-in. Warn but allow.
+            if geofence_match_id is None and active.exists():
+                geofence_override = True
+        except Exception:
+            # Geofence subsystem missing/broken — don't block the clock-in.
+            pass
+
+    _audit(user, 'api_call', request, {
+        'event': 'timeclock_in',
+        'entry_id': entry.id,
+        'gps_provided': gps_lat is not None,
+        'gps_accuracy_m': gps_accuracy,
+        'geofence_match_id': geofence_match_id,
+        'geofence_override': geofence_override,
+    })
+
+    payload = _timeclock_payload(entry)
+    payload['geofence_override'] = geofence_override
+    payload['geofence_match_id'] = geofence_match_id
+    return Response(payload, status=201)
 
 
 @api_view(['POST'])
