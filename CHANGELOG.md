@@ -5,6 +5,44 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.458] - 2026-05-10
+
+### Mobile inventory (org-scoped) — last of the "PSA in your pocket" pass
+
+Wraps the `inventory` app. List items, see low-stock badges, scan/search, adjust stock from the field with an `InventoryTransaction` audit row per change.
+
+**Server (`api_mobile/views_inventory.py`):**
+- `GET /inventory/?search=&item_type=&organization_id=&low_stock=true&page=` — paginated, org-scoped via `accessible_org_ids`. `low_stock=true` filters with `quantity__lte=F('min_quantity')`. Search hits name / sku / manufacturer_part_number / qr_code (exact match for QR).
+- `GET /inventory/<id>/` — detail (404 cross-org).
+- `GET/POST /inventory/<id>/transactions/` — list last 50 / create one. Body: `{transaction_type, quantity_change, notes?}`. Allowed types: `stock_in` / `stock_out` / `adjustment`. `stock_in` auto-coerces to positive, `stock_out` auto-coerces to negative, `adjustment` accepts whatever sign you provide. Atomic: both the `quantity` update and the `InventoryTransaction` insert happen in one transaction. Negative-stock outcomes return 400 instead of writing.
+
+**Mobile:**
+- `app/inventory/index.tsx` — list with low-stock badge, search, "Low stock only" toggle.
+- `app/inventory/[id].tsx` — detail with prominent quantity display, `+ Stock in` / `− Stock out` / `Adj.` buttons that wire to the same transactions endpoint, recent-transaction history.
+- `mobile/src/api/inventory.ts` — `useInventory`, `useInventoryItem`, `useInventoryTransactions`, `useAdjustStock`.
+- "Inventory" tile added to dashboard `NAV_ITEMS`.
+
+**Tests:** 9 in `MobileInventoryTests` — own vs other-org isolation (cross-org detail + transactions both 404), low-stock filter, stock_in increments, stock_out auto-negates sign, would-go-negative blocked, invalid type 400, zero change 400.
+
+versionCode 3170457 → 3170458.
+
+---
+
+### Pass summary (v3.17.453 → v3.17.458, all shipped 2026-05-10)
+
+Six versions, ~3500 lines added across server + mobile, 50+ tests.
+
+| ver | thread |
+|---|---|
+| 453 | vault Fernet decrypt fallback |
+| 454 | asset create + ticket time entry + asset list org filter |
+| 455 | workflows (Process runner) — list, start, complete-stage |
+| 456 | vehicles + fuel + damage |
+| 457 | dispatch board + scheduled task sign-off |
+| 458 | inventory + transactions |
+
+Two AAB rebuilds were needed in the chain (versionCode bumps in 454 + 455 + 456 + 457 + 458 — they all need to land at once via the latest AAB).
+
 ## [3.17.457] - 2026-05-10
 
 ### Mobile dispatch board

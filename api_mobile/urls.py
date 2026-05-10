@@ -9,6 +9,7 @@ from . import (
     views_dashboard,
     views_dispatch,
     views_field_ops,
+    views_inventory,
     views_kb,
     views_tickets,
     views_vault,
@@ -49,6 +50,12 @@ urlpatterns = [
     path('vault/', views_vault.vault_list_view, name='vault_list'),
     path('vault/<int:pk>/', views_vault.vault_detail_view, name='vault_detail'),
     path('vault/<int:pk>/reveal/', views_vault.vault_reveal_view, name='vault_reveal'),
+
+    # Inventory (v3.17.458)
+    path('inventory/', views_inventory.inventory_list_view, name='inventory_list'),
+    path('inventory/<int:pk>/', views_inventory.inventory_detail_view, name='inventory_detail'),
+    path('inventory/<int:pk>/transactions/',
+         views_inventory.inventory_transactions_view, name='inventory_transactions'),
 
     # Dispatch board + scheduled tasks (v3.17.457)
     path('dispatch/', views_dispatch.dispatch_board_view, name='dispatch_board'),

@@ -1298,3 +1298,114 @@ class MobileDispatchTests(TestCase):
             self.token, {'body': 'should fail'},
         )
         self.assertEqual(resp.status_code, 404)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileInventoryTests(TestCase):
+    """v3.17.458 — inventory list/detail/transactions, org-scoped."""
+
+    def setUp(self):
+        from inventory.models import InventoryItem
+        _clear_throttle_cache()
+        self.org_a = Organization.objects.create(name='OrgA-Inv', slug='orga-inv')
+        self.org_b = Organization.objects.create(name='OrgB-Inv', slug='orgb-inv')
+        self.user = User.objects.create_user('iuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org_a, role=Role.OWNER, is_active=True,
+        )
+        self.item_a = InventoryItem.objects.create(
+            organization=self.org_a, name='RJ45 connectors', sku='RJ45-100',
+            quantity=50, min_quantity=20, unit='pack',
+        )
+        self.item_low = InventoryItem.objects.create(
+            organization=self.org_a, name='Cat6 cable', sku='CAT6-1000',
+            quantity=2, min_quantity=10, unit='box',
+        )
+        self.item_b = InventoryItem.objects.create(
+            organization=self.org_b, name='Other org item', sku='OO-1',
+            quantity=1, min_quantity=0,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'iuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_list_returns_only_my_org(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/inventory/', self.token)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        ids = {i['id'] for i in resp.json()['results']}
+        self.assertIn(self.item_a.id, ids)
+        self.assertIn(self.item_low.id, ids)
+        self.assertNotIn(self.item_b.id, ids)
+
+    def test_low_stock_filter(self):
+        resp = self.client.get(
+            '/api/mobile/v1/inventory/?low_stock=true',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        ids = {i['id'] for i in resp.json()['results']}
+        self.assertIn(self.item_low.id, ids)
+        self.assertNotIn(self.item_a.id, ids)
+
+    def test_other_org_detail_404(self):
+        resp = _auth_get(
+            self.client, f'/api/mobile/v1/inventory/{self.item_b.id}/', self.token,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_stock_in_increments_quantity(self):
+        url = f'/api/mobile/v1/inventory/{self.item_a.id}/transactions/'
+        resp = _auth_post(self.client, url, self.token, {
+            'transaction_type': 'stock_in',
+            'quantity_change': 10,
+            'notes': 'received from vendor',
+        })
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['quantity_change'], 10)
+        self.assertEqual(body['quantity_after'], 60)
+        self.item_a.refresh_from_db()
+        self.assertEqual(self.item_a.quantity, 60)
+
+    def test_stock_out_negates_sign(self):
+        # Sending +5 with stock_out should be coerced to -5
+        url = f'/api/mobile/v1/inventory/{self.item_a.id}/transactions/'
+        resp = _auth_post(self.client, url, self.token, {
+            'transaction_type': 'stock_out',
+            'quantity_change': 5,
+        })
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['quantity_change'], -5)
+        self.assertEqual(resp.json()['quantity_after'], 45)
+
+    def test_negative_stock_blocked(self):
+        url = f'/api/mobile/v1/inventory/{self.item_low.id}/transactions/'
+        resp = _auth_post(self.client, url, self.token, {
+            'transaction_type': 'stock_out',
+            'quantity_change': 99,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_type_rejected(self):
+        url = f'/api/mobile/v1/inventory/{self.item_a.id}/transactions/'
+        resp = _auth_post(self.client, url, self.token, {
+            'transaction_type': 'fake_action',
+            'quantity_change': 1,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_zero_change_rejected(self):
+        url = f'/api/mobile/v1/inventory/{self.item_a.id}/transactions/'
+        resp = _auth_post(self.client, url, self.token, {
+            'transaction_type': 'adjustment',
+            'quantity_change': 0,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_cross_org_transactions_404(self):
+        url = f'/api/mobile/v1/inventory/{self.item_b.id}/transactions/'
+        resp = _auth_post(self.client, url, self.token, {
+            'transaction_type': 'stock_in',
+            'quantity_change': 1,
+        })
+        self.assertEqual(resp.status_code, 404)
