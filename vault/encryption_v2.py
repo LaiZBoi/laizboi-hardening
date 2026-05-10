@@ -256,6 +256,20 @@ def decrypt_v2(
     if not encrypted:
         return ""  # Empty string is valid, return empty
 
+    # v3.17.453: legacy Fernet-encoded entries (signature `gAAAAA`) use
+    # URL-safe base64 that standard `base64.b64decode` rejects with a
+    # confusing "1 more than a multiple of 4" error. Route those straight
+    # to the v1 path which now handles Fernet via cryptography.fernet.
+    # 5 entries on prod were created this way (id 103-107).
+    if isinstance(encrypted, str) and encrypted.startswith('gAAAAA'):
+        logger.debug(f"Decryption: Fernet signature detected, using v1 path")
+        from .encryption import decrypt as v1_decrypt
+        try:
+            return v1_decrypt(encrypted)
+        except Exception as e:
+            logger.error(f"Decryption: v1 (Fernet) failed: {e}")
+            raise EncryptionError(f"Decryption failed: {e}")
+
     try:
         # Decode from base64
         try:

@@ -1256,3 +1256,53 @@ class ExtensionPerOrgIsolationTests(TestCase):
         matches = r.json()['matches']
         self.assertEqual(len(matches), 1)
         self.assertIn(self.org_a.slug, matches[0]['title'])
+
+
+class LegacyFernetDecryptTests(TestCase):
+    """
+    v3.17.453 — `vault.encryption.decrypt` and `vault.encryption_v2.decrypt_v2`
+    must accept legacy Fernet-encoded blobs (signature `gAAAAA`). 5 entries
+    on prod (id 103-107) were stored this way by an earlier code version
+    that called `cryptography.fernet.Fernet.encrypt` directly. Standard
+    `base64.b64decode` rejects the URL-safe base64 they produce, so
+    without the Fernet detection branch the API returns 500 and the user
+    sees "Failed to decrypt password."
+    """
+
+    def _fernet_encrypt(self, plaintext: str) -> str:
+        """Reproduce the legacy Fernet encode using the configured master key."""
+        import base64
+        from cryptography.fernet import Fernet
+        from vault.encryption import get_master_key
+        key = get_master_key()
+        return Fernet(base64.urlsafe_b64encode(key)).encrypt(
+            plaintext.encode('utf-8'),
+        ).decode('ascii')
+
+    def test_v1_decrypt_handles_fernet_blob(self):
+        from vault.encryption import decrypt
+        token = self._fernet_encrypt('hunter2-legacy')
+        self.assertTrue(token.startswith('gAAAAA'),
+                        'Fernet token signature should appear')
+        # Token contains URL-safe base64 chars that standard base64 rejects.
+        # Pre-fix this call raised EncryptionError on b64decode.
+        self.assertEqual(decrypt(token), 'hunter2-legacy')
+
+    def test_v2_decrypt_routes_fernet_blob_through_v1(self):
+        from vault.encryption_v2 import decrypt_v2
+        token = self._fernet_encrypt('legacy-secret-via-v2')
+        # decrypt_v2 with default args — should detect the gAAAAA prefix
+        # and bypass its own base64 path.
+        self.assertEqual(decrypt_v2(token), 'legacy-secret-via-v2')
+
+    def test_password_get_password_handles_fernet_blob(self):
+        """End-to-end: Password.get_password() (model helper) decrypts Fernet."""
+        from vault.models import Password
+        from core.models import Organization
+        org = Organization.objects.create(name='LegacyOrg', slug='legacy')
+        token = self._fernet_encrypt('end-to-end-legacy')
+        p = Password.objects.create(
+            organization=org, title='Legacy Fernet entry',
+            encrypted_password=token,
+        )
+        self.assertEqual(p.get_password(), 'end-to-end-legacy')

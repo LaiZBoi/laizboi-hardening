@@ -86,22 +86,32 @@ def decrypt(encrypted: str) -> str:
     """
     Decrypt encrypted string (base64-encoded nonce||ciphertext).
     Returns plaintext string.
+
+    v3.17.453: also handles legacy Fernet-encoded entries written by an
+    older version of the encryption layer. Fernet tokens start with the
+    `gAAAAA` prefix (URL-safe base64 of the 0x80 version byte) and use
+    URL-safe base64 throughout, which standard `base64.b64decode` rejects
+    — surfaces as a `binascii.Error: ... cannot be 1 more than a multiple
+    of 4` because `_` and `-` get stripped. Detect the prefix and
+    decrypt with Fernet (same 32-byte master key, just wrapped).
     """
     if not encrypted:
         return ""
 
     try:
         key = get_master_key()
+
+        # Legacy Fernet path
+        if isinstance(encrypted, str) and encrypted.startswith('gAAAAA'):
+            from cryptography.fernet import Fernet
+            fernet = Fernet(base64.urlsafe_b64encode(key))
+            return fernet.decrypt(encrypted.encode('ascii')).decode('utf-8')
+
+        # Current AES-GCM path
         aesgcm = AESGCM(key)
-
-        # Decode from base64
         combined = base64.b64decode(encrypted)
-
-        # Split nonce and ciphertext
         nonce = combined[:12]
         ciphertext = combined[12:]
-
-        # Decrypt
         plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, None)
         return plaintext_bytes.decode('utf-8')
 

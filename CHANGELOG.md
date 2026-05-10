@@ -5,6 +5,21 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.453] - 2026-05-10
+
+### Vault decrypt: handle legacy Fernet entries
+
+Five vault entries on prod (id 103-107, all in one org) returned 500 "Failed to decrypt password." on reveal. Root cause: those rows were written by an older code path that called `cryptography.fernet.Fernet.encrypt` directly. Fernet emits URL-safe base64 (`-` and `_`); the current decrypt path uses standard `base64.b64decode` which rejects those characters and raises `binascii.Error: number of data characters (97) cannot be 1 more than a multiple of 4` — surfacing as a generic 500 in the mobile reveal flow.
+
+**Fix:**
+- `vault.encryption.decrypt` now detects the Fernet token signature (`gAAAAA` prefix = URL-safe base64 of the 0x80 version byte) and decrypts via `cryptography.fernet.Fernet` using the same 32-byte master key, just URL-safe-base64-wrapped.
+- `vault.encryption_v2.decrypt_v2` short-circuits to the v1 path when it sees the same signature, instead of trying its own `base64.b64decode` and raising before the fallback can fire.
+- Web vault, mobile vault, and any other consumer of `Password.get_password()` now decrypt these entries cleanly.
+
+3 tests in `vault.tests.LegacyFernetDecryptTests`: v1 direct, v2 routing, end-to-end through `Password.get_password()`. All use a runtime-generated Fernet token from the configured master key, so the test passes regardless of which key the test environment uses.
+
+Server-only fix; ships via Apply, no AAB rebuild.
+
 ## [3.17.452] - 2026-05-09
 
 ### GPS-attached clock-in + warn-but-allow geofence enforcement (Sub-phase 8.2 / 8.3)
