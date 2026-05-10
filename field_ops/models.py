@@ -337,6 +337,14 @@ class MobileDevice(models.Model):
     revoked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # v3.17.463 — Expo push token for notifications. Format
+    # `ExponentPushToken[...]`. Routed through Expo's push service which
+    # handles FCM (Android) + APNS (iOS) without per-project setup.
+    # `notifications_enabled` lets a user mute pushes without
+    # unregistering the device entirely.
+    expo_push_token = models.CharField(max_length=200, blank=True, default='')
+    notifications_enabled = models.BooleanField(default=True)
+
     class Meta:
         verbose_name = 'Mobile device'
         verbose_name_plural = 'Mobile devices'

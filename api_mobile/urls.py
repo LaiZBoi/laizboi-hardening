@@ -11,6 +11,7 @@ from . import (
     views_field_ops,
     views_inventory,
     views_kb,
+    views_notifications,
     views_scan,
     views_tickets,
     views_vault,
@@ -51,6 +52,10 @@ urlpatterns = [
     path('vault/', views_vault.vault_list_view, name='vault_list'),
     path('vault/<int:pk>/', views_vault.vault_detail_view, name='vault_detail'),
     path('vault/<int:pk>/reveal/', views_vault.vault_reveal_view, name='vault_reveal'),
+
+    # Push notifications (v3.17.463)
+    path('notifications/register/', views_notifications.register_push_view, name='push_register'),
+    path('notifications/deregister/', views_notifications.deregister_push_view, name='push_deregister'),
 
     # Code scan resolver (v3.17.461)
     path('scan/', views_scan.scan_resolve_view, name='scan_resolve'),

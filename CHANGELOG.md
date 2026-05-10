@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.463] - 2026-05-10
+
+### Push notifications via Expo
+
+End-to-end pipeline. Device registers an Expo push token on login, server fires a push when a ticket gets reassigned to that user, tap routes to the ticket.
+
+**Server:**
+- New migration `field_ops/migrations/0006_mobiledevice_expo_push.py` adds `expo_push_token` (CharField, max 200) and `notifications_enabled` (BooleanField, default True) to the existing `MobileDevice` model.
+- New `api_mobile/push.py::send_push_to_user(user, title, body, data)` — fires a fire-and-forget HTTP POST to `https://exp.host/--/api/v2/push/send` on a background thread. Never blocks the caller. Sends to every active, opted-in device for the user.
+- New `api_mobile/views_notifications.py`:
+  - `POST /notifications/register/` accepts `{token, platform, device_id?, name?, enabled?}` and upserts a `MobileDevice`. Idempotent.
+  - `POST /notifications/deregister/` marks the device revoked + clears its token.
+- New `api_mobile/signals.py` registers `pre_save`/`post_save` on `psa.Ticket`. When `assigned_to_id` changes (or a new ticket is created with an assignee), fires `send_push_to_user(new_assignee, ...)`. Catches assignments from web, mobile, integrations — anywhere `Ticket.save()` runs.
+- `api_mobile/apps.py::ready()` registers the signals on app start. Wrapped so a failure can't block startup.
+
+**Mobile:**
+- New dep: `expo-notifications ~0.28.18`. Plugin block in `app.json` with icon + tint color.
+- New `mobile/src/utils/push.ts` — `registerForPushNotifications()` requests permission, fetches the Expo push token via `Notifications.getExpoPushTokenAsync()`, POSTs to `/notifications/register/` with a stable client-side UUID device_id (stored in AsyncStorage so re-logins update the same device row). `deregisterPushNotifications()` mirrors it.
+- Login + MFA success in `src/api/auth.ts` fires registration. Logout fires deregistration. Both are fire-and-forget — push is optional, login/logout never block on it.
+- `_layout.tsx` registers a `Notifications.addNotificationResponseReceivedListener` that reads `data.route` from the payload and `router.push`es to it on tap. Server attaches `route: '/tickets/<id>'` to ticket-assignment pushes.
+
+**No FCM project setup required.** Expo's relay handles FCM (Android) and APNS (iOS) using the project's existing EAS credentials — no GoogleService-Info.plist / google-services.json needed.
+
+versionCode 3170462 → 3170463.
+
 ## [3.17.462] - 2026-05-10
 
 ### Dispatch calendar view
