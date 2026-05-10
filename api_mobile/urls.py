@@ -11,6 +11,7 @@ from . import (
     views_kb,
     views_tickets,
     views_vault,
+    views_vehicles,
     views_workflows,
 )
 
@@ -47,6 +48,13 @@ urlpatterns = [
     path('vault/', views_vault.vault_list_view, name='vault_list'),
     path('vault/<int:pk>/', views_vault.vault_detail_view, name='vault_detail'),
     path('vault/<int:pk>/reveal/', views_vault.vault_reveal_view, name='vault_reveal'),
+
+    # Vehicles + fuel + damage (v3.17.456)
+    path('vehicles/', views_vehicles.my_vehicles_view, name='vehicle_list'),
+    path('vehicles/<int:pk>/', views_vehicles.vehicle_detail_view, name='vehicle_detail'),
+    path('vehicles/<int:pk>/inventory/', views_vehicles.vehicle_inventory_view, name='vehicle_inventory'),
+    path('vehicles/<int:pk>/fuel/', views_vehicles.vehicle_fuel_view, name='vehicle_fuel'),
+    path('vehicles/<int:pk>/damage/', views_vehicles.vehicle_damage_view, name='vehicle_damage'),
 
     # Workflows / processes (v3.17.455)
     path('workflows/', views_workflows.workflow_list_view, name='workflow_list'),

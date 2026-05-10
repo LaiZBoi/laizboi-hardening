@@ -1090,3 +1090,116 @@ class MobileWorkflowsTests(TestCase):
         for s in r2.json()['stages']:
             if s['stage_id'] == sid:
                 self.assertEqual(s['notes'], 'second')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileVehiclesTests(TestCase):
+    """v3.17.456 — vehicles list/detail/inventory/fuel/damage."""
+
+    def setUp(self):
+        from datetime import date
+        from vehicles.models import (
+            ServiceVehicle, VehicleAssignment, VehicleInventoryItem,
+        )
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgV', slug='orgv')
+        self.user = User.objects.create_user('vuser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        self.other = User.objects.create_user('other', password='x')
+        self.vehicle = ServiceVehicle.objects.create(
+            name='Van 1', vehicle_type='van', make='Ford', model='Transit',
+            year=2024, license_plate='ABC123', current_mileage=15000,
+        )
+        VehicleAssignment.objects.create(
+            vehicle=self.vehicle, user=self.user,
+            start_date=date.today(), starting_mileage=14500,
+        )
+        VehicleInventoryItem.objects.create(
+            vehicle=self.vehicle, name='CAT6 cable', category='Cables',
+            quantity=2, min_quantity=10, unit='box',
+        )
+        # Other vehicle, not assigned to me
+        self.other_vehicle = ServiceVehicle.objects.create(
+            name='Van 2', vehicle_type='van', make='Ford', model='Transit',
+            year=2023, license_plate='XYZ999', current_mileage=80000,
+        )
+        VehicleAssignment.objects.create(
+            vehicle=self.other_vehicle, user=self.other,
+            start_date=date.today(), starting_mileage=80000,
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'vuser', 'password': 'hunter2',
+        }).json()['token']
+
+    def test_my_vehicles_excludes_others(self):
+        resp = _auth_get(self.client, '/api/mobile/v1/vehicles/', self.token)
+        self.assertEqual(resp.status_code, 200)
+        ids = {v['id'] for v in resp.json()['results']}
+        self.assertIn(self.vehicle.id, ids)
+        self.assertNotIn(self.other_vehicle.id, ids)
+
+    def test_other_vehicle_detail_404(self):
+        resp = _auth_get(
+            self.client, f'/api/mobile/v1/vehicles/{self.other_vehicle.id}/',
+            self.token,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_inventory_list(self):
+        resp = _auth_get(
+            self.client, f'/api/mobile/v1/vehicles/{self.vehicle.id}/inventory/',
+            self.token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.json()['results']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['name'], 'CAT6 cable')
+
+    def test_log_fuel_creates_record_and_updates_mileage(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/vehicles/{self.vehicle.id}/fuel/',
+            self.token,
+            {'mileage': 15300, 'gallons': '12.5', 'cost_per_gallon': '3.799',
+             'station': 'Shell on Main'},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['mileage'], 15300)
+        # total_cost auto-computed
+        self.assertEqual(body['total_cost'], '47.49')
+        self.vehicle.refresh_from_db()
+        self.assertEqual(self.vehicle.current_mileage, 15300)
+
+    def test_log_fuel_invalid_400(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/vehicles/{self.vehicle.id}/fuel/',
+            self.token, {'mileage': 1000, 'gallons': 'bad', 'cost_per_gallon': '3'},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_log_damage_creates_record(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/vehicles/{self.vehicle.id}/damage/',
+            self.token,
+            {'description': 'Cracked windshield', 'severity': 'minor',
+             'damage_location': 'Windshield'},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertEqual(body['severity'], 'minor')
+        self.assertEqual(body['damage_location'], 'Windshield')
+
+    def test_log_damage_missing_description_400(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/vehicles/{self.vehicle.id}/damage/',
+            self.token, {'severity': 'minor'},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_unauthorized_blocked(self):
+        c = Client()
+        resp = c.get('/api/mobile/v1/vehicles/')
+        self.assertIn(resp.status_code, (401, 403))

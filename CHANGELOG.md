@@ -5,6 +5,29 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.456] - 2026-05-10
+
+### Vehicle inventory + fuel + damage on mobile
+
+Wraps the `vehicles` app for techs in the field. Authorization model: a tech sees and can act on vehicles they have an active `VehicleAssignment` for — vehicles are not org-scoped because they're the company fleet.
+
+**Server (`api_mobile/views_vehicles.py`):**
+- `GET /vehicles/` — vehicles currently assigned to me
+- `GET /vehicles/<id>/` — detail (404 if not assigned)
+- `GET /vehicles/<id>/inventory/` — `VehicleInventoryItem` rows for that vehicle
+- `GET/POST /vehicles/<id>/fuel/` — list / log a fill-up. Creates `VehicleFuelLog`. Required: `mileage`, `gallons`, `cost_per_gallon`. `total_cost` auto-computed if omitted; `date` defaults to today. Updates `ServiceVehicle.current_mileage` if the new reading is higher.
+- `GET/POST /vehicles/<id>/damage/` — list / file a `VehicleDamageReport`. Required: `description`. Severity defaults to `minor`. Captures the vehicle's current condition as `condition_before`.
+
+**Mobile:**
+- `app/vehicles/index.tsx` — my vehicles list
+- `app/vehicles/[id].tsx` — single screen with: vehicle summary, on-board inventory list (with low-stock badge when `quantity <= min_quantity`), fuel fill-up form + recent log, damage report form + recent reports
+- `mobile/src/api/vehicles.ts` — typed hooks
+- Operations hub gets new entries: "My vehicle", "Workflows" (alongside Timeclock)
+
+**Tests:** 8 in `MobileVehiclesTests` — own vs other-tech assignment isolation (the cross-tech vehicle returns 404 on detail), inventory list, fuel happy path with auto total_cost + odometer sync, fuel invalid 400, damage create, damage missing-description 400, unauth blocked.
+
+versionCode 3170455 → 3170456.
+
 ## [3.17.455] - 2026-05-10
 
 ### Workflows on mobile (Process runner)
