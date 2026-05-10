@@ -88,11 +88,11 @@ These can't ship from the repo. Each is filled in at `play.google.com/console` �
 
 Features not yet in the AAB but on the roadmap. Not blockers for public release.
 
-| Feature | When | Why deferred |
+| Feature | Status | Setup needed |
 |---|---|---|
-| **Receipt OCR** for fuel logs | Future | Needs an OCR service (Cloud Vision / Textract) — backend choice + cost model |
-| **Push notifications** (FCM) | Next pass | FCM project setup + server-side dispatch wiring. Will require Play Console app review re-pass for new permission. |
-| **Background GPS auto-time** | Future | `ACCESS_BACKGROUND_LOCATION` triggers Play Console's full background-location review — significant policy + UX work. |
+| **Receipt OCR** | Endpoint shipped v3.17.465; off by default | Set `OCR_PROVIDER=cloudvision` + `GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json` in the gunicorn env, then `pip install google-cloud-vision`. Mobile fuel form will auto-fill gallons / $/gal / station from receipt photos. |
+| **Push notifications** | Shipped v3.17.463 | No additional setup; uses Expo's relay. |
+| **Background GPS** | Shipped v3.17.464; **off by default**, opt-in via Settings | Production release requires a 30-second sample video showing the in-app opt-in for Play Console's background-location justification. |
 
 ---
 

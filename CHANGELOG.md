@@ -5,6 +5,53 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.465] - 2026-05-10
+
+### Receipt OCR pre-fill for fuel logs (opt-in via env)
+
+Fuel form auto-fills gallons / $-per-gallon / station from a receipt photo when the server-side OCR is configured. Off by default — endpoint returns 503 unless `OCR_PROVIDER` env is set, so the mobile app degrades silently to manual entry.
+
+**Server (`api_mobile/views_ocr.py`):**
+- `POST /api/mobile/v1/ocr/receipt/` (multipart) — accepts a `photo` file.
+- Routes to Google Cloud Vision when `OCR_PROVIDER=cloudvision` + `GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json` is set in env (the SDK is imported lazily so unset deployments don't pay the import cost; install with `pip install google-cloud-vision` to enable).
+- Best-effort regex parser pulls `gallons`, `cost_per_gallon`, `total_cost`, `station`, `date_raw` from US-format fuel receipts. Returns only fields it actually matched — missing fields stay missing so a wrong guess never overwrites a user's data.
+- Returns full `raw_text` (capped to 2 KB) for debugging the parser against new receipt formats.
+- 503 `{detail: "OCR not configured"}` when `OCR_PROVIDER` unset. The endpoint is wired but inert until you flip the switch.
+
+**Mobile (`mobile/app/vehicles/[id].tsx`):**
+- After picking a photo for a fuel receipt, fires `/ocr/receipt/` in the background. On 200, the parsed values pre-fill any currently-empty fields (gallons / $/gal / station). On 503 / failure / network error: silent, manual entry continues.
+- Damage photos do **not** run OCR — only fuel.
+
+**Adding another provider** (Textract, Tesseract, etc.): add a branch in `_run_ocr()`. Keep the same response shape (`{extracted: {gallons, cost_per_gallon, station, ...}, raw_text}`) and the mobile UI just works.
+
+**Public release checklist updated** — the "Deferred" section now reflects that all four previously-deferred features (#21–24) shipped, with their per-feature setup requirements (env vars, Play Console video, etc).
+
+versionCode 3170464 → 3170465.
+
+---
+
+### v3.17.453 → 465 — completion pass summary
+
+Thirteen versions, ~5500 lines added across server + mobile, 70+ tests.
+
+| ver | thread |
+|---|---|
+| 453 | Vault Fernet decrypt fix |
+| 454 | Asset create + ticket time entry + asset org filter |
+| 455 | Workflow (Process) runner |
+| 456 | Vehicles + fuel + damage |
+| 457 | Dispatch board + task sign-off |
+| 458 | Inventory + transactions |
+| 459 | Dashboard reorganization + visual polish + workflow stage links |
+| 460 | Photo capture (damage + fuel) |
+| 461 | QR/barcode scanner + Play Console release docs |
+| 462 | Dispatch calendar view |
+| 463 | Push notifications via Expo |
+| 464 | Background location (opt-in) |
+| 465 | Receipt OCR pre-fill (opt-in via env) |
+
+Repo state: all originally listed user requirements and all "deferred" follow-ups are now in `main`. Push: `https://github.com/agit8or1/clientst0r`.
+
 ## [3.17.464] - 2026-05-10
 
 ### Background location tracking (opt-in) — Sub-phase 8.2 completes

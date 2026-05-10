@@ -12,6 +12,7 @@ from . import (
     views_inventory,
     views_kb,
     views_notifications,
+    views_ocr,
     views_scan,
     views_tickets,
     views_vault,
@@ -52,6 +53,9 @@ urlpatterns = [
     path('vault/', views_vault.vault_list_view, name='vault_list'),
     path('vault/<int:pk>/', views_vault.vault_detail_view, name='vault_detail'),
     path('vault/<int:pk>/reveal/', views_vault.vault_reveal_view, name='vault_reveal'),
+
+    # Receipt OCR (v3.17.465) — 503 unless OCR_PROVIDER env is set
+    path('ocr/receipt/', views_ocr.ocr_receipt_view, name='ocr_receipt'),
 
     # Push notifications (v3.17.463)
     path('notifications/register/', views_notifications.register_push_view, name='push_register'),
