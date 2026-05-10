@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.459] - 2026-05-10
+
+### Dashboard reorganization + visual polish
+
+User asked for "look nicer + organized dashboard." Restructured the dashboard into clear semantic sections, gave it a real visual hierarchy, and made workflow stage entity links navigable.
+
+**Dashboard layout — was a flat scroll of cards, now sections:**
+1. **NEEDS ATTENTION** (red, only renders when there's something) — critical tickets + overdue tasks. Big numbers, deep-link onto the right screens.
+2. **Shift card** — single horizontal "On the clock / Off the clock" card. Green when active, with hh:mm started + duration. Tap to jump to Timeclock.
+3. **TODAY stats row** — 2 hero StatTiles: "My open tickets" and "Today's tasks." Tap-through to filtered list views.
+4. **NAVIGATE icon grid** — 8-tile 4×2 grid replacing the bare chip row: Dispatch / PSA / Assets / Vault / Docs / Workflows / Inventory / Vehicle. Each tile has an emoji + label + optional notification badge (e.g. red badge on Dispatch when overdue tasks exist).
+5. **RECENT** — recent tickets + recent assets, now in compact-mode cards.
+
+**New components:**
+- `components/Card.tsx` — added `tone` prop (`accent` / `warning` / `critical` / `success`), `compact` mode, new `SectionHeader` export, hero StatTile variant. Tones color the border + tone-aware StatTile values.
+- `components/NavTile.tsx` — square icon-tile with emoji, label, optional badge.
+
+**Tickets list (`mobile/app/tickets/index.tsx`)** now reads `?filter=` from the URL so dashboard deep-links (`/tickets?filter=mine`, `/tickets?filter=critical`) land on the correct filter chip.
+
+**Workflow stage entity links navigable:**
+- Server (`api_mobile/views_workflows.py`): execution-stage payload now includes `linked_password_id` / `linked_asset_id` / `linked_document_id`.
+- Mobile (`mobile/app/workflows/exec/[id].tsx`): renders linked entities as tappable chips that route to `/vault/<id>` / `/assets/<id>` / `/kb/<id>`. Tech can open a credential the runbook references with one tap, no hunting.
+
+versionCode 3170458 → 3170459.
+
 ## [3.17.458] - 2026-05-10
 
 ### Mobile inventory (org-scoped) — last of the "PSA in your pocket" pass

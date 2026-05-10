@@ -82,6 +82,11 @@ def _serialize_execution(e, *, with_stages: bool = False) -> dict:
                 'completed_at': c.completed_at.isoformat() if c and c.completed_at else None,
                 'completed_by_id': c.completed_by_id if c else None,
                 'notes': c.notes if c else '',
+                # v3.17.459: surface linked-entity ids so the mobile UI can
+                # deep-link to /vault/<id> / /assets/<id> / /kb/<id>.
+                'linked_password_id': s.linked_password_id,
+                'linked_asset_id': s.linked_asset_id,
+                'linked_document_id': s.linked_document_id,
             })
     return out
 
