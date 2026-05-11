@@ -13,6 +13,7 @@ from . import (
     views_kb,
     views_notifications,
     views_ocr,
+    views_receipts,
     views_scan,
     views_tickets,
     views_vault,
@@ -57,6 +58,11 @@ urlpatterns = [
     # Receipt OCR (v3.17.465–467) — 503 unless OCR_PROVIDER env is set
     path('ocr/receipt/', views_ocr.ocr_receipt_view, name='ocr_receipt'),
     path('ocr/status/', views_ocr.ocr_status_view, name='ocr_status'),
+
+    # Receipt upload (v3.17.470) — image goes to Attachment, OCR populates
+    # VehicleReceipt, auto-creates FuelLog / MaintenanceRecord by category.
+    path('receipts/', views_receipts.receipt_list_view, name='receipts'),
+    path('receipts/<int:pk>/', views_receipts.receipt_detail_view, name='receipt_detail'),
 
     # Push notifications (v3.17.463)
     path('notifications/register/', views_notifications.register_push_view, name='push_register'),

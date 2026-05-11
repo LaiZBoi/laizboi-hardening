@@ -37,6 +37,13 @@ class Attachment(BaseModel):
         ('vendor', 'Vendor'),
         ('equipment_model', 'Equipment Model'),
         ('vehicle', 'Vehicle'),
+        # v3.17.470 — mobile photo upload targets. CharField choices are
+        # form-level only (not DB-enforced), so older Attachments
+        # written with these entity_types continue to work; this list
+        # is purely for admin-UI consistency + makemigrations diffs.
+        ('damage_report', 'Damage Report'),
+        ('fuel_log', 'Fuel Log'),
+        ('vehicle_receipt', 'Vehicle Receipt'),
     ]
 
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='attachments')

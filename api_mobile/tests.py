@@ -1811,6 +1811,131 @@ class MobilePushSignalsTests(TestCase):
         # No push — user already at the screen
         self.assertEqual(self.mock_push.call_count, 0)
 
+    def test_receipt_uploaded_with_image_creates_record(self):
+        """v3.17.470 — POST /receipts/ stores a VehicleReceipt + Attachment.
+        OCR is off in tests so amount stays at the default 0; we just
+        verify the row + image got persisted."""
+        from datetime import date
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from vehicles.models import ServiceVehicle, VehicleAssignment, VehicleReceipt
+        from files.models import Attachment
+
+        vehicle = ServiceVehicle.objects.create(
+            name='Van A', vehicle_type='van', make='Ford', model='Transit',
+            year=2024, license_plate='RX1', current_mileage=5000,
+        )
+        VehicleAssignment.objects.create(
+            vehicle=vehicle, user=self.assignee,
+            start_date=date.today(), starting_mileage=4500,
+        )
+        token = _post(Client(), '/api/mobile/v1/auth/login/', {
+            'username': 'assignee', 'password': 'x',
+        }).json()['token']
+
+        photo = SimpleUploadedFile('receipt.jpg', b'\xff\xd8\xff\xe0fake-jpeg',
+                                   content_type='image/jpeg')
+        client = Client()
+        resp = client.post(
+            '/api/mobile/v1/receipts/',
+            data={
+                'photo': photo,
+                'vehicle_id': str(vehicle.id),
+                'category': 'fuel',
+                'notes': 'paid cash',
+            },
+            HTTP_AUTHORIZATION=f'Token {token}',
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        body = resp.json()
+        self.assertFalse(body.get('duplicate', False))
+        self.assertEqual(body['receipt']['category'], 'fuel')
+        self.assertEqual(body['receipt']['notes'], 'paid cash')
+
+        r = VehicleReceipt.objects.get(pk=body['receipt']['id'])
+        self.assertEqual(r.vehicle_id, vehicle.id)
+        self.assertEqual(r.created_by_id, self.assignee.pk)
+        self.assertNotEqual(r.image_hash, '')
+
+        att = Attachment.objects.filter(
+            entity_type='vehicle_receipt', entity_id=r.pk,
+        ).first()
+        self.assertIsNotNone(att, 'attachment should be created')
+
+    def test_receipt_dedup_returns_existing(self):
+        """Same image_hash → 200 with duplicate: true; no new row."""
+        from datetime import date
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from vehicles.models import ServiceVehicle, VehicleAssignment, VehicleReceipt
+
+        vehicle = ServiceVehicle.objects.create(
+            name='Van B', vehicle_type='van', make='Ford', model='E-Series',
+            year=2023, license_plate='RX2', current_mileage=80000,
+        )
+        VehicleAssignment.objects.create(
+            vehicle=vehicle, user=self.assignee,
+            start_date=date.today(), starting_mileage=79000,
+        )
+        token = _post(Client(), '/api/mobile/v1/auth/login/', {
+            'username': 'assignee', 'password': 'x',
+        }).json()['token']
+
+        client = Client()
+        # First upload — creates
+        client.post(
+            '/api/mobile/v1/receipts/',
+            data={
+                'photo': SimpleUploadedFile('r.jpg', b'identical-bytes-payload', 'image/jpeg'),
+                'vehicle_id': str(vehicle.id),
+                'category': 'other',
+            },
+            HTTP_AUTHORIZATION=f'Token {token}',
+        )
+        before = VehicleReceipt.objects.count()
+        # Second upload, same bytes → duplicate
+        resp = client.post(
+            '/api/mobile/v1/receipts/',
+            data={
+                'photo': SimpleUploadedFile('r.jpg', b'identical-bytes-payload', 'image/jpeg'),
+                'vehicle_id': str(vehicle.id),
+                'category': 'other',
+            },
+            HTTP_AUTHORIZATION=f'Token {token}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(resp.json()['duplicate'])
+        self.assertEqual(VehicleReceipt.objects.count(), before)
+
+    def test_receipt_other_vehicle_404(self):
+        """Receipt for someone else's vehicle is rejected."""
+        from datetime import date
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from vehicles.models import ServiceVehicle, VehicleAssignment
+
+        other = User.objects.create_user('other_tech', password='x')
+        other_v = ServiceVehicle.objects.create(
+            name='Other van', vehicle_type='van', make='X', model='Y',
+            year=2024, license_plate='OTH', current_mileage=0,
+        )
+        VehicleAssignment.objects.create(
+            vehicle=other_v, user=other,
+            start_date=date.today(), starting_mileage=0,
+        )
+        token = _post(Client(), '/api/mobile/v1/auth/login/', {
+            'username': 'assignee', 'password': 'x',
+        }).json()['token']
+
+        client = Client()
+        resp = client.post(
+            '/api/mobile/v1/receipts/',
+            data={
+                'photo': SimpleUploadedFile('r.jpg', b'data', 'image/jpeg'),
+                'vehicle_id': str(other_v.id),
+                'category': 'fuel',
+            },
+            HTTP_AUTHORIZATION=f'Token {token}',
+        )
+        self.assertEqual(resp.status_code, 404)
+
     def test_vault_reveal_approved_pushes_requester(self):
         from vault.models import Password, VaultRevealRequest
         from vault.encryption_v2 import encrypt_password
