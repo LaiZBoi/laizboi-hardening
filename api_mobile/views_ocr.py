@@ -130,6 +130,41 @@ def _parse_receipt_text(text: str) -> dict[str, Any]:
     return out
 
 
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def ocr_status_view(request):
+    """
+    GET /api/mobile/v1/ocr/status/
+
+    Diagnostic. Returns whether OCR is configured + whether the SDK is
+    importable. Useful for "did I actually wire this up correctly" checks
+    from the mobile app or curl. Never exposes the credential path itself.
+    """
+    provider = _ocr_provider()
+    if not provider:
+        return Response({
+            'configured': False,
+            'provider': None,
+            'detail': 'Set OCR_PROVIDER env var to enable.',
+        })
+    sdk_ok = False
+    sdk_error = None
+    if provider == 'cloudvision':
+        try:
+            from google.cloud import vision  # noqa: F401  type: ignore
+            sdk_ok = True
+        except Exception as exc:
+            sdk_error = f'{type(exc).__name__}: {exc}'
+    return Response({
+        'configured': True,
+        'provider': provider,
+        'sdk_loadable': sdk_ok,
+        'sdk_error': sdk_error,
+        'credentials_env_set': bool(os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')),
+    })
+
+
 @api_view(['POST'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])

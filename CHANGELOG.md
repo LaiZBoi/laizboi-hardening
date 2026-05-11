@@ -5,6 +5,31 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.467] - 2026-05-11
+
+### Expanded push triggers + OCR setup scaffolding + signal weak-ref bug fix
+
+**Critical bug fix:** the v3.17.463 ticket-assignment push *silently never fired* in production because the `@receiver` decorators inside `_register_*_signals()` produced weak references that got garbage-collected the moment the registration function returned. No test had verified the side effect, so the regression sat undetected. Every `@receiver` in `api_mobile/signals.py` now passes `weak=False`.
+
+**Expanded push triggers** (`api_mobile/signals.py`):
+- `psa.TicketComment` create → push the ticket's assignee, unless the commenter IS the assignee. Internal comments still push (visibility, not audience scope, drives the rule).
+- `scheduling.TaskAssignment` create → push the newly-assigned user with the task title.
+- `processes.ProcessExecution` create → push the `assigned_to` user, unless they started the run themselves.
+- `vault.VaultRevealRequest` `status` transitions to `approved` → push the original requester.
+- All five receivers funnel through a new `signals._dispatch_push()` helper so tests can patch a single egress point.
+
+**Tests** (`MobilePushSignalsTests`, 6 tests):
+- Ticket comment pushes assignee; doesn't push when author == assignee.
+- Task assignment pushes user.
+- Process execution pushes when assigned by someone else; doesn't push for self-starts.
+- Vault reveal request `pending → approved` pushes the requester.
+
+**OCR setup scaffolding:**
+- `requirements-optional.txt` now includes `google-cloud-vision==3.7.*` with a step-by-step comment block: create GCP service account → download JSON → drop at `/home/administrator/secrets/vision-sa.json` → set `OCR_PROVIDER=cloudvision` + `GOOGLE_APPLICATION_CREDENTIALS=…` in the gunicorn EnvironmentFile → `pip install -r requirements-optional.txt` → restart.
+- New `GET /api/mobile/v1/ocr/status/` endpoint reports `{configured, provider, sdk_loadable, sdk_error, credentials_env_set}` so you can verify the wiring without trying to OCR a fake image.
+
+**Full suite: 117/117 api_mobile tests pass.**
+
 ## [3.17.466] - 2026-05-11
 
 ### Test coverage for v3.17.461–465 endpoints + stale-test fix

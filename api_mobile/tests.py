@@ -1693,3 +1693,139 @@ class MobileOcrEndpointTests(TestCase):
         self.assertEqual(out.get('total_cost'), '24.00')
         self.assertNotIn('station', out)
         self.assertNotIn('cost_per_gallon', out)
+
+    def test_ocr_status_reports_disabled(self):
+        import os
+        old = os.environ.pop('OCR_PROVIDER', None)
+        try:
+            resp = _auth_get(self.client, '/api/mobile/v1/ocr/status/', self.token)
+            self.assertEqual(resp.status_code, 200, resp.content)
+            body = resp.json()
+            self.assertFalse(body['configured'])
+            self.assertIsNone(body['provider'])
+        finally:
+            if old is not None:
+                os.environ['OCR_PROVIDER'] = old
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobilePushSignalsTests(TestCase):
+    """
+    v3.17.467 — verify the expanded signal coverage triggers
+    `send_push_to_user`. Mocks the actual HTTP delivery via patching
+    `api_mobile.push.send_push_to_user`. We only assert the call
+    happened with the right user — payload shape is the receiver's
+    business.
+    """
+
+    def setUp(self):
+        from unittest.mock import patch
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='OrgP', slug='orgp')
+        self.assignee = User.objects.create_user('assignee', password='x')
+        self.commenter = User.objects.create_user('commenter', password='x')
+        Membership.objects.create(
+            user=self.assignee, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        Membership.objects.create(
+            user=self.commenter, organization=self.org, role=Role.OWNER, is_active=True,
+        )
+        # Patch the single egress point in api_mobile.signals so we don't
+        # have to chase the per-receiver `from .push import ...` imports.
+        self._patcher = patch('api_mobile.signals._dispatch_push')
+        self.mock_push = self._patcher.start()
+        self.addCleanup(self._patcher.stop)
+
+    def _make_ticket(self):
+        from psa.models import (
+            Queue, Ticket, TicketPriority, TicketStatus, TicketType,
+        )
+        sn = TicketStatus.objects.create(name='New', slug='new', sort_order=1)
+        pr = TicketPriority.objects.create(code='P3', name='Normal')
+        tt = TicketType.objects.create(name='Incident', slug='incident')
+        qu = Queue.objects.create(name='Default', slug='default')
+        return Ticket.objects.create(
+            organization=self.org, subject='Test', status=sn,
+            priority=pr, ticket_type=tt, queue=qu, assigned_to=self.assignee,
+        )
+
+    def test_ticket_comment_pushes_assignee(self):
+        from psa.models import TicketComment
+        ticket = self._make_ticket()
+        self.mock_push.reset_mock()
+        TicketComment.objects.create(
+            ticket=ticket, author=self.commenter, body='Status?',
+        )
+        # First call should target the assignee
+        self.mock_push.assert_called()
+        called_user = self.mock_push.call_args.args[0]
+        self.assertEqual(called_user.pk, self.assignee.pk)
+
+    def test_ticket_comment_does_not_push_self(self):
+        """Author == assignee → no push (tech commenting on their own)."""
+        from psa.models import TicketComment
+        ticket = self._make_ticket()
+        self.mock_push.reset_mock()
+        TicketComment.objects.create(
+            ticket=ticket, author=self.assignee, body='Working on it',
+        )
+        for call in self.mock_push.call_args_list:
+            self.assertNotEqual(call.args[0].pk, self.assignee.pk)
+
+    def test_task_assignment_pushes_user(self):
+        from scheduling.models import ScheduledTask, TaskAssignment
+        t = ScheduledTask.objects.create(
+            organization=self.org, title='Patch the server',
+        )
+        self.mock_push.reset_mock()
+        TaskAssignment.objects.create(task=t, user=self.assignee)
+        self.mock_push.assert_called()
+        self.assertEqual(self.mock_push.call_args.args[0].pk, self.assignee.pk)
+
+    def test_process_execution_assigned_by_other_pushes(self):
+        from processes.models import Process, ProcessExecution
+        p = Process.objects.create(
+            organization=self.org, title='Onboarding', slug='onboarding',
+            is_published=True,
+        )
+        self.mock_push.reset_mock()
+        ProcessExecution.objects.create(
+            process=p, organization=self.org,
+            assigned_to=self.assignee, started_by=self.commenter,
+            status='in_progress',
+        )
+        self.mock_push.assert_called()
+        self.assertEqual(self.mock_push.call_args.args[0].pk, self.assignee.pk)
+
+    def test_process_self_started_does_not_push(self):
+        from processes.models import Process, ProcessExecution
+        p = Process.objects.create(
+            organization=self.org, title='X', slug='x', is_published=True,
+        )
+        self.mock_push.reset_mock()
+        ProcessExecution.objects.create(
+            process=p, organization=self.org,
+            assigned_to=self.assignee, started_by=self.assignee,
+            status='in_progress',
+        )
+        # No push — user already at the screen
+        self.assertEqual(self.mock_push.call_count, 0)
+
+    def test_vault_reveal_approved_pushes_requester(self):
+        from vault.models import Password, VaultRevealRequest
+        from vault.encryption_v2 import encrypt_password
+        pw = Password.objects.create(
+            organization=self.org, title='Router',
+            encrypted_password=encrypt_password('secret', org_id=self.org.id),
+            requires_reveal_approval=True,
+        )
+        # Create pending — should not push yet
+        self.mock_push.reset_mock()
+        vrr = VaultRevealRequest.objects.create(
+            password=pw, requester=self.assignee, status='pending',
+        )
+        # Approve — should push
+        vrr.status = 'approved'
+        vrr.save()
+        self.mock_push.assert_called()
+        self.assertEqual(self.mock_push.call_args.args[0].pk, self.assignee.pk)
