@@ -5,6 +5,22 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.469] - 2026-05-11
+
+### Patch urllib3 to fix CVE-2026-44432 (Dependabot alert #7)
+
+`urllib3 2.6.0–2.6.x` had a decompression-bomb safeguard bypass in two cases on the streaming API:
+1. Second `HTTPResponse.read(amt=N)` call when decompressed via the official Brotli library.
+2. `HTTPResponse.drain_conn()` after partial decompression.
+
+Both could cause excessive CPU/memory consumption (CWE-409) when streaming compressed responses from untrusted sources. CVSS v4 8.9 / High.
+
+Fixed in `urllib3 2.7.0`. `requirements.txt` pin changed from `urllib3==2.6.*` to `urllib3>=2.7.0,<3.0`. The Apply flow installs from `requirements.txt`, so the upgrade lands automatically on the next prod update.
+
+References:
+- GHSA-mf9v-mfxr-j63j
+- CVE-2026-44432
+
 ## [3.17.468] - 2026-05-11
 
 ### Fix issues #130 + #131
