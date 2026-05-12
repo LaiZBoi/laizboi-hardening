@@ -5,6 +5,14 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.475] - 2026-05-12
+
+### Mobile app supports auto-rotation (portrait + landscape)
+
+`mobile/app.json::expo.orientation` was `"portrait"`, locking the app to portrait regardless of device rotation. Changed to `"default"` so the OS controls orientation — the app now rotates with the device on phones and tablets.
+
+versionCode 3170474 → 3170475. **AAB rebuild required** — orientation is set in the native manifest, not in JS.
+
 ## [3.17.474] - 2026-05-12
 
 ### Fix dashboard-critical click + add org filter dropdown to Vault / Docs / Assets
