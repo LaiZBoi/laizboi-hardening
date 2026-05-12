@@ -58,11 +58,17 @@ LOGIN_PASSWORD = 'ScreenShot!2026'
 CHROMIUM_BIN = '/usr/bin/chromium-browser'
 CHROMEDRIVER_BIN = '/usr/bin/chromedriver'
 
-# Play Console screenshot sizes (each entry: name, width, height)
+# Play Console screenshot sizes. Each entry: name, width, height.
+# All shaped to a 16:9 or 9:16 aspect ratio (Play Console rejects other ratios).
+# Phone / 7-inch tablet / 10-inch tablet: 9:16 portrait.
+# Chromebook / Android XR: 16:9 landscape (those targets normally run in
+# landscape and the app supports auto-rotate as of v3.17.475).
 FORM_FACTORS = [
-    ('phone',      1080, 1920),  # Phone portrait
-    ('tablet-7',   1200, 1920),  # 7" tablet portrait
-    ('tablet-10',  1600, 2560),  # 10" tablet portrait
+    ('phone',      1080, 1920),  #  9:16 portrait, ≥1080 per side
+    ('tablet-7',   1215, 2160),  #  9:16 portrait (135 × 9:16), mid-range
+    ('tablet-10',  1620, 2880),  #  9:16 portrait, ≥1080 per side
+    ('chromebook', 1920, 1080),  # 16:9 landscape, ≥1080 per side
+    ('android-xr', 1920, 1080),  # 16:9 landscape, ≥720 per side
 ]
 
 # Each screen entry: (slug, path) — path is hash-routed via expo-router
@@ -102,17 +108,28 @@ def make_driver(width: int, height: int) -> webdriver.Chrome:
     opts.add_argument('--disable-web-security')   # cross-origin to :8000
     opts.add_argument('--incognito')              # no persisted localStorage between runs
     opts.add_argument('--ignore-certificate-errors')
-    opts.add_argument(f'--window-size={width},{height}')
+    # Outer window — chrome will shave off some pixels for window decoration.
+    # We force the inner viewport via setDeviceMetricsOverride below so the
+    # screenshot lands on an exact 9:16 / 16:9 size that Play Console accepts.
+    opts.add_argument(f'--window-size={width + 100},{height + 200}')
     opts.binary_location = CHROMIUM_BIN
     service = Service(CHROMEDRIVER_BIN)
     drv = webdriver.Chrome(service=service, options=opts)
-    drv.set_window_size(width, height)
     drv.set_page_load_timeout(45)
     drv.execute_cdp_cmd('Network.enable', {})
     drv.execute_cdp_cmd(
         'Network.setExtraHTTPHeaders',
         {'headers': {'X-Forwarded-Proto': 'https'}},
     )
+    # Pin the viewport to the EXACT target dimensions. Otherwise headless
+    # Chromium shrinks the viewport for chrome and the resulting PNG's
+    # aspect ratio is off-spec.
+    drv.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': width,
+        'height': height,
+        'deviceScaleFactor': 1,
+        'mobile': False,
+    })
     return drv
 
 
