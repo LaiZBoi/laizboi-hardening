@@ -123,7 +123,23 @@ def ticket_list_view(request):
 
     priority_filter = request.query_params.get('priority')
     if priority_filter:
-        qs = qs.filter(priority__code=priority_filter)
+        # v3.17.474 (bug from dashboard critical tile) — mobile dashboard
+        # sends ?priority=critical but TicketPriority rows use P1..P4
+        # codes, so the previous filter returned zero. Accept friendly
+        # labels and map them to codes; fall back to literal match for
+        # raw P-codes / priority names.
+        label_to_code = {
+            'critical': 'P1', 'urgent': 'P1',
+            'high':     'P2',
+            'medium':   'P3', 'normal': 'P3',
+            'low':      'P4',
+        }
+        raw = priority_filter.strip().lower()
+        code = label_to_code.get(raw, raw.upper() if len(raw) <= 4 else raw)
+        qs = qs.filter(
+            Q(priority__code__iexact=code)
+            | Q(priority__name__iexact=raw)
+        )
 
     if request.query_params.get('assigned_to_me') == 'true':
         qs = qs.filter(assigned_to=request.user)

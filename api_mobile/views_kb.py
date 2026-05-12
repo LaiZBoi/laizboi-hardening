@@ -53,7 +53,13 @@ def _serialize_kb(doc, *, detail=False):
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def kb_list_view(request):
-    """GET /api/mobile/v1/kb/?search=&page="""
+    """GET /api/mobile/v1/kb/?search=&organization_id=&page=
+
+    v3.17.474 — added optional `organization_id` filter so the mobile
+    KB screen can scope to a single client. `organization_id=global`
+    (or any non-integer that resolves to 'global') filters to
+    `is_global=True` docs only.
+    """
     qs = _kb_queryset(request.user)
 
     search = (request.query_params.get('search') or '').strip()
@@ -61,6 +67,20 @@ def kb_list_view(request):
         qs = qs.filter(
             Q(title__icontains=search) | Q(body__icontains=search) | Q(slug__icontains=search)
         )
+
+    org_filter = (request.query_params.get('organization_id') or '').strip()
+    if org_filter == 'global':
+        qs = qs.filter(is_global=True)
+    elif org_filter:
+        try:
+            org_id = int(org_filter)
+            org_ids = list(accessible_org_ids(request.user))
+            if org_id in org_ids:
+                qs = qs.filter(organization_id=org_id)
+            else:
+                qs = qs.none()
+        except ValueError:
+            pass
 
     qs = qs.order_by('-updated_at')
 

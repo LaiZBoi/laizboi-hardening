@@ -5,6 +5,37 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.474] - 2026-05-12
+
+### Fix dashboard-critical click + add org filter dropdown to Vault / Docs / Assets
+
+**Bug — dashboard "Needs attention: N critical" → tickets list shows nothing:**
+- Dashboard counts `critical_tickets = priority__code='P1'` — those are the P1 rows.
+- Tile click goes to `/tickets?filter=critical`, mobile translates that to `?priority=critical` on the server.
+- Server filtered by `priority__code='critical'` exact match — no priority row has code "critical" (codes are P1..P4) — so zero results.
+- Fix: `views_tickets.ticket_list_view` now maps the friendly priority labels (`critical`/`urgent`/`high`/`medium`/`normal`/`low`) to their P-codes before filtering, same logic the PATCH path got in v3.17.450. Also matches priority `name` for backends that use English names instead of P-codes.
+
+**New `OrgPicker` mobile component (`mobile/src/components/OrgPicker.tsx`):**
+- Dropdown-style picker — Pressable trigger shows the current selection ("All organizations" / specific org name / "Global only"), tapping opens a modal sheet with:
+  - Search box (so MSPs with 50+ clients can filter by name)
+  - "All orgs" entry at top
+  - Optional "Global only" entry (used by KB)
+  - Full list, scrollable
+  - Selected row highlighted with a ✓
+- Hides itself entirely when the user has access to ≤1 org.
+- Replaces the chip row that was on the Assets list (chips don't scale past ~6 orgs).
+
+**Wired into:**
+- `mobile/app/assets/index.tsx` — replaced horizontal chip scroll with OrgPicker.
+- `mobile/app/vault/index.tsx` — new OrgPicker above the search field. `useVaultEntries` now takes an `organization_id` arg.
+- `mobile/app/kb/index.tsx` — new OrgPicker with `showGlobal` so users can filter to globally-shared docs. `useKBArticles` now takes an `organization_id` arg.
+
+**Server:**
+- `views_kb.kb_list_view` now accepts `?organization_id=<id>` for scoping, and `?organization_id=global` for is_global=True docs only.
+- `views_tickets.ticket_list_view` accepts friendly priority labels as documented above.
+
+versionCode 3170473 → 3170474. **AAB rebuild required** — the OrgPicker component + screen updates ship in the bundle.
+
 ## [3.17.473] - 2026-05-11
 
 ### Beta-tester sign-up flow + visible app version (combined with v3.17.472)
