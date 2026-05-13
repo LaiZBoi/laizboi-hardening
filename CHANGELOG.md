@@ -5,6 +5,25 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.480] - 2026-05-13
+
+### Mobile: asset editing + asset ↔ vault linking
+
+**Mobile asset detail (`mobile/app/assets/[id].tsx`):**
+- New **Edit asset** action on the identity card (gated on `assets_edit`). Inline form for: name, hostname, IP, MAC, asset tag, serial, manufacturer, model, OS name/version, notes. Save round-trips through PATCH and refreshes the detail view.
+- **Stored secrets** card gains a **+ Link vault entry** action. Opens a searchable modal listing every Vault Password in the asset's organization that isn't already linked. Tapping a row creates the relation server-side.
+- Each linked vault row gains an **Unlink** button (red, small) right next to the password-type pill. One tap removes the `PasswordRelation` row; the secret itself stays intact.
+
+**Backend (`api_mobile/views_assets.py`):**
+- `PATCH /api/mobile/v1/assets/<id>/` — edit whitelisted fields (gated on `assets_edit`). `organization_id` is intentionally rejected on the edit path so re-orging an asset doesn't silently break its `PasswordRelation` rows.
+- `POST /api/mobile/v1/assets/<id>/vault-links/` — body `{password_id}`. Creates a `PasswordRelation(relation_type='asset', relation_id=asset_id)` row. Refuses cross-org links: the password must belong to the asset's org.
+- `DELETE /api/mobile/v1/assets/<id>/vault-links/?password_id=N` — removes the relation. Idempotent.
+- `/auth/me/` permissions map gains `assets_view`, `assets_create`, `assets_edit`, `assets_delete`.
+
+Tests: `MobileAssetEditTests`, `MobileAssetVaultLinkTests` cover the PATCH whitelist, perm gate, cross-org link rejection, and link/unlink round-trip.
+
+versionCode 3170479 → 3170480. **AAB rebuild required.**
+
 ## [3.17.479] - 2026-05-13
 
 ### Mobile: vault editing + ticket billing rollup + schedule-on-calendar

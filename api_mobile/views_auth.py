@@ -68,6 +68,8 @@ def _user_payload(user):
             # Vault (v3.17.479) — gate mobile Edit / New / Rotate UI.
             'vault_view', 'vault_create', 'vault_edit', 'vault_delete',
             'vault_view_password',
+            # Assets (v3.17.480) — gate mobile Edit / Link-vault UI.
+            'assets_view', 'assets_create', 'assets_edit', 'assets_delete',
         ):
             permissions[perm] = user_has_perm(user, perm)
     except Exception:

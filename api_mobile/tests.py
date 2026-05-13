@@ -2767,3 +2767,191 @@ class MobileScheduleTaskTests(TestCase):
         self.assertEqual(t.resolution_due_at.year, 2026)
         self.assertEqual(t.resolution_due_at.month, 6)
         self.assertEqual(t.resolution_due_at.day, 20)
+
+
+# === v3.17.480 follow-up tests ====================================
+# Asset PATCH + asset ↔ vault link/unlink endpoints.
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileAssetEditTests(TestCase):
+    """v3.17.480 — PATCH /assets/<id>/ honors the whitelist + assets_edit gate."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        from assets.models import Asset
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='AsetEdit', slug='aedit')
+        tpl_edit = RoleTemplate.objects.create(
+            name='Asset-Edit', is_system_template=False,
+            assets_view=True, assets_create=True, assets_edit=True,
+        )
+        tpl_view = RoleTemplate.objects.create(
+            name='Asset-View', is_system_template=False,
+            assets_view=True, assets_edit=False,
+        )
+        self.editor = User.objects.create_user('aeditor', password='hunter2')
+        self.viewer = User.objects.create_user('aviewer', password='hunter2')
+        Membership.objects.create(
+            user=self.editor, organization=self.org, role=Role.ADMIN,
+            role_template=tpl_edit, is_active=True,
+        )
+        Membership.objects.create(
+            user=self.viewer, organization=self.org, role=Role.READONLY,
+            role_template=tpl_view, is_active=True,
+        )
+        self.asset = Asset.objects.create(
+            organization=self.org, name='ServerEdit',
+            hostname='old.local', asset_type='server',
+        )
+        self.client = Client()
+        self.editor_tok = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'aeditor', 'password': 'hunter2',
+        }).json()['token']
+        self.viewer_tok = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'aviewer', 'password': 'hunter2',
+        }).json()['token']
+
+    def _patch(self, token, body):
+        return self.client.patch(
+            f'/api/mobile/v1/assets/{self.asset.id}/',
+            data=json.dumps(body), content_type='application/json',
+            HTTP_AUTHORIZATION=f'Token {token}',
+        )
+
+    def test_patch_updates_whitelisted_fields(self):
+        resp = self._patch(self.editor_tok, {
+            'hostname': 'new.local',
+            'notes': 'Renamed via mobile',
+            'os_name': 'Ubuntu',
+        })
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.hostname, 'new.local')
+        self.assertEqual(self.asset.notes, 'Renamed via mobile')
+        self.assertEqual(self.asset.os_name, 'Ubuntu')
+
+    def test_patch_blocks_organization_change(self):
+        other = Organization.objects.create(name='Other', slug='aother')
+        resp = self._patch(self.editor_tok, {'organization_id': other.id})
+        self.assertEqual(resp.status_code, 400)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.organization_id, self.org.id)
+
+    def test_patch_without_perm_403(self):
+        resp = self._patch(self.viewer_tok, {'hostname': 'should-fail'})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_patch_blank_name_rejected(self):
+        resp = self._patch(self.editor_tok, {'name': '   '})
+        self.assertEqual(resp.status_code, 400)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False,
+                   REST_FRAMEWORK=NO_THROTTLE_REST)
+class MobileAssetVaultLinkTests(TestCase):
+    """v3.17.480 — POST/DELETE /assets/<id>/vault-links/ creates and
+    removes PasswordRelation rows; cross-org link is rejected."""
+
+    def setUp(self):
+        from accounts.models import RoleTemplate
+        from assets.models import Asset
+        from vault.models import Password, PasswordRelation
+        from vault.encryption_v2 import encrypt_password
+        _clear_throttle_cache()
+        self.org = Organization.objects.create(name='AVL-A', slug='avla')
+        self.other_org = Organization.objects.create(name='AVL-B', slug='avlb')
+        tpl = RoleTemplate.objects.create(
+            name='AVL-Full', is_system_template=False,
+            assets_view=True, assets_edit=True, vault_view=True,
+        )
+        self.user = User.objects.create_user('avluser', password='hunter2')
+        Membership.objects.create(
+            user=self.user, organization=self.org, role=Role.ADMIN,
+            role_template=tpl, is_active=True,
+        )
+        Membership.objects.create(
+            user=self.user, organization=self.other_org, role=Role.ADMIN,
+            role_template=tpl, is_active=True,
+        )
+        self.asset = Asset.objects.create(
+            organization=self.org, name='AVL-host', hostname='avl.local',
+        )
+        self.password_same_org = Password.objects.create(
+            organization=self.org, title='Same-org secret',
+            encrypted_password=encrypt_password('shh', org_id=self.org.id),
+        )
+        self.password_other_org = Password.objects.create(
+            organization=self.other_org, title='Other-org secret',
+            encrypted_password=encrypt_password('shh', org_id=self.other_org.id),
+        )
+        self.client = Client()
+        self.token = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'avluser', 'password': 'hunter2',
+        }).json()['token']
+        self.PasswordRelation = PasswordRelation
+
+    def test_link_same_org_creates_relation(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/assets/{self.asset.id}/vault-links/',
+            self.token, {'password_id': self.password_same_org.id},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertTrue(
+            self.PasswordRelation.objects.filter(
+                password=self.password_same_org,
+                relation_type='asset', relation_id=self.asset.id,
+            ).exists()
+        )
+
+    def test_link_cross_org_rejected(self):
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/assets/{self.asset.id}/vault-links/',
+            self.token, {'password_id': self.password_other_org.id},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(
+            self.PasswordRelation.objects.filter(
+                password=self.password_other_org,
+                relation_type='asset', relation_id=self.asset.id,
+            ).exists()
+        )
+
+    def test_link_then_unlink(self):
+        self.PasswordRelation.objects.create(
+            password=self.password_same_org,
+            relation_type='asset', relation_id=self.asset.id,
+        )
+        resp = self.client.delete(
+            f'/api/mobile/v1/assets/{self.asset.id}/vault-links/'
+            f'?password_id={self.password_same_org.id}',
+            HTTP_AUTHORIZATION=f'Token {self.token}',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertFalse(
+            self.PasswordRelation.objects.filter(
+                password=self.password_same_org,
+                relation_type='asset', relation_id=self.asset.id,
+            ).exists()
+        )
+
+    def test_link_without_perm_403(self):
+        from accounts.models import RoleTemplate
+        viewer_tpl = RoleTemplate.objects.create(
+            name='AVL-View', is_system_template=False,
+            assets_view=True, assets_edit=False,
+        )
+        viewer = User.objects.create_user('avlviewer', password='hunter2')
+        Membership.objects.create(
+            user=viewer, organization=self.org, role=Role.READONLY,
+            role_template=viewer_tpl, is_active=True,
+        )
+        tok = _post(self.client, '/api/mobile/v1/auth/login/', {
+            'username': 'avlviewer', 'password': 'hunter2',
+        }).json()['token']
+        resp = _auth_post(
+            self.client, f'/api/mobile/v1/assets/{self.asset.id}/vault-links/',
+            tok, {'password_id': self.password_same_org.id},
+        )
+        self.assertEqual(resp.status_code, 403)

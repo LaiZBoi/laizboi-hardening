@@ -12,6 +12,8 @@ from rest_framework.decorators import (
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.permission_utils import user_has_perm
+
 from .scoping import accessible_org_ids
 
 
@@ -23,6 +25,13 @@ _CREATABLE_FIELDS = (
     'hostname', 'ip_address', 'mac_address',
     'os_name', 'os_version', 'manufacturer', 'model',
     'notes',
+)
+
+# v3.17.480 — whitelist for PATCH /assets/<id>/. Same shape as create
+# minus `organization_id` (re-org would silently break vault relations).
+_EDITABLE_FIELDS = _CREATABLE_FIELDS + (
+    'cpu', 'ram_gb', 'storage', 'firmware_version', 'firmware_latest',
+    'os_version', 'warranty_expiry', 'lifespan_years',
 )
 
 
@@ -161,14 +170,18 @@ def asset_list_view(request):
     })
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PATCH'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def asset_detail_view(request, pk: int):
     """
-    GET /api/mobile/v1/assets/<id>/
+    GET   /api/mobile/v1/assets/<id>/
+    PATCH /api/mobile/v1/assets/<id>/   (edit — v3.17.480; assets_edit-gated)
 
-    Cross-org reads return 404.
+    Cross-org reads return 404. PATCH accepts the same whitelist as
+    create plus a few additional hardware/lifecycle fields. Setting
+    `organization_id` is intentionally rejected so a re-org doesn't
+    silently break vault relations.
     """
     from assets.models import Asset
 
@@ -180,9 +193,130 @@ def asset_detail_view(request, pk: int):
     except Asset.DoesNotExist:
         return Response({'detail': 'Not found'}, status=404)
 
+    if request.method == 'PATCH':
+        if not user_has_perm(request.user, 'assets_edit'):
+            return Response(
+                {'detail': "You don't have permission to edit assets."},
+                status=drf_status.HTTP_403_FORBIDDEN,
+            )
+        data = request.data or {}
+        if 'organization_id' in data:
+            return Response(
+                {'detail': 'organization_id is not editable on mobile'},
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+        update_fields: list[str] = []
+        for key in _EDITABLE_FIELDS:
+            if key in data:
+                val = data[key]
+                # GenericIPAddressField rejects '' but accepts NULL.
+                if key == 'ip_address' and val == '':
+                    val = None
+                # `name` cannot become blank — guard.
+                if key == 'name':
+                    if not isinstance(val, str) or not val.strip():
+                        return Response({'detail': 'name cannot be blank'},
+                                        status=drf_status.HTTP_400_BAD_REQUEST)
+                    val = val.strip()
+                setattr(asset, key, val)
+                update_fields.append(key)
+        if not update_fields:
+            return Response(_serialize_asset(asset, detail=True))
+        try:
+            asset.save(update_fields=update_fields + ['updated_at']
+                       if any(f.name == 'updated_at'
+                              for f in asset._meta.fields)
+                       else update_fields)
+        except Exception as exc:
+            return Response({'detail': f'Could not update asset: {exc}'},
+                            status=drf_status.HTTP_400_BAD_REQUEST)
+        payload = _serialize_asset(asset, detail=True)
+        payload['vault_entries'] = _vault_entries_for_asset(asset, request.user)
+        return Response(payload)
+
     payload = _serialize_asset(asset, detail=True)
     payload['vault_entries'] = _vault_entries_for_asset(asset, request.user)
     return Response(payload)
+
+
+@api_view(['POST', 'DELETE'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def asset_vault_link_view(request, pk: int):
+    """
+    POST   /api/mobile/v1/assets/<id>/vault-links/         body: {password_id}
+    DELETE /api/mobile/v1/assets/<id>/vault-links/?password_id=N
+
+    Link / unlink a Vault Password to this asset via the existing
+    `PasswordRelation(relation_type='asset')` row. Both sides must live
+    in an org the caller has access to (so techs can't fish secrets out
+    of another tenant by attaching them to one of their own assets).
+
+    Gated on `assets_edit` (mutates the asset's relationships).
+    """
+    from assets.models import Asset
+    from vault.models import Password, PasswordRelation
+
+    org_ids = list(accessible_org_ids(request.user))
+    try:
+        asset = Asset.objects.get(pk=pk, organization_id__in=org_ids)
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Not found'},
+                        status=drf_status.HTTP_404_NOT_FOUND)
+    if not user_has_perm(request.user, 'assets_edit'):
+        return Response(
+            {'detail': "You don't have permission to edit assets."},
+            status=drf_status.HTTP_403_FORBIDDEN,
+        )
+
+    # password_id can come from POST body or DELETE query string.
+    if request.method == 'POST':
+        pwd_id = (request.data or {}).get('password_id')
+    else:
+        pwd_id = request.query_params.get('password_id')
+    try:
+        pwd_id = int(pwd_id) if pwd_id is not None else None
+    except (TypeError, ValueError):
+        return Response({'detail': 'password_id must be an integer'},
+                        status=drf_status.HTTP_400_BAD_REQUEST)
+    if pwd_id is None:
+        return Response({'detail': 'password_id is required'},
+                        status=drf_status.HTTP_400_BAD_REQUEST)
+
+    try:
+        password = Password.objects.get(pk=pwd_id, organization_id__in=org_ids)
+    except Password.DoesNotExist:
+        return Response({'detail': 'password not found / not accessible'},
+                        status=drf_status.HTTP_404_NOT_FOUND)
+
+    # Cross-org link prevention: refuse to link a vault entry from a
+    # different org than the asset.
+    if password.organization_id != asset.organization_id:
+        return Response(
+            {'detail': 'Cannot link across organizations'},
+            status=drf_status.HTTP_400_BAD_REQUEST,
+        )
+
+    if request.method == 'POST':
+        PasswordRelation.objects.get_or_create(
+            password=password, relation_type='asset', relation_id=asset.id,
+        )
+        return Response(
+            {'detail': 'linked',
+             'asset_id': asset.id,
+             'password_id': password.id},
+            status=drf_status.HTTP_201_CREATED,
+        )
+
+    # DELETE
+    PasswordRelation.objects.filter(
+        password=password, relation_type='asset', relation_id=asset.id,
+    ).delete()
+    return Response(
+        {'detail': 'unlinked',
+         'asset_id': asset.id,
+         'password_id': password.id},
+    )
 
 
 def _create_asset(request):

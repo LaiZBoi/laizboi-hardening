@@ -42,9 +42,11 @@ urlpatterns = [
     path('organizations/', views_dashboard.organization_list_view, name='org_list'),
     path('organizations/<int:pk>/', views_dashboard.organization_detail_view, name='org_detail'),
 
-    # Assets (v3.17.348)
+    # Assets (v3.17.348; PATCH + vault link/unlink v3.17.480)
     path('assets/', views_assets.asset_list_view, name='asset_list'),
     path('assets/<int:pk>/', views_assets.asset_detail_view, name='asset_detail'),
+    path('assets/<int:pk>/vault-links/',
+         views_assets.asset_vault_link_view, name='asset_vault_link'),
 
     # Tickets (v3.17.349)
     path('tickets/', views_tickets.ticket_list_view, name='ticket_list'),
