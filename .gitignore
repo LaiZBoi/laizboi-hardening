@@ -199,3 +199,11 @@ projects/
 
 # Android app — separate stack, in its own repo or unpublished
 clientst0r-android/
+
+# Mobile app — scrubbed from GitHub history 2026-05-14; kept on-disk only.
+# Do not commit; do not re-track. Includes the Expo TypeScript app,
+# its build tooling (android/, gradle, EAS, patches/), and the older
+# mobile-app/ directory.
+mobile/
+mobile-app/
+_mobile_backup_*.tar.gz
