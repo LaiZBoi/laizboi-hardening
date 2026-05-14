@@ -5,6 +5,18 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.483] - 2026-05-14
+
+### Play Store: upload script now sets release name to match the bundle
+
+The Play Developer API's `edits().tracks().update()` call doesn't auto-populate `release.name` from the bundle's `versionName` — if you omit it, Play Console carries forward whatever name the previous release had. After uploading v3.17.482's bundle (versionCode 3170482) on top of an earlier release named "3.17.481", the Play Console UI displayed the release as "3.17.481" even though the contained bundle was 3170482. Tester installs were correct; only the human-readable label was stale.
+
+**Fix — `/home/administrator/local_apps/play_publish/scripts/upload-aab.py`:**
+- Now derives `release_name` by regex on the AAB filename (`clientst0r-v(N.N.N).aab` per build-aab.sh's naming convention) and passes it as the release's `name` field on every track update. Falls back to the bundle's versionCode if the filename doesn't match the pattern.
+- The script lives in the gitignored `local_apps/` tree per the 2026-05-14 GitHub scrub; this changelog entry documents the change for history but the diff itself stays off-repo.
+
+No mobile rebuild needed for this release — the only file that changed is the upload helper script, and it runs on the server before the AAB is sent to Google.
+
 ## [3.17.482] - 2026-05-14
 
 ### Settings → Updates: stop hammering GitHub on every page load
