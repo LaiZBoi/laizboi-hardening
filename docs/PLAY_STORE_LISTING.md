@@ -29,25 +29,35 @@ Client St0r Mobile is the on-the-go companion app for technicians using the Clie
 
 The app is designed for IT service providers (MSPs) and internal IT teams who already run Client St0r on their own infrastructure. It is not a standalone product — you need a Client St0r server URL and an account on it to sign in.
 
-WHAT YOU CAN DO
+WHAT YOU CAN DO FROM THE APP
 
-• Ticket queue: View, search, and update tickets assigned to you. Add comments and status changes from the field instead of waiting until you're back at a desk.
+• PSA Tickets — File new tickets with a client picker, log time as you work, attach photos to comments, reassign with one tap, and check off SLA-driven due dates from a built-in calendar. Tickets you work on automatically deduct from the client's block-of-hours contract.
 
-• Client lookup: Browse organizations and their assets — workstations, servers, network gear, IPs, MAC addresses, serial numbers — without VPN'ing back to the office.
+• Scheduled Tasks & Calendar — See the next 7 days at a glance on the dashboard. Tap any day to schedule a new task or look at open tickets due that day. Tasks you sign off close automatically.
 
-• Knowledge base: Search and read your team's runbooks, how-tos, and client-specific docs. Markdown rendering with images.
+• On-site Time & Geofencing — Clock in once, and the app auto-detects when you arrive at and leave a client site. Each visit records as a separate time entry against the matching ticket. Off-shift GPS is suppressed at the server.
 
-• Vault access: Retrieve client credentials with the same approval gates, rate limits, and audit logging your web users get. Password reveals run through your server's policy — break-glass requests, per-credential approval, and reveal-rate limits all apply.
+• Vault — Search and reveal credentials for the clients you're working with. Per-credential approval gates, GeoIP rules, and access-rule denials are all honored on the device. Edit and rotate passwords without leaving the app.
 
-• Dashboard: Quick view of your active tickets, organization health, recent monitoring alerts, and security flags.
+• Assets — Read the full asset record (identity, hardware, lifecycle, primary contact). Edit on the fly. Link a vault secret to an asset so the next tech can find it in one tap.
 
-• Multi-factor auth: TOTP MFA support for accounts that require it.
+• Dispatch — Daily dispatch board with overdue / today / upcoming buckets. Acknowledge an assignment, sign off when complete, comment as you go.
+
+• Vehicles & Receipts — Log fuel fill-ups, file damage reports with photos, upload receipts that get OCR'd into structured records.
+
+• Inventory — Scan a part QR code, see the on-vehicle / on-shelf count, adjust quantities.
+
+• Knowledge Base — Search SOPs and KB articles.
+
+• Workflow Runner — Start a workflow and step through stages with prompts, condition gates, and signatures.
 
 PRIVACY AND SECURITY
 
-This app is a thin client to the Client St0r server you operate. It does not send data to any third-party service. All traffic to your server is encrypted with TLS. On-device storage (auth token, server URL, basic profile cache) is encrypted with the Android Keystore. Vault secrets retrieved through the reveal flow are held in memory only — never written to disk.
+The app is a thin client to the Client St0r server you operate. It does not send data to any third-party service except the optional Sentry crash-reporting service (which only receives stack traces and device model — no PII). All traffic to your server is encrypted with TLS. On-device storage (auth token, server URL, basic profile cache) is encrypted with the Android Keystore. Vault secrets retrieved through the reveal flow are held in memory only — never written to disk.
 
-The app does not collect location, photos, contacts, or any data not required to talk to your server.
+Location is collected only while you are clocked in, and only against client sites your organization has configured. Off-shift GPS is dropped at the server. You can disable background location entirely from the Settings screen, and you can delete your own location history at any time.
+
+Photos are uploaded only when you explicitly attach them to a ticket comment, damage report, or receipt. The camera is used to scan inventory QR codes and capture receipts; images are sent only to your Client St0r server.
 
 WHAT YOU NEED
 
@@ -57,13 +67,12 @@ WHAT YOU NEED
 
 For setup, contact your Client St0r administrator for your server URL.
 
-LEARN MORE
+BETA STATUS
 
-Project home: https://github.com/agit8or1/clientst0r
-Issues and feedback: https://github.com/agit8or1/clientst0r/issues
+This is a public beta. Active features get incremental updates; please send feedback via the BETA ribbon at the top of the screen.
 ```
 
-(Word-count this in Play Console — should land around 1900 chars, well under 4000.)
+(Approx 2900 chars; well under 4000.)
 
 ---
 

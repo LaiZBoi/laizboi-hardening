@@ -11,6 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from two_factor.urls import urlpatterns as tf_urls
 
 from core.views import privacy_policy as core_privacy_policy
+from core.views import beta_onboarding as core_beta_onboarding
 
 urlpatterns = [
     # Favicon
@@ -70,6 +71,10 @@ urlpatterns = [
 
     # Public privacy policy (Play Console + Apple App Store require a public URL)
     path('privacy-policy/', core_privacy_policy, name='privacy_policy'),
+
+    # Public beta onboarding (v3.17.481) — landing page for testers who
+    # follow the Play Open-Testing opt-in URL.
+    path('beta-onboarding/', core_beta_onboarding, name='beta_onboarding'),
 ]
 
 # Optional: GraphQL API v2 (only if graphene_django is installed)

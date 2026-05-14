@@ -5,6 +5,28 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.481] - 2026-05-14
+
+### Mobile beta release prep: public onboarding page, master Play Store guide, full Data Safety + listing copy
+
+**Server: public `/beta-onboarding/` page (`core/views.py`, `config/urls.py`):**
+- New `beta_onboarding()` view following the same pattern as `privacy_policy()` — renders `docs/BETA_ONBOARDING.md` server-side via the `markdown` library. Anonymous-accessible (no auth required) so Play Open Testing users who follow the opt-in URL can read install instructions, known limitations, and feedback channels without first creating an account.
+- Template at `templates/core/beta_onboarding.html` mirrors the privacy-policy template styling with a CTA button.
+
+**Docs:**
+- `docs/PLAY_STORE_BETA.md` (new) — single canonical walkthrough for every step from local AAB build through Open Testing rollout. Phases 0–10 cover pre-flight, build, account setup, dashboard checklist, store listing, Internal/Closed/Open promotion, monitoring, and recovery ops. Includes a "Known failure" subsection for the current `expo-modules-core@1.12.26` Gradle publishing issue.
+- `docs/BETA_ONBOARDING.md` (new) — source of `/beta-onboarding/` page content.
+- `docs/PLAY_STORE_LISTING.md` (updated) — full description revised to match v3.17.481 feature set (vault edits, ticket billing rollup, schedule-on-calendar, asset ↔ vault linking) and to honestly disclose location + photo collection.
+- `docs/PLAY_DATA_SAFETY.md` (updated) — declares the new optional Sentry crash-reporting SDK; updated header to point at v3.17.481 / versionCode 3170481.
+
+**Mobile-side (local-only since the 2026-05-14 history scrub):**
+- `app.json` — bump to v3.17.481 / versionCode 3170481; explicit `android.permissions` allowlist + `blockedPermissions` list to strip 4 unused / dangerous permissions (`RECORD_AUDIO`, `SYSTEM_ALERT_WINDOW`, `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`).
+- `app/_layout.tsx` — Sentry SDK init wrapped in try/dynamic-require so missing `@sentry/react-native` is a no-op in dev builds. DSN comes from `EXPO_PUBLIC_SENTRY_DSN`.
+- `src/components/BetaBanner.tsx` (new) + mount in `_layout.tsx` — orange ribbon at the top of every screen showing version + "Send feedback →". Hidden unless `EXPO_PUBLIC_BUILD_CHANNEL=beta`. Tapping opens the new-ticket form with the subject pre-filled.
+- `app/tickets/new.tsx` — accepts `?subject=` query param so the banner can deep-link to a pre-filled feedback ticket.
+
+**Build status:** local `./gradlew bundleRelease` is currently blocked on a `Could not get unknown property 'release'` error in `expo-modules-core@1.12.26`'s Gradle plugin (AGP 8 publishing-API change). Documented in `docs/PLAY_STORE_BETA.md` with three resolution paths (patch the plugin, upgrade Expo SDK, or use EAS Cloud build). All other Play-Store prep is complete.
+
 ## [3.17.480] - 2026-05-13
 
 ### Mobile: asset editing + asset ↔ vault linking

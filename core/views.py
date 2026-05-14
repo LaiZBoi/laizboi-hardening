@@ -382,6 +382,26 @@ def privacy_policy(request):
     return render(request, 'core/privacy_policy.html', {'policy_html': html})
 
 
+def beta_onboarding(request):
+    """
+    v3.17.481 — Public beta-onboarding page rendered from
+    `docs/BETA_ONBOARDING.md`. Anonymous-accessible so Play Store users
+    who follow the opt-in URL can read install instructions, known
+    limitations, and how to file feedback without logging in.
+    """
+    from pathlib import Path
+    from django.conf import settings
+    from markdown import markdown
+    base = getattr(settings, 'BASE_DIR', Path(__file__).resolve().parent.parent)
+    path = Path(base) / 'docs' / 'BETA_ONBOARDING.md'
+    try:
+        raw = path.read_text(encoding='utf-8')
+    except OSError:
+        raw = '# Mobile beta\n\nThe onboarding page could not be loaded.'
+    html = markdown(raw, extensions=['extra', 'tables', 'sane_lists'])
+    return render(request, 'core/beta_onboarding.html', {'page_html': html})
+
+
 @login_required
 @user_passes_test(is_superuser)
 def consult_requests(request):

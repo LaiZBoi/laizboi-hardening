@@ -1,10 +1,12 @@
 # Play Console — Data Safety Form Answers
 
-This is a fill-in guide for Play Console's **App content → Data safety** questionnaire. Answers reflect the current AAB (`v3.17.461` / `versionCode 3170461`) which collects more data than the v1 internal-testing build:
+This is a fill-in guide for Play Console's **App content → Data safety** questionnaire. Answers reflect the current AAB (`v3.17.481` / `versionCode 3170481`) — the first **public beta** build:
 
 - **Precise location** — captured at user-initiated clock-in for geofence verification (added v3.17.452)
+- **Background location** — opt-in only; default OFF (Settings → "Background location"). Enables auto-on-site time tracking via geofence visits (added v3.17.464).
 - **Camera + Photos** — capture damage report photos, fuel receipt photos, scan inventory QR codes (added v3.17.460 + v3.17.461)
 - **Authentication credentials, app activity, device IDs** — same as v1
+- **Crash logs + diagnostics** — sent to Sentry if `EXPO_PUBLIC_SENTRY_DSN` is set at build time (added v3.17.481). Stack traces + device model only; no PII.
 
 Update this doc and re-fill the Play Console form whenever the app starts collecting a new data type or stops collecting one.
 
@@ -94,8 +96,8 @@ All **Not collected**.
 ### App info and performance
 | Type | Status | Notes |
 |---|---|---|
-| Crash logs | **Collected** | Google Play collects from signed AABs; we ship R8 mapping for symbolication |
-| Diagnostics | **Collected** | Same — collected by Play Console, not by app code |
+| Crash logs | **Collected** | (a) Google Play collects from signed AABs; we ship R8 mapping for symbolication. (b) v3.17.481 added optional Sentry SDK — sends stack traces + device model + OS version. DSN is build-time only; if `EXPO_PUBLIC_SENTRY_DSN` is unset, no third-party crash reporting happens. |
+| Diagnostics | **Collected** | Same — collected by Play Console and (if Sentry enabled) Sentry. |
 | Other app performance data | Not collected | |
 
 ### Device or other IDs
@@ -160,7 +162,11 @@ Play Console asks the same four questions per type. Defaults that apply to **eve
 > Does your app share any of the required user data with third parties?
 **Answer: No.**
 
-The app sends data only to the server URL the user enters at login. That server is operated by the user's organization, not by a third party. The app does not include any third-party SDKs that exfiltrate data (no analytics, no advertising, no crash reporting beyond what Google Play provides automatically). Google Play's automatic crash + diagnostics is governed by Google's own policies; Play Console does not require it to be disclosed as data sharing.
+The app sends data only to (1) the server URL the user enters at login (operated by the user's organization, not a third party) and (2) optionally, Sentry.io for crash reporting if `EXPO_PUBLIC_SENTRY_DSN` was baked into the build. No advertising, no analytics, no other third-party SDKs.
+
+**Declare Sentry as data sharing** if you ship a build with the DSN set: data type = "Crash logs" + "Diagnostics", purpose = "Analytics" (technical debugging), processing = "Not processed ephemerally" (Sentry retains for the retention period configured in your Sentry project, default 30 days).
+
+Google Play's automatic crash + diagnostics is governed by Google's own policies; Play Console does not require it to be disclosed as data sharing.
 
 ---
 
