@@ -5,6 +5,17 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.491] - 2026-05-23
+
+### Surface Docker install as a headline feature
+
+Follow-up to v3.17.490. The Docker install path landed in v3.17.490 but only showed up on GitHub as a buried block inside Quick Start. This release promotes it.
+
+- **README.md** — "What's New" section header bumped from v3.17.444 to v3.17.490; new top bullet calls out Phase 42 (Docker / docker-compose) with the one-line `git clone && docker compose up -d` pitch, a summary of what ships in the box (Dockerfile + compose profiles + GHA publishing + Makefile + .env.example + docs/docker.md), and an explicit "classic `bash install.sh` path is unchanged" note.
+- **FEATURES.md** — "Performance & Deployment" section now lists both install paths side-by-side and adds a dedicated "Docker / containerized deployment" sub-section enumerating Dockerfile / compose / dev override / entrypoint / GHCR workflow / Makefile / docs.
+
+No code changes; documentation only.
+
 ## [3.17.490] - 2026-05-23
 
 ### First-class Docker / docker-compose deployment (Phase 42)

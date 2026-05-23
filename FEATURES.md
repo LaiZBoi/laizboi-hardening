@@ -828,8 +828,17 @@ The mobile app exposes only six primary screens; everything else is reachable as
 ## 🚀 Performance & Deployment
 - **Optimization** - Database indexing, query optimization, caching, lazy loading, pagination
 - **Scalability** - Horizontal scaling, database replication, CDN integration, minified assets
-- **Installation** - One-command install, Docker support, systemd integration, Nginx config
-- **Maintenance** - Zero-downtime updates, automated backups, log rotation, health checks
+- **Installation** - One-command install (`bash install.sh`), `docker compose up -d` Docker / Compose path (Phase 42 — v3.17.490), systemd integration, Nginx config
+- **Maintenance** - Zero-downtime updates, automated backups, log rotation, health checks (dedicated `/health/` endpoint as of v3.17.490)
+
+### Docker / containerized deployment *(Phase 42 — v3.17.490)*
+- **`Dockerfile`** — multi-stage Python 3.12 slim build; non-root `clientst0r` user (uid 1000); HEALTHCHECK against `/health/`.
+- **`docker-compose.yml`** — `app` + MariaDB 10.11 `db` by default; optional Nginx (`--profile proxy`) and Redis (`--profile cache`). Required env vars enforced with `${VAR:?...}` so misconfiguration fails loudly. Named volumes `clientst0r-db-data` / `clientst0r-media` / `clientst0r-static` / `clientst0r-uploads` survive `docker compose down`.
+- **`docker-compose.dev.yml`** — source bind-mount + `gunicorn --reload` + SQLite default for fast local iteration.
+- **`docker-entrypoint.sh`** — DB readiness wait (skipped for `DB_ENGINE=sqlite3`), `migrate`, `collectstatic`, optional `DJANGO_SUPERUSER_*` bootstrap.
+- **GitHub Container Registry** — `.github/workflows/docker-image.yml` builds on every PR and publishes `ghcr.io/agit8or1/clientst0r:latest` + semver tags on push to `main` / `v*`. Buildx GHA layer cache. `linux/amd64` (ARM line commented in).
+- **Operator UX** — `Makefile` wraps `docker compose` with one-word targets: `make docker-up` / `docker-logs` / `docker-shell` / `docker-migrate` / `docker-createsuperuser` / `dev-up` / `backup` / `restore`.
+- **Documentation** — `.env.example` covers every supported variable with inline guidance; [`docs/docker.md`](docs/docker.md) covers quick start, profiles, persistent volumes, backups, upgrades, dev mode, and troubleshooting (race conditions, lost `APP_MASTER_KEY`, ARM hosts).
 
 ---
 

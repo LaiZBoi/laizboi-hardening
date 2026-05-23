@@ -408,8 +408,9 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 ### Latest Release - v3.17.x (May 2026)
 
-**🎉 New in v3.17 (latest: v3.17.444):**
+**🎉 New in v3.17 (latest: v3.17.490):**
 
+- **🐳 First-class Docker / docker-compose deployment** *(Phase 42 — v3.17.490)* — `git clone && docker compose up -d` stands up app + MariaDB in under a minute. Multi-stage `Dockerfile` runs as non-root with a `/health/` HEALTHCHECK. Compose ships `app` + `db` by default; optional Nginx (`--profile proxy`) and Redis (`--profile cache`). `docker-compose.dev.yml` override for source-mount + reload + SQLite. GitHub Actions workflow publishes `ghcr.io/agit8or1/clientst0r:latest` + semver tags on every push to `main`. Full Makefile + `.env.example` + [docs/docker.md](docs/docker.md) guide (backups, upgrades, profiles, troubleshooting). Classic `bash install.sh` path is unchanged.
 - **🛡️ Compliance Frameworks & Recertification** *(Phase 41 — v3.17.435→v3.17.444)* — per-organization PCI-DSS v4.0 (38 controls) and HIPAA Security Rule (33 controls). Color-coded attestation checklist with notes + evidence URLs, branded customer-facing PDF report, and monthly recertification reminder cron with 7-day dedup. Toggle reminders / interval / notify-email per enrollment; **Mark Recertified Now** button stamps the cycle. RBAC-gated: superuser / staff / org-owner / org-admin only.
 - **📱 Native mobile app** *(Phase 8 — v3.17.346→v3.17.444)* — Expo + React Native + TypeScript. Six top-level areas: **Dashboard / Assets / Vault / Docs / PSA / Operations**. Operations is a hub for Timeclock, Monitoring, Security alerts, and Settings. Backed by DRF `/api/mobile/v1/` with token auth + per-endpoint throttling. Play Console publishing infrastructure under `local_apps/play_publish/` (local-only, gitignored): keystore generation, AAB build with auto-derived versionCode, R8 minify + proguard `mapping.txt`, Android API 35 target, Google Play Developer API upload.
 - **📋 Compliance Evidence Packs** *(Phase 39)* — single-ZIP audit bundle per org for SOC2 / ISO27001 / due-diligence requests.
