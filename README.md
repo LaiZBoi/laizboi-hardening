@@ -580,6 +580,38 @@ Click-to-connect interface for managing patch panel connections:
 
 ## 🚀 Quick Start
 
+### 🐳 Run with Docker (recommended for fresh hosts)
+
+```bash
+git clone https://github.com/agit8or1/clientst0r.git
+cd clientst0r
+cp .env.example .env
+# edit .env — at minimum: SECRET_KEY, DB_*_PASSWORD, APP_MASTER_KEY
+docker compose up -d
+```
+
+Open `http://localhost:8000`. The entrypoint applies migrations and
+collects static files on first boot. If you set `DJANGO_SUPERUSER_*`
+in `.env`, an admin account is created automatically.
+
+**Optional services** are gated behind compose profiles:
+
+```bash
+docker compose --profile proxy up -d   # adds Nginx + TLS on 80/443
+docker compose --profile cache up -d   # adds Redis (only if you've switched CACHES to Redis)
+```
+
+**Pre-built images** are published to `ghcr.io/agit8or1/clientst0r`
+on every push to `main` and every `v*` tag — `docker compose pull` to
+upgrade without building locally.
+
+**Full Docker guide:** [docs/docker.md](docs/docker.md) — backups,
+upgrades, profiles, dev mode, troubleshooting.
+
+> The classic `bash install.sh` path below still works. Docker is a
+> peer option, not a replacement — pick whichever fits your host
+> better.
+
 ### One-Line Installation (Recommended)
 
 The easiest way to install Client St0r:

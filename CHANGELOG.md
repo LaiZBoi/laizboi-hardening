@@ -5,6 +5,38 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.490] - 2026-05-23
+
+### First-class Docker / docker-compose deployment (Phase 42)
+
+`git clone && docker compose up -d` now stands up a working Client St0r install in under a minute. The classic `bash install.sh` path is unchanged — Docker is a peer install option, not a replacement.
+
+**Image (`Dockerfile`).** Multi-stage build on `python:3.12-slim`. Stage 1 compiles wheels with `build-essential` + `libmariadb-dev`; Stage 2 copies the venv into a slim runtime image with only `libmariadb3` + `curl`. Runs as non-root `clientst0r` (uid 1000). `collectstatic` runs at container start (not build) so it picks up the operator's env. `HEALTHCHECK` hits a new dedicated endpoint.
+
+**Health endpoint (`core/views.py` + `config/urls.py`).** New `GET /health/` returns `{"ok": true, "version": "3.17.490"}` with HTTP 200. No auth, no DB hit on the read path — safe to expose to load balancers and Docker healthchecks.
+
+**Compose (`docker-compose.yml`).** Two services start by default: `app` (Django + gunicorn) and `db` (MariaDB 10.11). Optional services gated behind profiles:
+- `--profile proxy` — adds an Nginx reverse proxy (port 80/443, with TLS-ready config in `docker/nginx/conf.d/clientst0r.conf`).
+- `--profile cache` — adds Redis. Only useful if the operator switches Django's `CACHES` away from the default in-process `locmem`.
+
+Required env vars (`SECRET_KEY`, `DB_ROOT_PASSWORD`, `DB_PASSWORD`) are enforced with compose's `${VAR:?message}` syntax so `docker compose up` fails loudly rather than booting into a half-configured state. Container names, volume names, and the network are all prefixed `clientst0r-*`. The old `huduglue.conf` nginx config was renamed and rebranded.
+
+**Dev override (`docker-compose.dev.yml`).** Use with `make dev-up` or `docker compose -f docker-compose.yml -f docker-compose.dev.yml up`. Source tree bind-mounted; `gunicorn --reload` watches for changes; defaults to `DB_ENGINE=sqlite3` so the dev stack doesn't need MariaDB; `DEBUG=True` + `ALLOWED_HOSTS=*` + all `SECURE_*` flags off.
+
+**Entrypoint (`docker-entrypoint.sh`).** Skips the DB-readiness wait when `DB_ENGINE=sqlite3`. Runs `migrate --noinput` then `collectstatic --noinput`. If `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_EMAIL` / `DJANGO_SUPERUSER_PASSWORD` are all set, bootstraps a superuser on first boot (idempotent — won't re-create on subsequent boots).
+
+**Image publishing (`.github/workflows/docker-image.yml`).** Buildx workflow that builds on every PR (validation only) and publishes to `ghcr.io/agit8or1/clientst0r` on push to `main` or any `v*` tag. Tag schema produced by `docker/metadata-action`: `latest` (on main), `v3.17.490` (on tag), `3.17.490` (semver clean), `3.17` (major.minor), `sha-abc1234` (every build). Layer cache via `type=gha,mode=max`. Defaults to `linux/amd64`; an `arm64` line is commented in for installs that need it.
+
+**Operator UX (`Makefile`).** Common operations are one-word: `make docker-up`, `make docker-logs`, `make docker-shell`, `make docker-migrate`, `make docker-createsuperuser`, `make dev-up`. Plus `make backup` / `make restore FILE=...` that pipe `mariadb-dump` through the `db` container.
+
+**Config template (`.env.example`).** Replaces the older 55-line template. Every supported variable now documented with a one-line "what / why", grouped into Core / Database / Web ports / Bootstrap superuser / SMTP / External tokens / Storage / Beta-signup / Security / Encryption / Docker-image-override sections. Same file is referenced by the classic install path too.
+
+**Documentation (`docs/docker.md` + README section).** Full guide covering quick start, profiles, persistent volumes, backups, upgrades, dev mode, and troubleshooting (race conditions, healthcheck timing, ARM hosts, lost `APP_MASTER_KEY` recovery). README gets a `🐳 Run with Docker` block at the top of Quick Start that links to the full guide and explicitly notes the `bash install.sh` path is unchanged.
+
+**Build-context hygiene (`.dockerignore`).** Tightened: keeps `docs/` IN (the public roadmap at `/core/roadmap/` reads `docs/ROADMAP.md` at runtime), keeps `mobile/` + `mobile-app/` + `local_apps/play_publish/` OUT (local-only, never shipped to GitHub), keeps `.env` OUT but allows `.env.example` through.
+
+No migrations. No mobile rebuild. No effect on existing `bash install.sh` installs.
+
 ## [3.17.489] - 2026-05-20
 
 ### Fix #133: M365 sync — mailbox/OneDrive/SharePoint names showing as blank or hex hashes

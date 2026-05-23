@@ -836,6 +836,21 @@ Dependencies: `accounts.Organization`, `audit.AuditLog`, `reports.pdf_export.ren
 
 ---
 
+## Phase 42 — First-class Docker / containerized deployment **(S · packaging)** [shipped — v3.17.490]
+
+Self-hosted MSPs should be able to `git clone && docker compose up -d` and have a running install in under a minute — without the existing `bash install.sh` path going away.
+
+- Multi-stage `Dockerfile` (Python 3.12 slim + venv) running as non-root `clientst0r` (uid 1000) *(shipped v3.17.490)*
+- `docker-compose.yml` with `app` + `db` (MariaDB 10.11) as defaults; optional Nginx (`--profile proxy`) and Redis (`--profile cache`) services *(shipped v3.17.490)*
+- `docker-compose.dev.yml` override — source bind-mount + gunicorn `--reload` + SQLite default for fast iteration *(shipped v3.17.490)*
+- `docker-entrypoint.sh` — DB readiness wait, migrate, collectstatic, optional `DJANGO_SUPERUSER_*` bootstrap *(shipped v3.17.490)*
+- Dedicated `/health/` endpoint for HEALTHCHECK *(shipped v3.17.490)*
+- GitHub Actions workflow (`docker-image.yml`) — builds on PR, publishes `ghcr.io/agit8or1/clientst0r:latest` + semver tags on push to `main` / `v*` *(shipped v3.17.490)*
+- `Makefile` with `docker-up` / `docker-logs` / `docker-shell` / `backup` / `restore` targets *(shipped v3.17.490)*
+- `.env.example` covering every supported variable + `docs/docker.md` with backup, upgrade, profile, dev-mode, troubleshooting sections *(shipped v3.17.490)*
+
+---
+
 ## Phase 8 — Native mobile apps (iOS + Android) with GPS auto-time + Timeclock **(L · keystone)** [shipped — v3.17.417]
 
 Reverses the earlier "PWA only" deferral. The combination of GPS auto-documentation + employee timeclock makes this a force-multiplier for billable-hours capture, not just a UX improvement.
@@ -932,6 +947,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 39 — Compliance Evidence Packs | M | 2-3 weeks | extends Phase 9 + vault + monitoring + psa |
 | 40 — Public / Client-Facing Status Page | M | 2-3 weeks | extends monitoring + psa Tickets |
 | 41 — Compliance Frameworks & Recertification | M | shipped v3.17.435–444 | extends accounts + audit + reports.pdf_export (Phase 19); built atop Phase 39 evidence-pack infra |
+| 42 — Docker / Containerized deployment | S | shipped v3.17.490 | none — packaging only; classic `bash install.sh` path unchanged |
 | 8 — Mobile apps + GPS auto-time + Timeclock | L | **shipped v3.17.354–417 (extends Phase 2 + 18 + 21)** | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
 
 **Phases 1-6**: ~4 months of focused work at the established cadence.

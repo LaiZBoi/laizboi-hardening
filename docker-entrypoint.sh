@@ -1,42 +1,55 @@
 #!/bin/bash
-# HuduGlue Docker Entrypoint Script
+# Client St0r Docker entrypoint
+#
+# Order of operations:
+#   1. Wait for the database to accept connections (only for the
+#      MariaDB / MySQL path; skipped when DB_ENGINE=sqlite3 since
+#      SQLite has no readiness wait).
+#   2. Apply migrations.
+#   3. Collect static files into the shared volume.
+#   4. Bootstrap a superuser if env vars are provided (idempotent).
+#   5. Exec the CMD (gunicorn by default).
 
 set -e
 
-echo "HuduGlue Docker Container Starting..."
+echo "Client St0r container starting..."
 
-# Wait for database to be ready
-echo "Waiting for database..."
-while ! python -c "import MySQLdb; MySQLdb.connect(host='${DB_HOST}', user='${DB_USER}', passwd='${DB_PASSWORD}', db='${DB_NAME}')" 2>/dev/null; do
-    echo "Database is unavailable - sleeping"
-    sleep 2
-done
+if [ "${DB_ENGINE:-mysql}" != "sqlite3" ]; then
+    echo "Waiting for database at ${DB_HOST}:${DB_PORT:-3306}..."
+    until python -c "import MySQLdb; MySQLdb.connect(host='${DB_HOST}', \
+            port=int('${DB_PORT:-3306}'), \
+            user='${DB_USER}', passwd='${DB_PASSWORD}', \
+            db='${DB_NAME}')" 2>/dev/null; do
+        echo "  DB unavailable — sleeping 2s"
+        sleep 2
+    done
+    echo "Database is up."
+fi
 
-echo "Database is ready!"
-
-# Run migrations
-echo "Running database migrations..."
+echo "Running migrations..."
 python manage.py migrate --noinput
 
-# Collect static files
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
-# Create superuser if env variables are set
-if [ -n "$DJANGO_SUPERUSER_USERNAME" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ] && [ -n "$DJANGO_SUPERUSER_EMAIL" ]; then
-    echo "Creating superuser..."
+if [ -n "$DJANGO_SUPERUSER_USERNAME" ] && \
+   [ -n "$DJANGO_SUPERUSER_PASSWORD" ] && \
+   [ -n "$DJANGO_SUPERUSER_EMAIL" ]; then
+    echo "Bootstrapping superuser '$DJANGO_SUPERUSER_USERNAME'..."
     python manage.py shell -c "
-from django.contrib.auth import get_user_model;
-User = get_user_model();
+from django.contrib.auth import get_user_model
+User = get_user_model()
 if not User.objects.filter(username='$DJANGO_SUPERUSER_USERNAME').exists():
-    User.objects.create_superuser('$DJANGO_SUPERUSER_USERNAME', '$DJANGO_SUPERUSER_EMAIL', '$DJANGO_SUPERUSER_PASSWORD');
-    print('Superuser created successfully');
+    User.objects.create_superuser(
+        '$DJANGO_SUPERUSER_USERNAME',
+        '$DJANGO_SUPERUSER_EMAIL',
+        '$DJANGO_SUPERUSER_PASSWORD',
+    )
+    print('  superuser created')
 else:
-    print('Superuser already exists');
-" || echo "Superuser creation skipped or failed"
+    print('  superuser already exists — skipping')
+" || echo "  (superuser bootstrap failed; non-fatal)"
 fi
 
-echo "Starting application..."
-
-# Execute the main command
+echo "Starting: $*"
 exec "$@"

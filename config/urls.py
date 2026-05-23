@@ -12,8 +12,13 @@ from two_factor.urls import urlpatterns as tf_urls
 
 from core.views import privacy_policy as core_privacy_policy
 from core.views import beta_onboarding as core_beta_onboarding
+from core.views import health as core_health
 
 urlpatterns = [
+    # v3.17.490 — anonymous health endpoint for Docker HEALTHCHECK +
+    # load balancers + uptime monitors. Returns 200 + JSON immediately.
+    path('health/', core_health, name='health'),
+
     # Favicon
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.svg', permanent=True)),
 

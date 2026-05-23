@@ -1,79 +1,86 @@
-# HuduGlue Docker Image
-# Multi-stage build for optimized image size
+# Client St0r — production Dockerfile
+#
+# Multi-stage Python 3.12 build. Stage 1 compiles wheels with a full
+# toolchain into a venv. Stage 2 copies the venv into a slim runtime
+# image, runs the app as a non-root user.
+#
+# Build:  docker build -t clientst0r .
+# Run:    docker compose up -d   (see docker-compose.yml)
 
-# Stage 1: Build stage
-FROM python:3.12-slim as builder
+# ─── Stage 1 — builder ────────────────────────────────────────────────
+FROM python:3.12-slim AS builder
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies for building
+# Toolchain for mysqlclient and any wheel that compiles natively.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libmariadb-dev \
-    libmariadb-dev-compat \
-    pkg-config \
+        build-essential \
+        libmariadb-dev \
+        libmariadb-dev-compat \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy requirements and install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip && \
-    pip install -r /tmp/requirements.txt
+RUN pip install --upgrade pip \
+    && pip install -r /tmp/requirements.txt
 
-# Stage 2: Runtime stage
+
+# ─── Stage 2 — runtime ────────────────────────────────────────────────
 FROM python:3.12-slim
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
     DJANGO_SETTINGS_MODULE=config.settings
 
-# Install runtime dependencies only
+# Runtime libs only: mariadb client + curl (used by HEALTHCHECK).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libmariadb3 \
-    curl \
+        libmariadb3 \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy virtual environment from builder
+# Copy the prebuilt venv from the builder stage.
 COPY --from=builder /opt/venv /opt/venv
 
-# Create app user for security
-RUN useradd -m -u 1000 huduglue && \
-    mkdir -p /app /app/logs /app/media /app/static_collected && \
-    chown -R huduglue:huduglue /app
+# Non-root runtime user. uid 1000 is the common host-default — matches
+# typical bind-mount ownership without extra chown gymnastics.
+RUN useradd -m -u 1000 clientst0r \
+    && mkdir -p /app /app/logs /app/media /app/static_collected /var/lib/itdocs/uploads \
+    && chown -R clientst0r:clientst0r /app /var/lib/itdocs
 
-# Set working directory
 WORKDIR /app
 
-# Copy application code
-COPY --chown=huduglue:huduglue . /app/
+# Copy source. .dockerignore keeps node_modules, venvs, db files,
+# .git, mobile/, local_apps/, etc. out of the context.
+COPY --chown=clientst0r:clientst0r . /app/
 
-# Switch to non-root user
-USER huduglue
+USER clientst0r
 
-# Collect static files (will be run again in entrypoint, but doing it here caches it)
-RUN python manage.py collectstatic --noinput || true
+# collectstatic is intentionally NOT run during build. It needs
+# SECRET_KEY / ALLOWED_HOSTS / DB settings which only exist at run
+# time. The entrypoint runs it after env is wired up.
 
-# Expose port
 EXPOSE 8000
 
-# Health check
+# Healthcheck hits the dedicated /health/ endpoint added in v3.17.490.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health/ || exit 1
+    CMD curl -fsS http://localhost:8000/health/ || exit 1
 
-# Entrypoint script
-COPY --chown=huduglue:huduglue docker-entrypoint.sh /app/docker-entrypoint.sh
+# Entrypoint waits for DB + runs migrations + collectstatic, then
+# execs CMD.
+COPY --chown=clientst0r:clientst0r docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
-
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
-# Default command (can be overridden)
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-"]
+CMD ["gunicorn", "config.wsgi:application", \
+     "--bind", "0.0.0.0:8000", \
+     "--workers", "4", \
+     "--timeout", "120", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-"]

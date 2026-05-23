@@ -574,6 +574,25 @@ def beta_test_upstream(request):
     return JsonResponse({'ok': True, 'id': req.pk})
 
 
+def health(request):
+    """
+    v3.17.490 — minimal health endpoint at GET /health/.
+
+    Returns 200 + JSON {ok: true, version: 'X.Y.Z'} as soon as Django
+    can serve a request. Used by the Dockerfile HEALTHCHECK, load
+    balancers, and uptime monitors. Anonymous-accessible by design;
+    leaks no sensitive data beyond the version string (which is also
+    in /core/roadmap.json and About → Settings).
+
+    Why no DB ping: the Django process being up but the DB being down
+    is a real failure mode worth distinguishing from "container alive,
+    DB unreachable." Add a separate /health/db/ if you need that.
+    """
+    from django.http import JsonResponse
+    from config.version import VERSION
+    return JsonResponse({'ok': True, 'version': VERSION}, status=200)
+
+
 def privacy_policy(request):
     """
     Public privacy policy page rendered from `docs/PRIVACY_POLICY.md`.
