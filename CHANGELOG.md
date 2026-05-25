@@ -5,6 +5,24 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.493] - 2026-05-25
+
+### Fix: breach-scan systemd unit was passing a non-existent CLI flag
+
+`clientst0r-breach-scan.service` (and its huduglue-era predecessor before v3.17.492) called:
+
+```
+manage.py check_password_breaches --scan-frequency 24
+```
+
+But `--scan-frequency` was never a valid argument on that management command. Its real arg surface is `--force / --password-id / --organization-id` only. systemd exit-coded with `status=2/INVALIDARGUMENT` on every run since at least 2026-02-20, with the actual Python error landing in `/var/log/itdocs/breach-scan-error.log` (where it wasn't being noticed because the timer kept "firing" without anyone caring).
+
+**Fix — `deploy/clientst0r-breach-scan.service`:**
+- ExecStart now invokes the command with no extra flags: `manage.py check_password_breaches`.
+- The scan-frequency knob already lives ON each password as `custom_fields.hibp_scan_frequency` (default 24h, used inside `_filter_by_scan_frequency()`). The CLI flag was redundant even if it had existed.
+
+After Apply, the timer-fired runs exit 0 and log "Checking N passwords..." instead of an argparse error.
+
 ## [3.17.492] - 2026-05-25
 
 ### Full HuduGlue → Client St0r rename (no leftover brand traces)

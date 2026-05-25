@@ -8,7 +8,7 @@ User=administrator
 Group=administrator
 WorkingDirectory=/home/administrator
 Environment="PATH=/home/administrator/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/administrator/venv/bin/python /home/administrator/manage.py check_password_breaches --scan-frequency 24
+ExecStart=/home/administrator/venv/bin/python /home/administrator/manage.py check_password_breaches
 
 # Logging
 StandardOutput=append:/var/log/itdocs/breach-scan.log
