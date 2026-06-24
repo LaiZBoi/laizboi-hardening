@@ -1306,3 +1306,50 @@ class LegacyFernetDecryptTests(TestCase):
             encrypted_password=token,
         )
         self.assertEqual(p.get_password(), 'end-to-end-legacy')
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, SECURE_SSL_REDIRECT=False, HIBP_CHECK_ON_SAVE=False)
+class PasswordFormTOTPForAnyTypeTests(TestCase):
+    """A TOTP secret can be stored on ANY password type, not only 'otp'.
+
+    Guards the regression reported in discussion #21: the entry form used to
+    hide the TOTP fields for every type except 'otp', so a user could never
+    attach a 2FA secret to a website/database/etc. credential. The backend
+    always supported it — this exercises that save path end-to-end.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='TOTPForm', slug='totp-form')
+
+    def _form(self, **overrides):
+        from vault.forms import PasswordForm
+        data = {
+            'title': 'Web login with 2FA',
+            'password_type': 'website',
+            'plaintext_password': 'sup3r-secret-pw',
+            'plaintext_otp_secret': 'JBSWY3DPEHPK3PXP',
+            'client_access_mode': 'none',
+        }
+        data.update(overrides)
+        return PasswordForm(data=data, organization=self.org)
+
+    def test_website_password_stores_totp_secret(self):
+        form = self._form()
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        pw = form.save()
+        # Both the password AND the TOTP secret persist on one record.
+        self.assertEqual(pw.password_type, 'website')
+        self.assertEqual(pw.get_password(), 'sup3r-secret-pw')
+        self.assertTrue(pw.otp_secret, 'TOTP secret should be stored for a website entry')
+        otp = pw.generate_otp()
+        self.assertEqual(len(otp['code']), 6)
+        self.assertTrue(otp['code'].isdigit())
+
+    def test_generate_new_secret_on_non_otp_type(self):
+        form = self._form(plaintext_otp_secret='', generate_new_secret='on',
+                          password_type='database')
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        pw = form.save()
+        self.assertTrue(pw.otp_secret, 'auto-generated TOTP secret should be stored')
+        self.assertEqual(len(pw.generate_otp()['code']), 6)

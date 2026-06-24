@@ -5,6 +5,16 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.497] - 2026-06-24
+
+### Fix: TOTP secret entry was hidden on every password type except "OTP"
+
+Storing a 2FA/TOTP secret alongside *any* credential (website, email, database, SSH, API key, etc.) has been supported in the backend since the feature shipped, but the **password entry form only rendered the TOTP fields when the type was set to "OTP/TOTP (2FA)"** — so on every other type the "TOTP Secret" / "Issuer" / "Auto-generate" controls were invisible and a user could never attach a code. Reported in discussion #21.
+
+- The TOTP fields are now an **always-visible, optional "Two-factor (TOTP)" card** on the add/edit form, available regardless of the selected password type.
+- The form's save path, the live-code generator on the detail view (`{% if password.otp_secret %}`), and the `generate_otp` API were already type-agnostic — no backend change was required.
+- Added `vault.tests.PasswordFormTOTPForAnyTypeTests` covering both an explicit Base32 secret and the auto-generate path on non-OTP types (website / database), asserting the password **and** the TOTP secret persist on one record.
+
 ## [3.17.496] - 2026-06-19
 
 ### Feature: multi-organization REST API access (issue #134)
