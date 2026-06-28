@@ -1,0 +1,30 @@
+[Unit]
+Description=Client St0r (Gunicorn)
+Documentation=file:///opt/clientst0r/docs/deployment-vps.md
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=clientst0r
+Group=clientst0r
+WorkingDirectory=/opt/clientst0r
+EnvironmentFile=-/etc/clientst0r/.env
+Environment="PATH=/opt/clientst0r/venv/bin"
+ExecStart=/opt/clientst0r/venv/bin/gunicorn \
+    --workers 4 \
+    --bind 127.0.0.1:8000 \
+    --timeout 120 \
+    --access-logfile /var/log/itdocs/gunicorn-access.log \
+    --error-logfile /var/log/itdocs/gunicorn-error.log \
+    --log-level info \
+    config.wsgi:application
+Restart=on-failure
+RestartSec=5
+
+# Hardening — gunicorn listens on localhost only; Nginx terminates TLS.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

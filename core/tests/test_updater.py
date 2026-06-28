@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from unittest import mock
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from audit.models import AuditLog
 from core.updater import UpdateService
@@ -32,6 +32,7 @@ class UpdateServiceFailureCaptureTests(TestCase):
         proc.returncode = returncode
         return proc
 
+    @override_settings(AUTO_UPDATE_ENABLED=True)
     def test_failed_run_persists_output_tail_to_audit_log(self):
         updater = UpdateService()
         fake_lines = [
@@ -65,6 +66,7 @@ class UpdateServiceFailureCaptureTests(TestCase):
         # Steps that DID complete should be reflected
         self.assertIn('Step 2/5: Core dependencies installed', tail)
 
+    @override_settings(AUTO_UPDATE_ENABLED=True)
     def test_output_tail_capped_at_50kb(self):
         updater = UpdateService()
         # Generate ~120kb of fake output
@@ -82,6 +84,7 @@ class UpdateServiceFailureCaptureTests(TestCase):
         tail = row.extra_data.get('output_tail', '')
         self.assertLessEqual(len(tail), 50_000)
 
+    @override_settings(AUTO_UPDATE_ENABLED=True)
     def test_successful_run_does_not_create_failure_audit(self):
         updater = UpdateService()
         proc = self._fake_process(
@@ -102,3 +105,16 @@ class UpdateServiceFailureCaptureTests(TestCase):
         self.assertFalse(
             AuditLog.objects.filter(action='system_update_failed').exists()
         )
+
+    @override_settings(AUTO_UPDATE_ENABLED=False)
+    def test_perform_update_requires_explicit_opt_in(self):
+        updater = UpdateService()
+
+        with mock.patch('core.updater.requests.get') as get_mock, \
+             mock.patch('core.updater.subprocess.Popen') as popen_mock:
+            result = updater.perform_update(user=None, progress_tracker=None)
+
+        self.assertFalse(result['success'])
+        self.assertIn('disabled', result['error'])
+        get_mock.assert_not_called()
+        popen_mock.assert_not_called()

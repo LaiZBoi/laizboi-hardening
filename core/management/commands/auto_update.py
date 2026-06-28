@@ -90,9 +90,16 @@ class Command(BaseCommand):
             except subprocess.TimeoutExpired:
                 raise CommandError('Git command timed out')
             except Exception as e:
-                raise CommandError(f'Error checking for updates: {e}')
+                    raise CommandError(f'Error checking for updates: {e}')
 
         else:
+            if not getattr(settings, 'AUTO_UPDATE_ENABLED', False):
+                raise CommandError(
+                    'Auto-update execution is disabled. Set '
+                    'AUTO_UPDATE_ENABLED=True only if you trust this instance '
+                    'to execute update scripts from the configured Git remote.'
+                )
+
             # Run full update
             self.stdout.write('Running auto-update script...')
             self.stdout.write(f'Script: {update_script}')

@@ -1,17 +1,14 @@
 [Unit]
-Description=Client St0r RMM Sync
+Description=Client St0r RMM Sync Service
 After=network.target
 
 [Service]
 Type=oneshot
-User=administrator
-Group=administrator
-WorkingDirectory=/home/administrator
-Environment="PATH=/home/administrator/venv/bin"
-EnvironmentFile=/home/administrator/.env
-ExecStart=/home/administrator/venv/bin/python manage.py sync_rmm
+User=clientst0r
+Group=clientst0r
+WorkingDirectory=/opt/clientst0r
+Environment="PATH=/opt/clientst0r/venv/bin"
+EnvironmentFile=-/etc/clientst0r/.env
+ExecStart=/opt/clientst0r/venv/bin/python manage.py sync_rmm
 StandardOutput=journal
 StandardError=journal
-
-[Install]
-WantedBy=multi-user.target

@@ -1,359 +1,152 @@
 # Client St0r Auto-Update System
 
-Automatically keep Client St0r up to date with the latest releases from GitHub.
+> **Update execution is opt-in and disabled by default.** Fresh installs ship with
+> `AUTO_UPDATE_ENABLED=False`. The server will **not** download or execute update
+> scripts from GitHub unless an admin explicitly sets `AUTO_UPDATE_ENABLED=True`
+> in `.env` (or `/etc/clientst0r/.env` on VPS).
+>
+> For production VPS deployments, prefer **manual updates** after reviewing the
+> diff and taking a backup — see [`docs/deployment-vps.md`](docs/deployment-vps.md).
 
-## Features
+## What is disabled by default
 
-✅ **Automatic Updates**
-- Checks GitHub for new releases daily at 2 AM
-- Pulls latest code automatically
-- Runs database migrations
-- Restarts all services
-- Zero manual intervention required
+| Action | Default behavior |
+|--------|------------------|
+| Web “Apply Update” button | Blocked (403) |
+| `manage.py auto_update` (without `--check-only`) | Refused |
+| `manage.py check_updates --apply` | Refused |
+| Scheduler GitHub update checks | Skipped |
+| `scripts/auto_update.sh` | Logs disabled message, exits |
+| `scripts/check_update_trigger.sh` | Removes trigger, does not run update |
+| Background GitHub polling in Settings → Updates | Off until manual check |
 
-✅ **Safe Updates**
-- Stashes local changes before updating
-- Runs migrations automatically
-- Verifies services restart successfully
-- Detailed logging of all actions
-- Rollback capability if needed
+## What still works without opt-in
 
-✅ **Complete Automation**
-- No SSH required
-- No manual migration running
-- No manual service restarts
-- Works for any user/installation directory
+- **Manual update checks** — superuser button at Settings → Updates, or `manage.py auto_update --check-only` / `git fetch`
+- **Manual deployment** — `git pull`, `migrate`, `collectstatic`, restart gunicorn (see VPS guide)
+- **Reading** release notes and version info after a deliberate check
 
-## Installation
+## When to enable automatic execution
 
-### Quick Install
+Set `AUTO_UPDATE_ENABLED=True` only if **all** of the following are true:
+
+1. You trust the configured `GITHUB_REPO_OWNER` / `GITHUB_REPO_NAME` and branch.
+2. You accept the server downloading `deploy/update_instructions.sh` from GitHub and executing it as the app user.
+3. You have backups and a rollback plan.
+4. Passwordless sudo for service restarts is configured (web updates on bare metal).
+
+```env
+AUTO_UPDATE_ENABLED=True
+```
+
+Restart gunicorn after changing `.env`.
+
+## Opt-in paths (all require `AUTO_UPDATE_ENABLED=True`)
+
+### Web UI
+
+Settings → Updates → **Apply Update** (superuser only).
+
+### Django management commands
 
 ```bash
-cd /path/to/clientst0r
+python manage.py auto_update          # runs scripts/auto_update.sh
+python manage.py check_updates --apply
+```
+
+### Shell script
+
+```bash
+/opt/clientst0r/scripts/auto_update.sh
+```
+
+The script loads `.env` from the project directory or `/etc/clientst0r/.env`. If disabled, it logs:
+
+```text
+Auto-update execution is disabled. Set AUTO_UPDATE_ENABLED=True to opt in.
+```
+
+### Systemd timer (optional)
+
+```bash
+cd /opt/clientst0r   # or your install path
 ./scripts/install_auto_update.sh
 ```
 
-This installs:
-- Auto-update script at `scripts/auto_update.sh`
-- Systemd service: `clientst0r-auto-update.service`
-- Systemd timer: `clientst0r-auto-update.timer`
-- Sudo permissions for service restarts
-
-### What Gets Automated
-
-The auto-update system handles:
-1. ✅ `git pull origin main` - Pull latest code
-2. ✅ `pip install -r requirements.txt` - Update dependencies
-3. ✅ `python manage.py migrate` - Run database migrations
-4. ✅ `python manage.py collectstatic` - Collect static files
-5. ✅ `systemctl restart clientst0r-*` - Restart all services
-
-## Usage
-
-### Automatic (Recommended)
-
-Once installed, updates happen automatically:
-- **Daily at 2 AM** - Checks for and applies updates
-- **On boot (+10 min)** - Checks after system restarts
-
-No action required on your part!
-
-### Manual Update
-
-To update immediately:
+This installs `clientst0r-auto-update.service` + timer. The service loads `EnvironmentFile=-/etc/clientst0r/.env` (or project `.env`). **The timer will not apply updates until you opt in.**
 
 ```bash
-# Using the script directly
-/path/to/clientst0r/scripts/auto_update.sh
-
-# Using systemd service
-sudo systemctl start clientst0r-auto-update.service
-
-# Using Django management command
-cd /path/to/clientst0r
-source venv/bin/activate
-python manage.py auto_update
+sudo systemctl enable clientst0r-auto-update.timer
+sudo systemctl start clientst0r-auto-update.timer
 ```
 
-### Check for Updates Only
+Disable the timer anytime:
 
 ```bash
-# Django command
-python manage.py auto_update --check-only
+sudo systemctl disable --now clientst0r-auto-update.timer
+```
 
-# Or check manually
+## Recommended production workflow (manual)
+
+```bash
+sudo systemctl stop clientst0r
+cd /opt/clientst0r
+git fetch origin
+git pull --ff-only origin main
+venv/bin/pip install -r requirements.txt
+set -a && source /etc/clientst0r/.env && set +a
+venv/bin/python manage.py migrate --noinput
+venv/bin/python manage.py collectstatic --noinput
+sudo systemctl start clientst0r
+```
+
+This fork does not support container deployment — use manual VPS updates in `docs/deployment-vps.md`.
+
+## Check-only (always allowed)
+
+```bash
+python manage.py auto_update --check-only
+python manage.py check_updates
 git fetch origin main
 git log HEAD..origin/main
 ```
 
-## Management Commands
+## Logging
 
-### Check Status
+| Log | Path |
+|-----|------|
+| Shell auto-update | `/var/log/clientst0r/auto-update.log` |
+| Triggered updates | `/var/log/clientst0r/triggered-update.log` |
+| Systemd service | `journalctl -u clientst0r-auto-update.service` |
 
-```bash
-# Check timer status
-sudo systemctl status clientst0r-auto-update.timer
+## Security notes
 
-# View next scheduled run
-sudo systemctl list-timers clientst0r-auto-update.timer
+- Auto-update requires **minimal sudo** for `systemctl restart` on Client St0r units only (`/etc/sudoers.d/clientst0r-auto-update`).
+- Never run `auto_update.sh` as root.
+- Review every update diff before enabling execution on sensitive MSP data.
 
-# Check last service run
-sudo systemctl status clientst0r-auto-update.service
-```
-
-### View Logs
-
-```bash
-# Watch logs in real-time
-tail -f /var/log/clientst0r/auto-update.log
-
-# View recent logs
-tail -n 50 /var/log/clientst0r/auto-update.log
-
-# View all logs
-cat /var/log/clientst0r/auto-update.log
-```
-
-### Control Auto-Updates
+## Uninstall optional auto-update timer
 
 ```bash
-# Disable automatic updates
-sudo systemctl disable clientst0r-auto-update.timer
-sudo systemctl stop clientst0r-auto-update.timer
-
-# Enable automatic updates
-sudo systemctl enable clientst0r-auto-update.timer
-sudo systemctl start clientst0r-auto-update.timer
-
-# Trigger update now
-sudo systemctl start clientst0r-auto-update.service
-```
-
-## How It Works
-
-### Update Process
-
-1. **Check for Updates**
-   - Fetches latest code from GitHub
-   - Compares local vs remote versions
-   - Exits if already up to date
-
-2. **Stash Local Changes**
-   - Saves any uncommitted local changes
-   - Prevents conflicts during pull
-   - Can be restored if needed
-
-3. **Pull Latest Code**
-   - Downloads new code from GitHub
-   - Updates all files
-   - Reports new version
-
-4. **Update Dependencies**
-   - Installs/updates Python packages
-   - Uses existing virtual environment
-   - Non-blocking (continues on failure)
-
-5. **Run Migrations**
-   - Applies database schema changes
-   - Required for some updates (like v2.49.5)
-   - Automatically applied
-
-6. **Collect Static Files**
-   - Updates CSS, JavaScript, images
-   - Ensures UI is current
-   - Non-blocking
-
-7. **Restart Services**
-   - Restarts Gunicorn (web server)
-   - Restarts Scheduler (background tasks)
-   - Restarts PSA/RMM sync services
-   - Restarts Monitor service
-   - Verifies all services are running
-
-### Schedule
-
-**Default schedule:**
-- **Daily:** 2:00 AM (OnCalendar=02:00)
-- **On Boot:** 10 minutes after system starts
-- **Persistent:** If missed, runs as soon as possible
-
-### Logging
-
-All update activity logged to:
-- **Main log:** `/var/log/clientst0r/auto-update.log`
-- **Service output:** `journalctl -u clientst0r-auto-update.service`
-
-Log includes:
-- Timestamps
-- Each step executed
-- Success/failure indicators
-- Error messages
-- Version changes
-
-## Customization
-
-### Change Update Schedule
-
-Edit the timer:
-
-```bash
-sudo systemctl edit clientst0r-auto-update.timer
-```
-
-Add custom schedule:
-
-```ini
-[Timer]
-# Run every 6 hours
-OnCalendar=00/6:00
-```
-
-Common schedules:
-- `OnCalendar=hourly` - Every hour
-- `OnCalendar=daily` - Daily at midnight
-- `OnCalendar=weekly` - Weekly on Monday
-- `OnCalendar=Mon,Wed,Fri 02:00` - Specific days
-- `OnCalendar=*-*-* 02:00:00` - Daily at 2 AM
-
-Then reload:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart clientst0r-auto-update.timer
-```
-
-### Customize Update Script
-
-Edit `scripts/auto_update.sh` to customize:
-- Pre-update hooks
-- Post-update actions
-- Notification methods
-- Additional services to restart
-
-## Troubleshooting
-
-### Updates Not Running
-
-Check timer is enabled:
-```bash
-sudo systemctl is-enabled clientst0r-auto-update.timer
-```
-
-Check next run time:
-```bash
-sudo systemctl list-timers --all | grep clientst0r
-```
-
-### Update Failed
-
-View error logs:
-```bash
-sudo journalctl -u clientst0r-auto-update.service -n 50
-```
-
-Or:
-```bash
-tail -n 50 /var/log/clientst0r/auto-update.log
-```
-
-Common issues:
-- **Git conflicts:** Local changes conflict with remote
-- **Migration errors:** Database schema incompatibility
-- **Service restart failed:** Permission issues
-
-### Manual Intervention Needed
-
-If auto-update fails:
-
-```bash
-# View what failed
-sudo systemctl status clientst0r-auto-update.service
-
-# Run update manually to see errors
-cd /path/to/clientst0r
-./scripts/auto_update.sh
-
-# Or update completely manually
-git pull origin main
-source venv/bin/activate
-python manage.py migrate
-sudo systemctl restart clientst0r-gunicorn
-```
-
-### Restore Stashed Changes
-
-If your local changes were stashed:
-
-```bash
-cd /path/to/clientst0r
-git stash list
-git stash pop  # Restore most recent stash
-```
-
-## Security
-
-The auto-update system requires sudo permissions to restart services. These are granted via `/etc/sudoers.d/clientst0r-auto-update`:
-
-```
-# Allow user to restart Client St0r services without password
-username ALL=(ALL) NOPASSWD: /bin/systemctl restart clientst0r-*.service
-```
-
-This is **minimal privilege** - only allows:
-- Restarting Client St0r services (not other services)
-- Checking service status
-- No other sudo commands
-
-## Uninstall
-
-To remove auto-update system:
-
-```bash
-# Disable and stop timer
-sudo systemctl disable clientst0r-auto-update.timer
-sudo systemctl stop clientst0r-auto-update.timer
-
-# Remove systemd files
-sudo rm /etc/systemd/system/clientst0r-auto-update.service
-sudo rm /etc/systemd/system/clientst0r-auto-update.timer
+sudo systemctl disable --now clientst0r-auto-update.timer
+sudo rm /etc/systemd/system/clientst0r-auto-update.{service,timer}
 sudo rm /etc/sudoers.d/clientst0r-auto-update
-
-# Reload systemd
 sudo systemctl daemon-reload
-
-# Optionally remove script
-rm /path/to/clientst0r/scripts/auto_update.sh
 ```
 
 ## FAQ
 
-**Q: Will this update break my installation?**
-A: No. The script pulls official releases which are tested. Migrations are run automatically. Services are verified after restart.
+**Q: Will I still see available updates in the UI?**  
+A: Yes, after you click **Check for Updates** or when automatic polling is enabled via `AUTO_UPDATE_ENABLED=True`.
 
-**Q: What if I have local customizations?**
-A: Local changes are automatically stashed before update and can be restored after.
+**Q: Does this fork support container deployment?**  
+A: No. This fork is VPS-only. Use manual updates documented in `docs/deployment-vps.md`.
 
-**Q: Can I disable auto-updates?**
-A: Yes. Run: `sudo systemctl disable clientst0r-auto-update.timer`
+**Q: Can I disable everything again?**  
+A: Set `AUTO_UPDATE_ENABLED=False`, disable the systemd timer, and use manual updates.
 
-**Q: Will this restart my services in the middle of the day?**
-A: No. Default schedule is 2 AM when traffic is lowest. You can customize the schedule.
+## Related docs
 
-**Q: What if an update fails?**
-A: The script exits immediately on failure. Your installation remains on the working version. Check logs and update manually if needed.
-
-**Q: Do I still get update notifications in the UI?**
-A: Yes! The System Updates page still shows available updates, but now they're applied automatically.
-
-## Support
-
-If auto-updates aren't working:
-
-1. Check timer status: `sudo systemctl status clientst0r-auto-update.timer`
-2. View logs: `tail -f /var/log/clientst0r/auto-update.log`
-3. Test manually: `./scripts/auto_update.sh`
-4. Open GitHub issue with logs
-
----
-
-**Enjoy automatic updates!** 🚀
+- [`docs/deployment-vps.md`](docs/deployment-vps.md) — recommended VPS production guide
+- [`docs/security-hardening.md`](docs/security-hardening.md) — baseline settings
+- [`docs/outbound-network-calls.md`](docs/outbound-network-calls.md) — GitHub egress when checking/applying

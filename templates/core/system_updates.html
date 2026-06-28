@@ -108,8 +108,27 @@
         </div>
     </div>
 
+    {% if not auto_update_enabled %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-warning" role="alert">
+                <h5 class="alert-heading">
+                    <i class="fas fa-shield-alt"></i> Web-Based Update Execution Disabled
+                </h5>
+                <p>
+                    This install will not download and execute update scripts from GitHub unless an admin explicitly opts in.
+                    Manual update checks are still available, but applying updates should normally be done from the server after reviewing changes.
+                </p>
+                <p class="mb-0">
+                    To enable one-click web updates, set <code>AUTO_UPDATE_ENABLED=True</code> in <code>.env</code> only after you trust the configured GitHub repository, branch, and update scripts.
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Sudo Configuration Alert -->
-    {% if not sudo_configured %}
+    {% if auto_update_enabled and not sudo_configured %}
     <div class="row mb-4">
         <div class="col-12">
             <div class="alert alert-danger" role="alert">
@@ -118,7 +137,7 @@
                 </h5>
                 <p>
                     To enable one-click updates from the web UI, you need to configure passwordless sudo.
-                    This is a <strong>one-time setup</strong> that allows the web interface to restart the Gunicorn service automatically.
+                    This lets the web process restart services and should only be used on trusted, admin-controlled installs.
                 </p>
                 <p class="mb-2"><strong>Run this command once on your server:</strong></p>
                 <div class="bg-dark text-light p-3 rounded" style="font-family: 'Courier New', monospace; font-size: 0.9em;">
@@ -130,7 +149,7 @@
                 </div>
                 <p class="mt-3 mb-0">
                     <i class="fas fa-info-circle"></i>
-                    <strong>After running this command:</strong> Refresh this page and you'll be able to click "Apply Update" to update with a single click!
+                    <strong>After running this command:</strong> Refresh this page and you'll be able to click "Apply Update" to update with a single click.
                     <br>
                     <small class="text-muted">Without this setup, you'll need to update manually via command line each time.</small>
                 </p>
@@ -209,7 +228,7 @@
                         </button>
                     </form>
 
-                    {% if update_info.update_available %}
+                    {% if update_info.update_available and auto_update_enabled %}
                     <button type="button" class="btn btn-success" onclick="showUpdateModal()">
                         <i class="fas fa-download"></i> Apply Update
                     </button>
@@ -217,8 +236,12 @@
 
                     <div class="alert alert-info mt-3 mb-0">
                         <i class="fas fa-info-circle"></i>
-                        <strong>Note:</strong> Updates are automatically checked every hour.
-                        The system will notify you when a new version is available.
+                        <strong>Note:</strong> The button above performs a manual GitHub update check.
+                        {% if auto_update_enabled %}
+                        Automatic checks and web-based update execution are enabled for this install.
+                        {% else %}
+                        Automatic checks and web-based update execution are disabled until <code>AUTO_UPDATE_ENABLED=True</code> is set.
+                        {% endif %}
                         {% if not git_status.clean %}
                         <br><br>
                         <i class="fas fa-exclamation-triangle text-warning"></i>
@@ -285,7 +308,12 @@
                         </tr>
                         <tr>
                             <th>Last Checked:</th>
-                            <td>{{ update_info.checked_at|default:"Never" }}</td>
+                            <td>
+                                {{ update_info.checked_at|default:"Never" }}
+                                {% if update_info.manual_check_required %}
+                                <span class="badge bg-secondary ms-2">Manual check required</span>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% if update_info.error %}
                         <tr>
@@ -636,7 +664,9 @@
                 </ul>
                 <div class="alert alert-warning">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <strong>Warning:</strong> The application will be unavailable during the update process. This can take up to 5 minutes depending on the size of the update and your system resources.
+                    <strong>Warning:</strong> This downloads a shell script from GitHub and executes it on the server.
+                    Proceed only if you trust the configured repository and have a current backup.
+                    The application will be unavailable during the update process, which can take up to 5 minutes depending on the size of the update and your system resources.
                     {% if not git_status.clean %}
                     <br><br>
                     <strong>Your working directory has uncommitted changes that may be overwritten!</strong>

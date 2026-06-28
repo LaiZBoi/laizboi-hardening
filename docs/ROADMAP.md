@@ -838,6 +838,10 @@ Dependencies: `accounts.Organization`, `audit.AuditLog`, `reports.pdf_export.ren
 
 ## Phase 42 — First-class Docker / containerized deployment **(S · packaging)** [shipped — v3.17.490]
 
+> **This fork (VPS-only):** Container packaging was removed. Production deployment uses
+> [`docs/deployment-vps.md`](deployment-vps.md) (systemd + Nginx + MariaDB). Items below
+> describe upstream v3.17.490 history, not files in this repository.
+
 Self-hosted MSPs should be able to `git clone && docker compose up -d` and have a running install in under a minute — without the existing `bash install.sh` path going away.
 
 - Multi-stage `Dockerfile` (Python 3.12 slim + venv) running as non-root `clientst0r` (uid 1000) *(shipped v3.17.490)*

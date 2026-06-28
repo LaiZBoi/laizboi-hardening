@@ -4,15 +4,16 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=administrator
-Group=administrator
-WorkingDirectory=/home/administrator
-ExecStart=/home/administrator/scripts/auto_update.sh
+User=clientst0r
+Group=clientst0r
+WorkingDirectory=/opt/clientst0r
+ExecStart=/opt/clientst0r/scripts/auto_update.sh
 StandardOutput=append:/var/log/clientst0r/auto-update.log
 StandardError=append:/var/log/clientst0r/auto-update.log
 
-# Environment
-Environment="PATH=/home/administrator/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Load deployment settings (AUTO_UPDATE_ENABLED, etc.). Leading `-` = optional file.
+EnvironmentFile=-/etc/clientst0r/.env
+Environment="PATH=/opt/clientst0r/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Security
 PrivateTmp=true

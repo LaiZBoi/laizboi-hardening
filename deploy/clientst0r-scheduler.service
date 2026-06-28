@@ -1,15 +1,18 @@
 [Unit]
 Description=Client St0r Task Scheduler
-After=network.target
+After=network.target mariadb.service
 
 [Service]
 Type=oneshot
-User=administrator
-Group=administrator
-WorkingDirectory=/home/administrator
-Environment="PATH=/home/administrator/venv/bin"
-EnvironmentFile=/home/administrator/.env
-ExecStart=/home/administrator/venv/bin/python manage.py run_scheduler
+User=clientst0r
+Group=clientst0r
+WorkingDirectory=/opt/clientst0r
+Environment="PATH=/opt/clientst0r/venv/bin"
+EnvironmentFile=-/etc/clientst0r/.env
+ExecStart=/opt/clientst0r/venv/bin/python manage.py run_scheduler
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=clientst0r-scheduler
+
+NoNewPrivileges=true
+PrivateTmp=true

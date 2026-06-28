@@ -15,7 +15,7 @@ from core.views import beta_onboarding as core_beta_onboarding
 from core.views import health as core_health
 
 urlpatterns = [
-    # v3.17.490 — anonymous health endpoint for Docker HEALTHCHECK +
+    # v3.17.490 — anonymous health endpoint for load balancers +
     # load balancers + uptime monitors. Returns 200 + JSON immediately.
     path('health/', core_health, name='health'),
 

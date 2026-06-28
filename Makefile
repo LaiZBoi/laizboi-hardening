@@ -1,96 +1,35 @@
-# Client St0r — convenience targets.
-# Run `make help` for the full menu. All Docker targets thin-wrap
-# `docker compose` so you can always drop down to the underlying
-# command if a target doesn't fit.
-
-COMPOSE ?= docker compose
-PROJECT  = clientst0r
+# Client St0r — VPS operator shortcuts.
+# Run `make help` for targets. Full guide: docs/deployment-vps.md
 
 .DEFAULT_GOAL := help
+VENV ?= /opt/clientst0r/venv
+PY   ?= $(VENV)/bin/python
+ENV  ?= /etc/clientst0r/.env
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make \033[36m<target>\033[0m\n\nTargets:\n"} \
 	     /^[a-zA-Z0-9_-]+:.*##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-# ─── Docker ──────────────────────────────────────────────────────────
+check: ## Django system checks
+	set -a && . $(ENV) && set +a && $(PY) manage.py check --deploy
 
-docker-build: ## Build the production image locally
-	$(COMPOSE) build app
+check-safe: ## Privacy/security deployment audit (exits non-zero on FAIL)
+	set -a && . $(ENV) && set +a && $(PY) manage.py check_safe_deployment
 
-docker-up: ## Start app + db in detached mode
-	$(COMPOSE) up -d
-	@echo ""
-	@echo "Client St0r is starting. Tail logs with: make docker-logs"
-	@echo "App will be reachable at: http://localhost:$${WEB_PORT:-8000}"
+test-hardening: ## Run hardening + updater tests
+	set -a && . $(ENV) && set +a && $(PY) manage.py test core.tests.test_hardening_gates core.tests.test_updater -v2
 
-docker-up-full: ## Start app + db + nginx (proxy profile)
-	$(COMPOSE) --profile proxy up -d
+migrate: ## Apply database migrations
+	set -a && . $(ENV) && set +a && $(PY) manage.py migrate --noinput
 
-docker-down: ## Stop containers (volumes preserved)
-	$(COMPOSE) down
+collectstatic: ## Collect static files
+	set -a && . $(ENV) && set +a && $(PY) manage.py collectstatic --noinput
 
-docker-down-clean: ## Stop containers AND wipe volumes (DESTRUCTIVE)
-	@echo "This deletes the database, media files, and uploads."
-	@read -p "Type YES to confirm: " ans && [ "$$ans" = "YES" ] || (echo "Aborted." && exit 1)
-	$(COMPOSE) down -v
+backup-db: ## Dump MariaDB to /var/backups/clientst0r/
+	@sudo mkdir -p /var/backups/clientst0r
+	@set -a && . $(ENV) && set +a && \
+	  mariadb-dump -h "$$DB_HOST" -u "$$DB_USER" -p"$$DB_PASSWORD" "$$DB_NAME" \
+	  | gzip > /var/backups/clientst0r/clientst0r-$$(date +%F).sql.gz && \
+	  echo "Wrote /var/backups/clientst0r/clientst0r-$$(date +%F).sql.gz"
 
-docker-logs: ## Tail logs from the app container
-	$(COMPOSE) logs -f app
-
-docker-logs-all: ## Tail logs from every container
-	$(COMPOSE) logs -f
-
-docker-shell: ## Open a bash shell inside the running app container
-	$(COMPOSE) exec app bash
-
-docker-migrate: ## Run Django migrations inside the running container
-	$(COMPOSE) exec app python manage.py migrate
-
-docker-createsuperuser: ## Create a Django superuser interactively
-	$(COMPOSE) exec app python manage.py createsuperuser
-
-docker-shell-py: ## Open a Django shell (Python REPL with models loaded)
-	$(COMPOSE) exec app python manage.py shell
-
-docker-restart: ## Restart the app container (keeps DB up)
-	$(COMPOSE) restart app
-
-# ─── Dev compose ─────────────────────────────────────────────────────
-
-dev-up: ## Start with the dev override (source mount + reload)
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml up
-
-dev-down: ## Stop the dev stack
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml down
-
-# ─── Validation ──────────────────────────────────────────────────────
-
-docker-config: ## Validate compose syntax + resolved env
-	$(COMPOSE) config
-
-docker-pull: ## Pull the latest published image (skips local build)
-	$(COMPOSE) pull
-
-# ─── Backup / restore ────────────────────────────────────────────────
-
-backup: ## Dump the database to ./backups/clientst0r-YYYYMMDD.sql.gz
-	@mkdir -p backups
-	@stamp=$$(date +%Y%m%d-%H%M%S); \
-	echo "Dumping db to backups/clientst0r-$$stamp.sql.gz..."; \
-	$(COMPOSE) exec -T db sh -c \
-	  'mariadb-dump -uroot -p"$$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers "$$MYSQL_DATABASE"' \
-	  | gzip > backups/clientst0r-$$stamp.sql.gz; \
-	echo "Done: backups/clientst0r-$$stamp.sql.gz"
-
-restore: ## Restore from a dump: make restore FILE=backups/clientst0r-XXX.sql.gz
-	@if [ -z "$(FILE)" ]; then echo "Usage: make restore FILE=backups/clientst0r-YYYYMMDD-HHMMSS.sql.gz"; exit 1; fi
-	@echo "Restoring $(FILE) — this overwrites the current database."
-	@read -p "Type YES to confirm: " ans && [ "$$ans" = "YES" ] || (echo "Aborted." && exit 1)
-	gunzip -c $(FILE) | $(COMPOSE) exec -T db sh -c \
-	  'mariadb -uroot -p"$$MYSQL_ROOT_PASSWORD" "$$MYSQL_DATABASE"'
-
-.PHONY: help docker-build docker-up docker-up-full docker-down \
-        docker-down-clean docker-logs docker-logs-all docker-shell \
-        docker-migrate docker-createsuperuser docker-shell-py \
-        docker-restart dev-up dev-down docker-config docker-pull \
-        backup restore
+.PHONY: help check check-safe test-hardening migrate collectstatic backup-db

@@ -158,6 +158,9 @@ def _warnings_from_app_version():
     but admins should know). Reuses the existing UpdateService check.
     """
     out = []
+    from django.conf import settings
+    if not getattr(settings, 'AUTO_UPDATE_ENABLED', False):
+        return out
     try:
         from core.updater import UpdateService
     except Exception:

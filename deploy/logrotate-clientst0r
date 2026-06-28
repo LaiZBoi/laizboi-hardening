@@ -1,0 +1,20 @@
+# Client St0r log rotation
+#
+# Install:
+#   sudo cp deploy/logrotate-clientst0r /etc/logrotate.d/clientst0r
+
+/var/log/itdocs/*.log
+/var/log/clientst0r/*.log
+/var/log/nginx/clientst0r-*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 clientst0r clientst0r
+    sharedscripts
+    postrotate
+        systemctl reload clientst0r >/dev/null 2>&1 || true
+    endscript
+}

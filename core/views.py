@@ -347,8 +347,9 @@ def beta_test_signup(request):
             try:
                 from django.conf import settings as _ds
                 from django.core.mail import send_mail
-                admin_email = getattr(_ds, 'BETA_ADMIN_EMAIL',
-                                      'agit8or@agit8or.net')
+                admin_email = getattr(_ds, 'BETA_ADMIN_EMAIL', '') or ''
+                if not admin_email:
+                    raise ValueError('BETA_ADMIN_EMAIL is not configured')
                 # Build admin URL — best-effort, may be wrong if not
                 # behind the public hostname.
                 approve_path = '/core/beta-testers/'
@@ -548,8 +549,9 @@ def beta_test_upstream(request):
     # Same admin notification path as the local signup — best-effort.
     try:
         from django.core.mail import send_mail
-        admin_email = getattr(settings, 'BETA_ADMIN_EMAIL',
-                              'agit8or@agit8or.net')
+        admin_email = getattr(settings, 'BETA_ADMIN_EMAIL', '') or ''
+        if not admin_email:
+            raise ValueError('BETA_ADMIN_EMAIL is not configured')
         send_mail(
             subject=f'[Client St0r] Beta signup (forwarded from {source or "?"}): {name}',
             message=(
@@ -579,7 +581,7 @@ def health(request):
     v3.17.490 — minimal health endpoint at GET /health/.
 
     Returns 200 + JSON {ok: true, version: 'X.Y.Z'} as soon as Django
-    can serve a request. Used by the Dockerfile HEALTHCHECK, load
+    can serve a request. Used by load balancers, uptime monitors, and
     balancers, and uptime monitors. Anonymous-accessible by design;
     leaks no sensitive data beyond the version string (which is also
     in /core/roadmap.json and About → Settings).
@@ -656,14 +658,25 @@ def system_updates(request):
     Staff-only access.
     """
     updater = UpdateService()
+    auto_update_enabled = getattr(settings, 'AUTO_UPDATE_ENABLED', False)
 
-    # Get cached update check or perform new check
+    # Get cached update check. When AUTO_UPDATE_ENABLED is false, do not
+    # perform background GitHub polling on page load; admins can still run
+    # an explicit manual check with the button below.
     cache_key = 'system_update_check'
     update_info = cache.get(cache_key)
 
-    if not update_info:
+    if not update_info and auto_update_enabled:
         update_info = updater.check_for_updates()
         cache.set(cache_key, update_info, 300)  # Cache for 5 minutes
+    elif not update_info:
+        update_info = {
+            'update_available': False,
+            'latest_version': None,
+            'current_version': get_version(),
+            'checked_at': None,
+            'manual_check_required': True,
+        }
 
     # Get git status
     git_status = updater.get_git_status()
@@ -711,6 +724,7 @@ def system_updates(request):
         'newer_changelogs': newer_changelogs,
         'debug_info': debug_info,
         'last_package_scan': last_package_scan,
+        'auto_update_enabled': auto_update_enabled,
     })
 
 
@@ -723,7 +737,7 @@ def check_updates_now(request):
     Staff-only access.
     """
     updater = UpdateService()
-    update_info = updater.check_for_updates()
+    update_info = updater.check_for_updates(force_refresh=True)
 
     # Update cache
     cache.set('system_update_check', update_info, 300)  # Cache for 5 minutes
@@ -772,6 +786,16 @@ def apply_update(request):
     Start system update using UpdateService with proper progress tracking.
     """
     try:
+        if not getattr(settings, 'AUTO_UPDATE_ENABLED', False):
+            return JsonResponse({
+                'status': 'error',
+                'message': (
+                    'Web-based update execution is disabled. Set '
+                    'AUTO_UPDATE_ENABLED=True only if you trust this instance '
+                    'to download and execute update scripts from GitHub.'
+                )
+            }, status=403)
+
         from core.updater import UpdateService
         from core.update_progress import UpdateProgress
         import threading
@@ -831,10 +855,18 @@ def update_status_api(request):
     cache_key = 'system_update_check'
     update_info = cache.get(cache_key)
 
-    if not update_info:
+    if not update_info and getattr(settings, 'AUTO_UPDATE_ENABLED', False):
         updater = UpdateService()
         update_info = updater.check_for_updates()
         cache.set(cache_key, update_info, 300)  # Cache for 5 minutes (consistent with system_updates view)
+    elif not update_info:
+        update_info = {
+            'update_available': False,
+            'latest_version': None,
+            'current_version': get_version(),
+            'checked_at': None,
+            'manual_check_required': True,
+        }
 
     return JsonResponse(update_info)
 

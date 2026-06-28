@@ -20,16 +20,17 @@ ClientSt0r covers similar use cases to Hudu with the addition of fleet managemen
 ## Installation
 
 **What are the system requirements?**
-A Linux server with Python 3.12+, MariaDB, and either Nginx or direct access. Docker support is available.
+Ubuntu 22.04/24.04 or Debian 12+ VPS with Python 3.12+, MariaDB, Nginx, systemd, and Certbot. See [VPS deployment guide](deployment-vps.md).
 
 **How do I install ClientSt0r?**
+Follow [docs/deployment-vps.md](deployment-vps.md) for production VPS install, or use the legacy one-liner for development:
 ```bash
 git clone https://github.com/agit8or1/clientst0r.git && cd clientst0r && bash install.sh
 ```
 The installer handles dependencies, database setup, and service configuration automatically.
 
 **Can I update without SSH?**
-Yes. ClientSt0r includes a web-based auto-update system accessible from System Settings → System Updates.
+Manual update checks are available in Settings → Updates. **Applying** updates from the web UI requires `AUTO_UPDATE_ENABLED=True` (opt-in). Production VPS installs should use manual updates per `docs/deployment-vps.md`.
 
 ## Features
 

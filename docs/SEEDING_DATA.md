@@ -141,7 +141,7 @@ python manage.py seed_kb_articles --delete
 7. **Virtualization (40+ articles)**
    - VMware vSphere/ESXi
    - Microsoft Hyper-V
-   - Docker containers
+   - Optional third-party container platforms (not used for Client St0r deployment in this fork)
    - Kubernetes basics
    - VM optimization
 

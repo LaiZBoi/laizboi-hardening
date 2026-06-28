@@ -447,6 +447,12 @@ class Command(BaseCommand):
     def run_update_check(self):
         """Check for system updates from GitHub."""
         from django.core.management import call_command
+        from django.conf import settings
+        if not getattr(settings, 'AUTO_UPDATE_ENABLED', False):
+            self.stdout.write(
+                "    Skipping automatic update check; AUTO_UPDATE_ENABLED is false"
+            )
+            return
         try:
             call_command('check_updates', verbosity=1)
         except Exception as e:

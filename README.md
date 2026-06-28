@@ -410,7 +410,7 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 **🎉 New in v3.17 (latest: v3.17.490):**
 
-- **🐳 First-class Docker / docker-compose deployment** *(Phase 42 — v3.17.490)* — `git clone && docker compose up -d` stands up app + MariaDB in under a minute. Multi-stage `Dockerfile` runs as non-root with a `/health/` HEALTHCHECK. Compose ships `app` + `db` by default; optional Nginx (`--profile proxy`) and Redis (`--profile cache`). `docker-compose.dev.yml` override for source-mount + reload + SQLite. GitHub Actions workflow publishes `ghcr.io/agit8or1/clientst0r:latest` + semver tags on every push to `main`. Full Makefile + `.env.example` + [docs/docker.md](docs/docker.md) guide (backups, upgrades, profiles, troubleshooting). Classic `bash install.sh` path is unchanged.
+- **🛡️ VPS production deployment** *(this fork)* — [`docs/deployment-vps.md`](docs/deployment-vps.md): Ubuntu/Debian + Python venv + gunicorn on `127.0.0.1:8000` + Nginx + MariaDB + systemd + Certbot + UFW + fail2ban. Privacy-safe defaults (`AUTO_UPDATE_ENABLED=False`, blank beta forwarding, `HIBP_ENABLED=False`). `manage.py check_safe_deployment` for production audits.
 - **🛡️ Compliance Frameworks & Recertification** *(Phase 41 — v3.17.435→v3.17.444)* — per-organization PCI-DSS v4.0 (38 controls) and HIPAA Security Rule (33 controls). Color-coded attestation checklist with notes + evidence URLs, branded customer-facing PDF report, and monthly recertification reminder cron with 7-day dedup. Toggle reminders / interval / notify-email per enrollment; **Mark Recertified Now** button stamps the cycle. RBAC-gated: superuser / staff / org-owner / org-admin only.
 - **📱 Native mobile app** *(Phase 8 — v3.17.346→v3.17.444)* — Expo + React Native + TypeScript. Six top-level areas: **Dashboard / Assets / Vault / Docs / PSA / Operations**. Operations is a hub for Timeclock, Monitoring, Security alerts, and Settings. Backed by DRF `/api/mobile/v1/` with token auth + per-endpoint throttling. Play Console publishing infrastructure under `local_apps/play_publish/` (local-only, gitignored): keystore generation, AAB build with auto-derived versionCode, R8 minify + proguard `mapping.txt`, Android API 35 target, Google Play Developer API upload.
 - **📋 Compliance Evidence Packs** *(Phase 39)* — single-ZIP audit bundle per org for SOC2 / ISO27001 / due-diligence requests.
@@ -581,39 +581,36 @@ Click-to-connect interface for managing patch panel connections:
 
 ## 🚀 Quick Start
 
-### 🐳 Run with Docker (recommended for fresh hosts)
+### VPS production (recommended)
+
+This fork deploys on a **Ubuntu/Debian VPS** with systemd, Nginx, and MariaDB.
+
+**Full guide:** [docs/deployment-vps.md](docs/deployment-vps.md)
+
+**Also read:**
+
+- [docs/security-hardening.md](docs/security-hardening.md) — security baseline
+- [docs/outbound-network-calls.md](docs/outbound-network-calls.md) — outbound integrations
+- [AUTO_UPDATE.md](AUTO_UPDATE.md) — opt-in update execution only
 
 ```bash
-git clone https://github.com/agit8or1/clientst0r.git
-cd clientst0r
-cp .env.example .env
-# edit .env — at minimum: SECRET_KEY, DB_*_PASSWORD, APP_MASTER_KEY
-docker compose up -d
+# After following docs/deployment-vps.md through clone + venv + MariaDB + .env:
+cd /opt/clientst0r
+set -a && source /etc/clientst0r/.env && set +a
+venv/bin/python manage.py migrate --noinput
+venv/bin/python manage.py collectstatic --noinput
+sudo systemctl enable --now clientst0r
 ```
 
-Open `http://localhost:8000`. The entrypoint applies migrations and
-collects static files on first boot. If you set `DJANGO_SUPERUSER_*`
-in `.env`, an admin account is created automatically.
-
-**Optional services** are gated behind compose profiles:
+Validate:
 
 ```bash
-docker compose --profile proxy up -d   # adds Nginx + TLS on 80/443
-docker compose --profile cache up -d   # adds Redis (only if you've switched CACHES to Redis)
+venv/bin/python manage.py check --deploy
+venv/bin/python manage.py check_safe_deployment
+curl -I https://your-hostname.example/health/
 ```
 
-**Pre-built images** are published to `ghcr.io/agit8or1/clientst0r`
-on every push to `main` and every `v*` tag — `docker compose pull` to
-upgrade without building locally.
-
-**Full Docker guide:** [docs/docker.md](docs/docker.md) — backups,
-upgrades, profiles, dev mode, troubleshooting.
-
-> The classic `bash install.sh` path below still works. Docker is a
-> peer option, not a replacement — pick whichever fits your host
-> better.
-
-### One-Line Installation (Recommended)
+### Legacy one-line installer (development / quick eval)
 
 The easiest way to install Client St0r:
 
@@ -827,7 +824,7 @@ Visit `http://localhost:8000` and log in with the credentials you created in ste
 - **[SECURITY.md](SECURITY.md)** - Security best practices and vulnerability disclosure
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development and contribution guidelines
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
-- **[deploy/](deploy/)** - Production deployment configs (Nginx, Gunicorn, systemd services)
+- **[deploy/](deploy/)** — VPS production configs (`clientst0r.service`, `nginx-clientst0r.conf`, systemd timers, fail2ban, logrotate)
 
 ## 🏗️ Architecture
 
@@ -842,8 +839,8 @@ Visit `http://localhost:8000` and log in with the credentials you created in ste
 - **Frontend**: Bootstrap 5, vanilla JavaScript
 
 ### Design Philosophy
-- ✅ **Flexible Deployment** - Pure systemd deployment OR optional Docker
-- ✅ **No Redis** - systemd timers for scheduling (Redis optional for Docker)
+- ✅ **VPS deployment** - systemd + Nginx + MariaDB on Ubuntu/Debian (see `docs/deployment-vps.md`)
+- ✅ **No Redis** - systemd timers for scheduling
 - ✅ **Minimal Dependencies** - Only essential packages
 - ✅ **Security First** - Built with security in mind
 - ✅ **Self-Hosted** - Complete data control
@@ -965,7 +962,7 @@ Your support allows me to continue developing open-source tools like Client St0r
 
 ### Recently shipped ✅
 - v3.17.83 → 3.17.130: complete Native PSA / Service Desk (12+ phases — see CHANGELOG)
-- Mobile-responsive UI, advanced reporting, backup/restore, Docker option, API v2 GraphQL, MagicPlan import
+- Mobile-responsive UI, advanced reporting, backup/restore, API v2 GraphQL, MagicPlan import
 - Phase 1 Contract Engine (1.1 + 1.2): rollover, auto-renew, role gates, bundled services, profitability
 - Phase 2.1 Resourcing: skills, certifications, working hours
 - AI Triage suggestions on tickets with full guardrails

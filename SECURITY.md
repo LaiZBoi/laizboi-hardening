@@ -1204,7 +1204,7 @@ SNYK_SEVERITY_THRESHOLD='low'  # Alert on: critical, high, medium, low
 **What Gets Scanned:**
 - **Python Dependencies** - All packages in requirements.txt and installed packages
 - **JavaScript Dependencies** - package.json, package-lock.json, node_modules
-- **Docker Images** - Container security scanning (if using Docker deployment)
+- **Container images (Snyk)** — Optional Snyk Container scanning for operators who scan images separately from this VPS app install
 - **Infrastructure as Code** - Kubernetes/Terraform configs (if present)
 - **License Compliance** - Check for problematic licenses
 

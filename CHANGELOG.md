@@ -5,6 +5,11 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **Fork (VPS-only, 2026):** Deploy on Ubuntu/Debian VPS with systemd + Nginx + MariaDB.
+> Defaults: `AUTO_UPDATE_ENABLED=False`, blank beta upstream/email, `HIBP_ENABLED=False`.
+> **Docker, Docker Compose, and Unraid deployment have been removed** from this repo.
+> Historical changelog entries may mention containers — ignore for current installs.
+
 ## [3.17.497] - 2026-06-24
 
 ### Fix: TOTP secret entry was hidden on every password type except "OTP"

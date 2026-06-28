@@ -415,7 +415,7 @@ LOGOUT_REDIRECT_URL = 'two_factor:login'
 REQUIRE_2FA = os.getenv('REQUIRE_2FA', 'True').lower() == 'true'
 
 # HaveIBeenPwned Breach Checking
-HIBP_ENABLED = os.getenv('HIBP_ENABLED', 'True').lower() == 'true'
+HIBP_ENABLED = os.getenv('HIBP_ENABLED', 'False').lower() == 'true'
 HIBP_API_KEY = os.getenv('HIBP_API_KEY', '')  # Optional - increases rate limit
 HIBP_CHECK_ON_SAVE = os.getenv('HIBP_CHECK_ON_SAVE', 'True').lower() == 'true'
 HIBP_BLOCK_BREACHED = os.getenv('HIBP_BLOCK_BREACHED', 'False').lower() == 'true'
@@ -611,7 +611,7 @@ if not DEBUG:
 # Auto-Update Settings
 GITHUB_REPO_OWNER = os.getenv('GITHUB_REPO_OWNER', 'agit8or1')
 GITHUB_REPO_NAME = os.getenv('GITHUB_REPO_NAME', 'clientst0r')
-AUTO_UPDATE_ENABLED = os.getenv('AUTO_UPDATE_ENABLED', 'True').lower() == 'true'
+AUTO_UPDATE_ENABLED = os.getenv('AUTO_UPDATE_ENABLED', 'False').lower() == 'true'
 AUTO_UPDATE_CHECK_INTERVAL = int(os.getenv('AUTO_UPDATE_CHECK_INTERVAL', '21600'))  # 6 hours in seconds (reduced API calls)
 
 # GraphQL Configuration
@@ -693,11 +693,10 @@ if _LOCAL_APPS_DIR.is_dir():
 # ---------------------------------------------------------------------------
 # Mobile beta-tester signup wiring (v3.17.485 / locked v3.17.488)
 # ---------------------------------------------------------------------------
-# BETA_ADMIN_EMAIL — where signup notifications go. Env-overridable so
-# a fork can route to its own ops address, but the default is the
-# canonical Client St0r maintainer so any unconfigured install still
-# delivers signups to a person who can act on them.
-BETA_ADMIN_EMAIL = os.getenv('BETA_ADMIN_EMAIL', 'agit8or@agit8or.net')
+# BETA_ADMIN_EMAIL — where signup notifications go. Blank by default so
+# self-hosted installs do not send signup data off-instance unless an
+# admin explicitly configures a recipient.
+BETA_ADMIN_EMAIL = os.getenv('BETA_ADMIN_EMAIL', '')
 
 # Play Console listing URLs — HARD-CODED to the canonical agit8or1
 # Client St0r Android listing. There is exactly one Android app to
@@ -713,10 +712,10 @@ PLAY_INTERNAL_TEST_URL = 'https://play.google.com/apps/internaltest/470153667006
 # records, and (b) best-effort POSTs the same payload to this URL so
 # the signup also lands on the canonical agit8or1 server (the one
 # whose Play Console listing is being signed up for).
-# The canonical install MUST set BETA_UPSTREAM_URL='' in its .env to
-# avoid forwarding to itself — see /home/administrator/.env for the
-# operator setting.
+# Privacy-safe self-hosted default: keep BETA_UPSTREAM_URL blank so
+# signup/user data stays local unless an admin explicitly configures
+# forwarding.
 BETA_UPSTREAM_URL = os.getenv(
     'BETA_UPSTREAM_URL',
-    'https://huduglue.agit8or.net/core/beta-test/upstream/',
+    '',
 )

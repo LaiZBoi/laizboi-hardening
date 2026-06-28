@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from django.core.cache import cache
 from core.updater import UpdateService
 import json
+from django.conf import settings
 
 
 class Command(BaseCommand):
@@ -66,6 +67,16 @@ class Command(BaseCommand):
 
             # Apply update if --apply flag is set
             if options['apply']:
+                if not getattr(settings, 'AUTO_UPDATE_ENABLED', False):
+                    self.stdout.write(
+                        self.style.ERROR(
+                            '\nUpdate execution is disabled. Set '
+                            'AUTO_UPDATE_ENABLED=True only if you trust this '
+                            'instance to download and execute update scripts '
+                            'from GitHub.'
+                        )
+                    )
+                    return
                 self.stdout.write(
                     self.style.WARNING('\nApplying update...')
                 )

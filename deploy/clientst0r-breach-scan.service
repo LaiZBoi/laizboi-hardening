@@ -1,22 +1,14 @@
 [Unit]
-Description=Client St0r Password Breach Scanning
-After=network.target mariadb.service
+Description=Client St0r Password Breach Scan
+After=network.target
 
 [Service]
 Type=oneshot
-User=administrator
-Group=administrator
-WorkingDirectory=/home/administrator
-Environment="PATH=/home/administrator/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/administrator/venv/bin/python /home/administrator/manage.py check_password_breaches
-
-# Logging
-StandardOutput=append:/var/log/itdocs/breach-scan.log
-StandardError=append:/var/log/itdocs/breach-scan-error.log
-
-# Security hardening
-PrivateTmp=true
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
+User=clientst0r
+Group=clientst0r
+WorkingDirectory=/opt/clientst0r
+Environment="PATH=/opt/clientst0r/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=-/etc/clientst0r/.env
+ExecStart=/opt/clientst0r/venv/bin/python /opt/clientst0r/manage.py check_password_breaches
+StandardOutput=journal
+StandardError=journal

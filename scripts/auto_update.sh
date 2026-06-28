@@ -1,23 +1,31 @@
 #!/bin/bash
 # Client St0r Auto-Update Script
-# Thin wrapper: downloads and executes update_instructions.sh from GitHub
+# Thin wrapper: downloads and executes update_instructions.sh from GitHub.
+#
+# Execution is opt-in: set AUTO_UPDATE_ENABLED=True in .env (project or /etc/clientst0r/.env).
 
-# Get project directory (where this script lives)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=clientst0r_env.sh
+source "$SCRIPT_DIR/clientst0r_env.sh"
 
 LOG_FILE="/var/log/clientst0r/auto-update.log"
 
-# Ensure log directory exists
 sudo mkdir -p /var/log/clientst0r
 sudo chown -R "$(whoami):$(whoami)" /var/log/clientst0r
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
 
-# Check if running as root
 if [ "$EUID" -eq 0 ]; then
     log "ERROR: Do not run this script as root. Run as the user who owns the installation."
     exit 1
+fi
+
+clientst0r_load_deployment_env "$PROJECT_DIR"
+
+if ! clientst0r_auto_update_enabled; then
+    log "Auto-update execution is disabled. Set AUTO_UPDATE_ENABLED=True to opt in."
+    exit 0
 fi
 
 log "=========================================="
@@ -25,7 +33,6 @@ log "Client St0r Auto-Update Script"
 log "=========================================="
 log "Project directory: $PROJECT_DIR"
 
-# Detect GitHub repo from git remote
 REPO_URL=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
 if echo "$REPO_URL" | grep -q "github.com"; then
     REPO_PATH=$(echo "$REPO_URL" \
@@ -38,7 +45,6 @@ fi
 INSTRUCTIONS_URL="https://raw.githubusercontent.com/$REPO_PATH/main/deploy/update_instructions.sh"
 log "Downloading update instructions from: $INSTRUCTIONS_URL"
 
-# Download to a temp file
 TEMP_SCRIPT=$(mktemp /tmp/clientst0r_update_XXXXXXXX.sh)
 
 DOWNLOAD_OK=0
@@ -55,7 +61,6 @@ if [ "$DOWNLOAD_OK" -eq 0 ]; then
     exit 1
 fi
 
-# Validate it's a shell script
 if ! head -1 "$TEMP_SCRIPT" | grep -q "^#!"; then
     log "ERROR: Downloaded content is not a valid shell script"
     rm -f "$TEMP_SCRIPT"
@@ -65,16 +70,14 @@ fi
 chmod 700 "$TEMP_SCRIPT"
 log "Update instructions downloaded and validated"
 
-# Auto-detect gunicorn service name
 GUNICORN_SERVICE=""
-for svc in clientst0r-gunicorn.service; do
-    if systemctl list-unit-files 2>/dev/null | grep -q "^$svc"; then
+    for svc in clientst0r.service; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${svc}"; then
         GUNICORN_SERVICE="$svc"
         break
     fi
 done
 
-# Execute the update instructions
 export CLIENTST0R_BASE_DIR="$PROJECT_DIR"
 export CLIENTST0R_SERVICE_NAME="$GUNICORN_SERVICE"
 
@@ -82,7 +85,6 @@ log "Executing update instructions..."
 /bin/bash "$TEMP_SCRIPT"
 EXIT_CODE=$?
 
-# Cleanup
 rm -f "$TEMP_SCRIPT"
 
 if [ "$EXIT_CODE" -eq 0 ]; then

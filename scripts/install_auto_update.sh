@@ -19,6 +19,13 @@ echo "Installing auto-update system..."
 echo "User: $CURRENT_USER"
 echo "Project: $PROJECT_DIR"
 
+ENV_FILE="${PROJECT_DIR}/.env"
+if [ -f /etc/clientst0r/.env ]; then
+    ENV_FILE="/etc/clientst0r/.env"
+elif [ -f "${PROJECT_DIR}/.env" ]; then
+    ENV_FILE="${PROJECT_DIR}/.env"
+fi
+
 # Create dynamic service file with actual user
 cat > /tmp/clientst0r-auto-update.service << EOF
 [Unit]
@@ -34,7 +41,8 @@ ExecStart=$PROJECT_DIR/scripts/auto_update.sh
 StandardOutput=append:/var/log/clientst0r/auto-update.log
 StandardError=append:/var/log/clientst0r/auto-update.log
 
-# Environment
+# Environment — load deployment .env (AUTO_UPDATE_ENABLED, etc.)
+EnvironmentFile=-$ENV_FILE
 Environment="PATH=$PROJECT_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Security
@@ -89,8 +97,12 @@ sudo systemctl start clientst0r-auto-update.timer
 
 echo ""
 echo -e "${GREEN}=========================================="
-echo "✓ Auto-Update System Installed!"
+echo "✓ Auto-Update Timer Installed"
 echo -e "==========================================${NC}"
+echo ""
+echo "IMPORTANT: Update execution is disabled by default."
+echo "  Set AUTO_UPDATE_ENABLED=True in your .env only after you trust"
+echo "  the configured GitHub repository and update scripts."
 echo ""
 echo "Configuration:"
 echo "  • Updates check: Daily at 2 AM"

@@ -368,6 +368,13 @@ class UpdateService:
         script_path = None
 
         try:
+            if not getattr(settings, 'AUTO_UPDATE_ENABLED', False):
+                raise Exception(
+                    "Web-based update execution is disabled. Set "
+                    "AUTO_UPDATE_ENABLED=True only if you trust this instance "
+                    "to download and execute update scripts from GitHub."
+                )
+
             # Pre-check: Verify passwordless sudo is configured (if running under systemd)
             if self._is_systemd_service():
                 if not self._check_passwordless_sudo():
