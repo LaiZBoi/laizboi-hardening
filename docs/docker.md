@@ -142,6 +142,7 @@ docker compose exec app python manage.py check_safe_deployment
 |--------|-------|
 | `clientst0r-db-data` | MariaDB tables |
 | `clientst0r-uploads` | Private attachments (`UPLOAD_ROOT`) |
+| `clientst0r-logs` | Application log files (`LOG_DIR`) |
 | `clientst0r-media` | Other media files |
 | `clientst0r-static` | `collectstatic` output |
 
