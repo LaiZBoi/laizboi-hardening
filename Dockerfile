@@ -59,6 +59,7 @@ WORKDIR /app
 # Copy source. .dockerignore keeps node_modules, venvs, db files,
 # .git, mobile/, local_apps/, etc. out of the context.
 COPY --chown=clientst0r:clientst0r . /app/
+RUN chmod +x /app/docker-entrypoint.sh /app/scripts/docker-healthcheck.sh
 
 USER clientst0r
 
@@ -68,15 +69,11 @@ USER clientst0r
 
 EXPOSE 8000
 
-# Healthcheck hits the dedicated /health/ endpoint added in v3.17.490.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -fsS http://localhost:8000/health/ || exit 1
-
-# Entrypoint waits for DB + runs migrations + collectstatic, then
-# execs CMD.
-COPY --chown=clientst0r:clientst0r docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+# Healthcheck uses first ALLOWED_HOSTS entry as Host header (see script).
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD ["/app/scripts/docker-healthcheck.sh"]
 
 CMD ["gunicorn", "config.wsgi:application", \
      "--bind", "0.0.0.0:8000", \

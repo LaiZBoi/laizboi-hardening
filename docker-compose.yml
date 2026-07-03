@@ -79,6 +79,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       UPLOAD_ROOT: /var/lib/clientst0r/uploads
       PRIVATE_FILE_SERVER: ${PRIVATE_FILE_SERVER:-nginx}
+      # Internal healthchecks use Host: localhost — must be allowed.
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-localhost},localhost,127.0.0.1"
     volumes:
       - media_files:/app/media
       - static_files:/app/static_collected
@@ -92,11 +94,11 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      test: ["CMD", "/app/scripts/docker-healthcheck.sh"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 90s
 
   # ────────────────────────────────────────────────────────────────────
   # Nginx — optional reverse proxy. Enable with --profile proxy.
@@ -110,6 +112,10 @@ services:
     container_name: clientst0r-nginx
     restart: unless-stopped
     profiles: ["proxy"]
+    env_file:
+      - .env
+    environment:
+      HEALTHCHECK_PORT: "80"
     ports:
       - "${NGINX_HTTP_PORT:-80}:80"
       - "${NGINX_HTTPS_PORT:-443}:443"
@@ -125,10 +131,11 @@ services:
       app:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health/"]
+      test: ["CMD-SHELL", "H=$$(printf '%s' \"$$ALLOWED_HOSTS\" | cut -d, -f1 | tr -d ' '); wget -q --spider --header=\"Host: $$H\" http://127.0.0.1/health/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   # ────────────────────────────────────────────────────────────────────
   # Redis — optional. The default Django cache backend is in-process
