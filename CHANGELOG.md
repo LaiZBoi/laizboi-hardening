@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > ([`docs/deployment-vps.md`](docs/deployment-vps.md)). Defaults: `AUTO_UPDATE_ENABLED=False`,
 > blank beta upstream/email, `HIBP_ENABLED=False`.
 
+## [3.17.500] - 2026-07-02
+
+### Fix: Docker app crashes on startup (log directory permission)
+
+Django tried to create `/var/log/itdocs` at import time in production. The container runs as non-root uid 1000 and cannot write there, so `manage.py migrate` failed and the app container exited within seconds.
+
+- **`LOG_DIR` env** — configurable log path; Docker Compose sets `LOG_DIR=/app/logs` (bind-mounted `./logs`)
+- **`config/settings.py`** — file handlers use `LOG_DIR`; mkdir failures no longer abort startup
+
 ## [3.17.499] - 2026-07-02
 
 ### Fix: Docker app container marked unhealthy on first boot

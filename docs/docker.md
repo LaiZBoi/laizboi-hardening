@@ -217,6 +217,7 @@ Docker marks `clientst0r-app` unhealthy when `/health/` does not return 200. Com
    `SECRET_KEY`, `APP_MASTER_KEY`, `API_KEY_SECRET`, `DB_PASSWORD`, `DB_ROOT_PASSWORD`
 2. **`ALLOWED_HOSTS` missing your public hostname** — use `psa.laizboi.com,localhost` (comma-separated; healthcheck uses the **first** host as the `Host` header)
 3. **Migrations failed** — check `docker compose logs app --tail 100`
+4. **`PermissionError: /var/log/itdocs`** (v3.17.499 and earlier) — `git pull` to v3.17.500+; Compose sets `LOG_DIR=/app/logs`
 
 Diagnose on the VPS:
 

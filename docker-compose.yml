@@ -78,6 +78,7 @@ services:
       DB_USER: ${DB_USER:-clientst0r}
       DB_PASSWORD: ${DB_PASSWORD}
       UPLOAD_ROOT: /var/lib/clientst0r/uploads
+      LOG_DIR: /app/logs
       PRIVATE_FILE_SERVER: ${PRIVATE_FILE_SERVER:-nginx}
       # Internal healthchecks use Host: localhost — must be allowed.
       ALLOWED_HOSTS: "${ALLOWED_HOSTS:-localhost},localhost,127.0.0.1"

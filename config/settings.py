@@ -556,7 +556,9 @@ if not API_KEY_SECRET:
     else:
         raise ValueError("API_KEY_SECRET environment variable must be set in production (must differ from SECRET_KEY)")
 
-# Logging
+# Logging — VPS default /var/log/itdocs; Docker sets LOG_DIR=/app/logs in compose
+LOG_DIR = Path(os.getenv('LOG_DIR', '/var/log/itdocs'))
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -573,12 +575,12 @@ LOGGING = {
         },
         'file': {
             'class': 'logging.FileHandler',
-            'filename': '/var/log/itdocs/django.log',
+            'filename': str(LOG_DIR / 'django.log'),
             'formatter': 'verbose',
         },
         'vault_file': {
             'class': 'logging.FileHandler',
-            'filename': '/var/log/itdocs/vault.log',
+            'filename': str(LOG_DIR / 'vault.log'),
             'formatter': 'verbose',
         },
     },
@@ -605,10 +607,12 @@ LOGGING = {
     },
 }
 
-# Create log directory if it doesn't exist
+# Create log directory if it doesn't exist (Docker: set LOG_DIR=/app/logs)
 if not DEBUG:
-    log_dir = Path('/var/log/itdocs')
-    log_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
 # Auto-Update Settings
 GITHUB_REPO_OWNER = os.getenv('GITHUB_REPO_OWNER', 'agit8or1')
