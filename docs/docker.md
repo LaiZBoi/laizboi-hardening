@@ -61,7 +61,7 @@ This starts:
 Configure `.env`:
 
 ```env
-ALLOWED_HOSTS=psa.laizboi.com
+ALLOWED_HOSTS=psa.laizboi.com,localhost
 CSRF_TRUSTED_ORIGINS=https://psa.laizboi.com
 BASE_URL=https://psa.laizboi.com
 PRIVATE_FILE_SERVER=nginx
@@ -203,10 +203,43 @@ With the proxy profile: `curl -I http://psa.laizboi.com/health/`
 | Symptom | Fix |
 |---------|-----|
 | `DB_ROOT_PASSWORD must be set` | Fill required vars in `.env` |
-| Healthcheck stuck on `starting` | `docker compose logs -f app` — first boot runs migrate + collectstatic |
+| **`app` unhealthy / nginx won't start** | See **Unhealthy app container** below |
+| Healthcheck stuck on `starting` | First boot runs migrate + collectstatic (~90s). `docker compose logs -f app` |
 | CSRF errors | `CSRF_TRUSTED_ORIGINS` must match your HTTPS origin |
-| Attachments empty | `PRIVATE_FILE_SERVER=nginx` and Nginx `internal_uploads` location (proxy profile) |
+| Attachments empty | `PRIVATE_FILE_SERVER=nginx` and proxy profile running |
 | Vault decrypt errors | Restore original `APP_MASTER_KEY` from backup |
+
+### Unhealthy app container
+
+Docker marks `clientst0r-app` unhealthy when `/health/` does not return 200. Common causes:
+
+1. **Missing secrets in `.env`** — all required in production:
+   `SECRET_KEY`, `APP_MASTER_KEY`, `API_KEY_SECRET`, `DB_PASSWORD`, `DB_ROOT_PASSWORD`
+2. **`ALLOWED_HOSTS` missing your public hostname** — use `psa.laizboi.com,localhost` (comma-separated; healthcheck uses the **first** host as the `Host` header)
+3. **Migrations failed** — check `docker compose logs app --tail 100`
+
+Diagnose on the VPS:
+
+```bash
+cd /opt/clientst0r
+docker compose logs app --tail 100
+docker inspect clientst0r-app --format='{{json .State.Health}}' | python3 -m json.tool
+```
+
+Quick recovery (after fixing `.env`):
+
+```bash
+cd /opt/clientst0r
+git pull origin main
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml \
+  --profile proxy up -d --build --force-recreate
+```
+
+Test health manually inside the app container:
+
+```bash
+docker compose exec app /app/scripts/docker-healthcheck.sh && echo OK
+```
 
 ---
 

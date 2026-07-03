@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > ([`docs/deployment-vps.md`](docs/deployment-vps.md)). Defaults: `AUTO_UPDATE_ENABLED=False`,
 > blank beta upstream/email, `HIBP_ENABLED=False`.
 
+## [3.17.499] - 2026-07-02
+
+### Fix: Docker app container marked unhealthy on first boot
+
+The app HEALTHCHECK called `http://localhost:8000/health/` with `Host: localhost`, which Django rejects when `ALLOWED_HOSTS` lists only the public hostname — causing `clientst0r-app` to stay unhealthy and blocking the Nginx proxy container.
+
+- **`scripts/docker-healthcheck.sh`** — sends `Host:` from the first entry in `ALLOWED_HOSTS`
+- **`Dockerfile` / `docker-compose.yml`** — use the script; longer `start_period` (90s) for first-boot migrate/collectstatic
+- **Nginx service** — healthcheck sends the same `Host` header; loads `.env` for `ALLOWED_HOSTS`
+- **`docs/docker.md`** — unhealthy-app troubleshooting section
+
 ## [3.17.498] - 2026-07-02
 
 ### Docker deployment restored
