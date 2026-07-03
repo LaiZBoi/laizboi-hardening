@@ -559,6 +559,41 @@ if not API_KEY_SECRET:
 # Logging — VPS default /var/log/itdocs; Docker sets LOG_DIR=/app/logs in compose
 LOG_DIR = Path(os.getenv('LOG_DIR', '/var/log/itdocs'))
 
+
+def _log_dir_writable():
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        probe = LOG_DIR / '.write_probe'
+        probe.write_text('ok')
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+_LOG_HANDLERS = {
+    'console': {
+        'class': 'logging.StreamHandler',
+        'formatter': 'verbose',
+    },
+}
+_INTEGRATIONS_HANDLERS = ['console']
+_VAULT_HANDLERS = ['console']
+
+if _log_dir_writable():
+    _LOG_HANDLERS['file'] = {
+        'class': 'logging.FileHandler',
+        'filename': str(LOG_DIR / 'django.log'),
+        'formatter': 'verbose',
+    }
+    _LOG_HANDLERS['vault_file'] = {
+        'class': 'logging.FileHandler',
+        'filename': str(LOG_DIR / 'vault.log'),
+        'formatter': 'verbose',
+    }
+    _INTEGRATIONS_HANDLERS.append('file')
+    _VAULT_HANDLERS.append('vault_file')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -568,22 +603,7 @@ LOGGING = {
             'style': '{',
         },
     },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': str(LOG_DIR / 'django.log'),
-            'formatter': 'verbose',
-        },
-        'vault_file': {
-            'class': 'logging.FileHandler',
-            'filename': str(LOG_DIR / 'vault.log'),
-            'formatter': 'verbose',
-        },
-    },
+    'handlers': _LOG_HANDLERS,
     'root': {
         'handlers': ['console'],
         'level': 'INFO',
@@ -595,24 +615,17 @@ LOGGING = {
             'propagate': False,
         },
         'integrations': {
-            'handlers': ['console', 'file'],
+            'handlers': _INTEGRATIONS_HANDLERS,
             'level': 'INFO',
             'propagate': False,
         },
         'vault': {
-            'handlers': ['console', 'vault_file'],
+            'handlers': _VAULT_HANDLERS,
             'level': 'DEBUG',
             'propagate': False,
         },
     },
 }
-
-# Create log directory if it doesn't exist (Docker: set LOG_DIR=/app/logs)
-if not DEBUG:
-    try:
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
 
 # Auto-Update Settings
 GITHUB_REPO_OWNER = os.getenv('GITHUB_REPO_OWNER', 'agit8or1')

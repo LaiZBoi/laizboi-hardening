@@ -14,6 +14,8 @@ set -e
 
 echo "Client St0r container starting..."
 
+mkdir -p "${LOG_DIR:-/app/logs}"
+
 if [ "${DB_ENGINE:-mysql}" != "sqlite3" ]; then
     echo "Waiting for database at ${DB_HOST}:${DB_PORT:-3306}..."
     until python -c "import MySQLdb; MySQLdb.connect(host='${DB_HOST}', \

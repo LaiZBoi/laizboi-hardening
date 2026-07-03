@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > ([`docs/deployment-vps.md`](docs/deployment-vps.md)). Defaults: `AUTO_UPDATE_ENABLED=False`,
 > blank beta upstream/email, `HIBP_ENABLED=False`.
 
+## [3.17.501] - 2026-07-02
+
+### Fix: Docker log bind mount permission denied
+
+The `./logs:/app/logs` bind mount was often created as root on the host, so uid 1000 in the container could not write `django.log`.
+
+- **`docker-compose.yml`** — use named volume `clientst0r-logs` instead of `./logs` bind mount
+- **`docker-entrypoint.sh`** — `mkdir -p` for `LOG_DIR` before migrate
+- **`config/settings.py`** — skip file log handlers when `LOG_DIR` is not writable (console logging still works)
+
 ## [3.17.500] - 2026-07-02
 
 ### Fix: Docker app crashes on startup (log directory permission)

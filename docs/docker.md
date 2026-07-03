@@ -218,6 +218,7 @@ Docker marks `clientst0r-app` unhealthy when `/health/` does not return 200. Com
 2. **`ALLOWED_HOSTS` missing your public hostname** — use `psa.laizboi.com,localhost` (comma-separated; healthcheck uses the **first** host as the `Host` header)
 3. **Migrations failed** — check `docker compose logs app --tail 100`
 4. **`PermissionError: /var/log/itdocs`** (v3.17.499 and earlier) — `git pull` to v3.17.500+; Compose sets `LOG_DIR=/app/logs`
+5. **`PermissionError: /app/logs/django.log`** — `git pull` to v3.17.501+ (named log volume), or `sudo chown -R 1000:1000 logs` if using an old bind mount
 
 Diagnose on the VPS:
 
