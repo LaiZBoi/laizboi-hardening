@@ -90,6 +90,11 @@ class Command(BaseCommand):
             emit('pass' if db_password else 'fail',
                  'DB_PASSWORD is set')
 
+        file_server = getattr(settings, 'PRIVATE_FILE_SERVER', 'nginx').lower()
+        emit('pass' if file_server in ('nginx', 'apache') else 'warn',
+             'PRIVATE_FILE_SERVER is nginx or apache',
+             f'currently {file_server!r} — use apache with mod_xsendfile or nginx with X-Accel-Redirect')
+
         self.stdout.write('')
         if fail_count:
             self.stdout.write(self.style.ERROR(

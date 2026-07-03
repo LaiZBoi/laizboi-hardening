@@ -253,10 +253,12 @@ STORAGES = {
     },
 }
 
-# Media files (private, served via X-Accel-Redirect)
+# Private attachments — stored under UPLOAD_ROOT; served via reverse-proxy offload
+# (nginx X-Accel-Redirect or Apache mod_xsendfile). See PRIVATE_FILE_SERVER.
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-UPLOAD_ROOT = Path(os.getenv('UPLOAD_ROOT', '/var/lib/itdocs/uploads'))
+UPLOAD_ROOT = Path(os.getenv('UPLOAD_ROOT', str(BASE_DIR / 'media')))
+MEDIA_ROOT = UPLOAD_ROOT
+PRIVATE_FILE_SERVER = os.getenv('PRIVATE_FILE_SERVER', 'nginx').strip().lower()
 
 # Upload size limits (match nginx client_max_body_size)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB in memory

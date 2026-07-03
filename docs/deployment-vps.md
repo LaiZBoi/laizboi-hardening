@@ -1,6 +1,6 @@
 # VPS Production Deployment
 
-The **only supported deployment path** for this fork. Client St0r may store MSP documentation, passwords, client records, API credentials, tickets, and operational data — use security-first defaults and keep gunicorn on **localhost only** behind Nginx.
+Bare-metal install on Ubuntu/Debian. For **Docker Compose**, see [`docs/docker.md`](docker.md) instead. Client St0r may store MSP documentation, passwords, client records, API credentials, tickets, and operational data — use security-first defaults and keep gunicorn on **localhost only** behind Apache or Nginx.
 
 Related docs:
 
@@ -13,15 +13,19 @@ Related docs:
 
 - Ubuntu 22.04/24.04 LTS or Debian 12+ on a public VPS
 - Root or sudo access for initial setup
-- A domain name you control (e.g. `docs.example.com`)
+- A domain name you control (e.g. `psa.laizboi.com`)
 - You will **not** expose gunicorn (`127.0.0.1:8000`) to the internet
 - Automatic update execution stays **disabled** unless you explicitly opt in
 
 ## Architecture
 
 ```text
-Internet → Nginx (443/80, TLS) → 127.0.0.1:8000 (gunicorn) → MariaDB (127.0.0.1)
+Internet → Apache or Nginx (443/80, TLS) → 127.0.0.1:8000 (gunicorn) → MariaDB (127.0.0.1)
 ```
+
+**Apache** — use when ports 80/443 are already owned by Apache (other sites can stay on different `ServerName` values). Set `PRIVATE_FILE_SERVER=apache` and use `deploy/apache-clientst0r.conf`.
+
+**Nginx** — use on a greenfield VPS with no existing web server. Set `PRIVATE_FILE_SERVER=nginx` (default) and use `deploy/nginx-clientst0r.conf`.
 
 ## Recommended paths
 
@@ -40,7 +44,7 @@ Internet → Nginx (443/80, TLS) → 127.0.0.1:8000 (gunicorn) → MariaDB (127.
 Create an **A record** (and optional **AAAA** for IPv6) pointing your hostname to the VPS public IP:
 
 ```text
-docs.example.com  →  A  →  203.0.113.10
+psa.laizboi.com  →  A  →  203.0.113.10
 ```
 
 Wait for DNS propagation before running Certbot.
@@ -60,9 +64,18 @@ Ensure the provider allows outbound HTTPS (integrations, manual update checks).
 sudo apt update
 sudo apt install -y \
   python3.12 python3.12-venv python3.12-dev \
-  mariadb-server nginx certbot python3-certbot-nginx \
-  ufw fail2ban git build-essential \
-  libmariadb-dev pkg-config curl logrotate
+  mariadb-server git build-essential ufw \
+  libmariadb-dev pkg-config curl logrotate fail2ban
+```
+
+Install **one** reverse-proxy stack:
+
+```bash
+# Apache (when Apache already serves other sites on this VPS)
+sudo apt install -y apache2 libapache2-mod-xsendfile python3-certbot-apache
+
+# — OR — Nginx (greenfield VPS)
+# sudo apt install -y nginx certbot python3-certbot-nginx
 ```
 
 ```bash
@@ -143,9 +156,9 @@ DB_NAME=clientst0r
 DB_USER=clientst0r
 DB_PASSWORD=<strong>
 
-ALLOWED_HOSTS=docs.example.com
-CSRF_TRUSTED_ORIGINS=https://docs.example.com
-BASE_URL=https://docs.example.com
+ALLOWED_HOSTS=psa.laizboi.com
+CSRF_TRUSTED_ORIGINS=https://psa.laizboi.com
+BASE_URL=https://psa.laizboi.com
 
 SECURE_SSL_REDIRECT=True
 SESSION_COOKIE_SECURE=True
@@ -153,6 +166,7 @@ CSRF_COOKIE_SECURE=True
 REQUIRE_2FA=True
 
 UPLOAD_ROOT=/var/lib/clientst0r/uploads
+PRIVATE_FILE_SERVER=apache
 
 AUTO_UPDATE_ENABLED=False
 BETA_UPSTREAM_URL=
@@ -181,7 +195,7 @@ sudo find /opt/clientst0r -type f -exec chmod 640 {} \;
 sudo chmod 750 /opt/clientst0r/venv/bin/*
 ```
 
-The `clientst0r` user must write to `media/`, `static_collected/`, `/var/lib/clientst0r/uploads`, and `/var/log/itdocs`.
+The `clientst0r` user must write to `static_collected/`, `UPLOAD_ROOT` (`/var/lib/clientst0r/uploads`), and `/var/log/itdocs`.
 
 ## 9. Migrations, static files, superuser
 
@@ -213,11 +227,36 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now clientst0r-scheduler.timer
 ```
 
-## 11. Nginx
+## 11. Reverse proxy
+
+Gunicorn listens on **`127.0.0.1:8000` only**. Choose Apache or Nginx — do not install both as public listeners on the same ports.
+
+### 11a. Apache (existing Apache on 80/443)
+
+For a VPS that already runs Apache for other sites (e.g. another web app on a different hostname):
+
+```bash
+sudo a2enmod proxy proxy_http headers ssl xsendfile
+sudo cp /opt/clientst0r/deploy/apache-clientst0r.conf /etc/apache2/sites-available/clientst0r.conf
+# Edit ServerName if not psa.laizboi.com
+sudo a2ensite clientst0r
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+```
+
+`deploy/apache-clientst0r.conf` is preconfigured for **`psa.laizboi.com`**. Apache proxies to `http://127.0.0.1:8000` and uses **mod_xsendfile** for private attachment downloads. Set `PRIVATE_FILE_SERVER=apache` in `/etc/clientst0r/.env`.
+
+Confirm your existing sites are unaffected:
+
+```bash
+sudo apache2ctl -S
+```
+
+### 11b. Nginx (greenfield VPS)
 
 ```bash
 sudo cp /opt/clientst0r/deploy/nginx-clientst0r.conf /etc/nginx/sites-available/clientst0r
-# Edit server_name and paths if needed
+# Edit server_name if needed
 sudo nano /etc/nginx/sites-available/clientst0r
 sudo ln -sf /etc/nginx/sites-available/clientst0r /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
@@ -225,12 +264,30 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Nginx proxies to `http://127.0.0.1:8000`. Gunicorn is never exposed on a public interface.
+Set `PRIVATE_FILE_SERVER=nginx` in `/etc/clientst0r/.env` (this is the default).
 
 ## 12. HTTPS (Certbot)
 
+**Apache:**
+
 ```bash
-sudo certbot --nginx -d docs.example.com
+sudo certbot --apache -d psa.laizboi.com
+```
+
+After Certbot creates the `:443` vhost, ensure the SSL block also includes:
+
+```apache
+XSendFile On
+XSendFilePath /var/lib/clientst0r/uploads
+RequestHeader set X-Forwarded-Proto "https"
+```
+
+Then `sudo systemctl reload apache2`.
+
+**Nginx:**
+
+```bash
+sudo certbot --nginx -d psa.laizboi.com
 ```
 
 Verify `SECURE_SSL_REDIRECT=True` and `CSRF_TRUSTED_ORIGINS` match your HTTPS origin.
@@ -241,7 +298,9 @@ Verify `SECURE_SSL_REDIRECT=True` and `CSRF_TRUSTED_ORIGINS` match your HTTPS or
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow OpenSSH
-sudo ufw allow 'Nginx Full'
+# Use the profile that matches your web server:
+sudo ufw allow 'Apache Full'
+# sudo ufw allow 'Nginx Full'
 sudo ufw enable
 sudo ufw status verbose
 ```
@@ -356,8 +415,9 @@ venv/bin/python manage.py test core.tests.test_hardening_gates core.tests.test_u
 systemctl status clientst0r
 journalctl -u clientst0r -f
 
-sudo nginx -t
-curl -I https://docs.example.com/health/
+sudo apache2ctl configtest
+# — or — sudo nginx -t
+curl -I https://psa.laizboi.com/health/
 
 # Gunicorn must be localhost-only
 ss -tlnp | grep 8000
@@ -377,7 +437,8 @@ grep -i disabled /var/log/clientst0r/auto-update.log | tail -1
 | CSRF errors on login | `CSRF_TRUSTED_ORIGINS` includes `https://your-host` |
 | Vault decrypt errors | `APP_MASTER_KEY` matches backup `.env` |
 | DB connection refused | MariaDB running; `DB_HOST=127.0.0.1`; credentials in `.env` |
-| Static files 404 | Re-run `collectstatic`; check Nginx `alias` path |
+| Static files 404 | Re-run `collectstatic`; check Apache `Alias` or Nginx `alias` path |
+| Attachments empty / 404 | `PRIVATE_FILE_SERVER` matches web server; Apache has `XSendFile On` on both :80 and :443 vhosts |
 | Health check fails | `curl -I http://127.0.0.1:8000/health/` on the VPS |
 
 ```bash
@@ -386,6 +447,9 @@ venv/bin/python manage.py check --deploy
 
 # Security audit
 venv/bin/python manage.py check_safe_deployment
+
+# Apache syntax
+sudo apache2ctl configtest
 
 # Nginx syntax
 sudo nginx -t

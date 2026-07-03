@@ -126,6 +126,7 @@ class HardeningGateTests(TestCase):
     CSRF_COOKIE_SECURE=True,
     ALLOWED_HOSTS=['docs.example.com'],
     CSRF_TRUSTED_ORIGINS=['https://docs.example.com'],
+    PRIVATE_FILE_SERVER='nginx',
     DATABASES={
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',

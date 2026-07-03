@@ -1,0 +1,10 @@
+# Use with the Nginx profile so gunicorn is not published on the host.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.proxy.yml \
+#     --profile proxy up -d
+#
+# Nginx listens on 80/443; the app is reachable only on the compose network.
+
+services:
+  app:
+    ports: []

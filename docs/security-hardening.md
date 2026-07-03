@@ -25,7 +25,9 @@ Review `docs/outbound-network-calls.md` before enabling any external service. Pa
 
 ## Reverse proxy headers
 
-For Nginx, forward the original request context:
+Django reads `X-Forwarded-Proto` via `SECURE_PROXY_SSL_HEADER` in production. Forward the original request context from **Nginx** or **Apache**.
+
+**Nginx:**
 
 ```nginx
 proxy_set_header Host $host;
@@ -37,11 +39,20 @@ proxy_set_header X-Forwarded-Port $server_port;
 client_max_body_size 100m;
 ```
 
+**Apache** (see `deploy/apache-clientst0r.conf`):
+
+```apache
+RequestHeader set X-Forwarded-Proto "https"
+RequestHeader set X-Forwarded-Host "psa.laizboi.com"
+```
+
+For private attachment downloads, set `PRIVATE_FILE_SERVER=apache` and enable `mod_xsendfile` with `XSendFile On` and `XSendFilePath` pointing at `UPLOAD_ROOT`. For Nginx, use `PRIVATE_FILE_SERVER=nginx` (default) with the internal `/internal_uploads/` location.
+
 Set `ALLOWED_HOSTS` to the public hostname and `CSRF_TRUSTED_ORIGINS` to the full HTTPS origin, for example:
 
 ```env
-ALLOWED_HOSTS=docs.example.com
-CSRF_TRUSTED_ORIGINS=https://docs.example.com
+ALLOWED_HOSTS=psa.laizboi.com
+CSRF_TRUSTED_ORIGINS=https://psa.laizboi.com
 ```
 
 ## Firewall recommendations
@@ -49,7 +60,7 @@ CSRF_TRUSTED_ORIGINS=https://docs.example.com
 - Expose only the reverse proxy to the internet.
 - Do not expose MariaDB publicly.
 - Restrict SSH and VPS admin access to trusted IPs or VPN.
-- Block direct public access to gunicorn (`127.0.0.1:8000`); only Nginx should be public.
+- Block direct public access to gunicorn (`127.0.0.1:8000`); only Apache or Nginx should be public.
 - Allow outbound traffic only to integrations you actually use where your firewall supports egress rules.
 
 ## Backup discipline

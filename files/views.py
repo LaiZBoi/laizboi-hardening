@@ -1,5 +1,5 @@
 """
-Files views - Private file serving with X-Accel-Redirect
+Files views - Private file serving via reverse-proxy offload (nginx or Apache).
 """
 import os
 import mimetypes
@@ -15,11 +15,33 @@ from core.middleware import get_request_organization
 from .models import Attachment
 
 
+def _proxy_file_response(attachment, file_path):
+    """Return an empty body with headers for nginx or Apache to serve the file."""
+    from django.core.exceptions import SuspiciousFileOperation
+
+    if '..' in attachment.file.name or attachment.file.name.startswith('/'):
+        raise SuspiciousFileOperation("Invalid file path")
+
+    content_type = attachment.content_type or 'application/octet-stream'
+    response = HttpResponse()
+    response['Content-Type'] = content_type
+    response['Content-Disposition'] = (
+        f'inline; filename="{attachment.original_filename}"'
+    )
+
+    server = getattr(settings, 'PRIVATE_FILE_SERVER', 'nginx').lower()
+    if server == 'apache':
+        response['X-Sendfile'] = str(file_path)
+    else:
+        response['X-Accel-Redirect'] = f"/internal_uploads/{attachment.file.name}"
+    return response
+
+
 @login_required
 @require_http_methods(["GET"])
 def serve_attachment(request, pk):
     """
-    Serve attachment via X-Accel-Redirect for Nginx.
+    Serve attachment via reverse-proxy offload (nginx or Apache).
     Falls back to direct file serving in development.
     """
     from pathlib import Path
@@ -29,42 +51,24 @@ def serve_attachment(request, pk):
 
     # Security: Validate file path to prevent path traversal attacks
     try:
-        # Get absolute paths
-        upload_root = Path(settings.MEDIA_ROOT).resolve()
+        upload_root = Path(settings.UPLOAD_ROOT).resolve()
         file_path = Path(attachment.file.path).resolve()
-
-        # Ensure file is within upload directory
         file_path.relative_to(upload_root)
     except (ValueError, AttributeError):
-        # ValueError: file is not relative to upload_root (path traversal attempt)
-        # AttributeError: attachment.file.path doesn't exist
         raise Http404("Invalid file path")
 
-    # Verify file exists
     if not file_path.exists():
         raise Http404("File not found")
 
-    # Use X-Accel-Redirect if not in debug mode
     if not settings.DEBUG:
-        from django.core.exceptions import SuspiciousFileOperation
-        if '..' in attachment.file.name or attachment.file.name.startswith('/'):
-            raise SuspiciousFileOperation("Invalid file path")
-        # Nginx internal location: /internal_uploads/
-        internal_path = f"/internal_uploads/{attachment.file.name}"
-        response = HttpResponse()
-        response['X-Accel-Redirect'] = internal_path
-        response['Content-Type'] = attachment.content_type or 'application/octet-stream'
-        response['Content-Disposition'] = f'inline; filename="{attachment.original_filename}"'
-        return response
-    else:
-        # Development: serve directly using validated file_path
-        # NOTE: FileResponse automatically closes the file handle when response completes
-        return FileResponse(
-            open(file_path, 'rb'),
-            content_type=attachment.content_type,
-            as_attachment=False,
-            filename=attachment.original_filename
-        )
+        return _proxy_file_response(attachment, file_path)
+
+    return FileResponse(
+        open(file_path, 'rb'),
+        content_type=attachment.content_type,
+        as_attachment=False,
+        filename=attachment.original_filename,
+    )
 
 
 @login_required

@@ -1,0 +1,46 @@
+# Client St0r — local dev override
+#
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# What this does vs production compose:
+#   • Mounts the source tree into the container so code changes take
+#     effect immediately (gunicorn --reload watches for them).
+#   • Switches DEBUG=True and ALLOWED_HOSTS=*. Shows the Django debug
+#     toolbar on errors. NEVER ship this to production.
+#   • Skips the DB container by default — easier "git clone, up, go".
+#     If you want MariaDB in dev, comment the DB_ENGINE line below
+#     and `docker compose up db app` will start both.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      DB_ENGINE: sqlite3          # comment this line to use MariaDB in dev
+      SECURE_SSL_REDIRECT: "False"
+      SESSION_COOKIE_SECURE: "False"
+      CSRF_COOKIE_SECURE: "False"
+    volumes:
+      # Source-tree mount — every save reloads in the container.
+      - ./:/app
+      # Keep the venv from the image; don't shadow it with the host's
+      # (likely empty) /app/.venv if one exists.
+      - /app/.venv
+    command: >
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers 2
+      --timeout 0
+      --reload
+      --access-logfile -
+      --error-logfile -
+
+  # Without DB_ENGINE=mysql, the DB container is unused. Leave it
+  # running anyway (cheap) so you can flip to MariaDB by un-commenting
+  # the DB_ENGINE override above. To skip it entirely:
+  #   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+  #                  up app

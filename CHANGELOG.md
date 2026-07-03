@@ -5,10 +5,23 @@ All notable changes to Client St0r will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Fork (VPS-only, 2026):** Deploy on Ubuntu/Debian VPS with systemd + Nginx + MariaDB.
-> Defaults: `AUTO_UPDATE_ENABLED=False`, blank beta upstream/email, `HIBP_ENABLED=False`.
-> **Docker, Docker Compose, and Unraid deployment have been removed** from this repo.
-> Historical changelog entries may mention containers — ignore for current installs.
+> **Fork (2026):** Deploy with **Docker Compose** ([`docs/docker.md`](docs/docker.md)) or **bare-metal VPS**
+> ([`docs/deployment-vps.md`](docs/deployment-vps.md)). Defaults: `AUTO_UPDATE_ENABLED=False`,
+> blank beta upstream/email, `HIBP_ENABLED=False`.
+
+## [3.17.498] - 2026-07-02
+
+### Docker deployment restored
+
+Re-added first-class Docker / Compose packaging for this fork, alongside the existing VPS path.
+
+- `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `docker-compose.proxy.yml`, `docker-entrypoint.sh`, `.dockerignore`
+- `docker/nginx/` and `docker/mariadb/` configs — Nginx proxy profile uses `internal_uploads` for private attachments
+- `docs/docker.md` — full operator guide (`psa.laizboi.com`, proxy profile, backups, upgrades)
+- `Makefile` — Docker targets (`docker-up`, `docker-up-proxy`, `docker-backup`, …) plus existing VPS targets
+- `.env.example` — Docker variables (`WEB_PORT`, `DB_ROOT_PASSWORD`, `DJANGO_SUPERUSER_*`, `CLIENTST0R_IMAGE`)
+- `.github/workflows/docker-image.yml` — build + publish to `ghcr.io/<repo>`
+- Upload volume path aligned to `/var/lib/clientst0r/uploads`; `PRIVATE_FILE_SERVER=nginx` in Compose
 
 ## [3.17.497] - 2026-06-24
 

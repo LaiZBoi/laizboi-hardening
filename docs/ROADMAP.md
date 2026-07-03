@@ -836,22 +836,21 @@ Dependencies: `accounts.Organization`, `audit.AuditLog`, `reports.pdf_export.ren
 
 ---
 
-## Phase 42 — First-class Docker / containerized deployment **(S · packaging)** [shipped — v3.17.490]
+## Phase 42 — First-class Docker / containerized deployment **(S · packaging)** [shipped — v3.17.498]
 
-> **This fork (VPS-only):** Container packaging was removed. Production deployment uses
-> [`docs/deployment-vps.md`](deployment-vps.md) (systemd + Nginx + MariaDB). Items below
-> describe upstream v3.17.490 history, not files in this repository.
+Docker Compose packaging is available again in this fork — see [`docs/docker.md`](docker.md). Bare-metal VPS deployment remains in [`docs/deployment-vps.md`](deployment-vps.md).
 
-Self-hosted MSPs should be able to `git clone && docker compose up -d` and have a running install in under a minute — without the existing `bash install.sh` path going away.
+Self-hosted MSPs can `git clone && docker compose up -d` and have a running install in under a minute.
 
-- Multi-stage `Dockerfile` (Python 3.12 slim + venv) running as non-root `clientst0r` (uid 1000) *(shipped v3.17.490)*
-- `docker-compose.yml` with `app` + `db` (MariaDB 10.11) as defaults; optional Nginx (`--profile proxy`) and Redis (`--profile cache`) services *(shipped v3.17.490)*
-- `docker-compose.dev.yml` override — source bind-mount + gunicorn `--reload` + SQLite default for fast iteration *(shipped v3.17.490)*
-- `docker-entrypoint.sh` — DB readiness wait, migrate, collectstatic, optional `DJANGO_SUPERUSER_*` bootstrap *(shipped v3.17.490)*
+- Multi-stage `Dockerfile` (Python 3.12 slim + venv) running as non-root `clientst0r` (uid 1000) *(shipped v3.17.490; restored v3.17.498)*
+- `docker-compose.yml` with `app` + `db` (MariaDB 10.11); optional Nginx (`--profile proxy`) and Redis (`--profile cache`) *(shipped v3.17.490; restored v3.17.498)*
+- `docker-compose.proxy.yml` — proxy profile without publishing gunicorn on the host *(shipped v3.17.498)*
+- `docker-compose.dev.yml` override — source bind-mount + gunicorn `--reload` + SQLite default *(shipped v3.17.490; restored v3.17.498)*
+- `docker-entrypoint.sh` — DB readiness wait, migrate, collectstatic, optional `DJANGO_SUPERUSER_*` bootstrap *(shipped v3.17.490; restored v3.17.498)*
 - Dedicated `/health/` endpoint for HEALTHCHECK *(shipped v3.17.490)*
-- GitHub Actions workflow (`docker-image.yml`) — builds on PR, publishes `ghcr.io/agit8or1/clientst0r:latest` + semver tags on push to `main` / `v*` *(shipped v3.17.490)*
-- `Makefile` with `docker-up` / `docker-logs` / `docker-shell` / `backup` / `restore` targets *(shipped v3.17.490)*
-- `.env.example` covering every supported variable + `docs/docker.md` with backup, upgrade, profile, dev-mode, troubleshooting sections *(shipped v3.17.490)*
+- GitHub Actions workflow (`docker-image.yml`) — builds on PR, publishes `ghcr.io/<repo>:latest` + semver tags *(shipped v3.17.490; restored v3.17.498)*
+- `Makefile` with `docker-up` / `docker-up-proxy` / `docker-backup` targets *(shipped v3.17.498)*
+- `.env.example` + `docs/docker.md` with backup, upgrade, profile, dev-mode, troubleshooting *(shipped v3.17.498)*
 
 ---
 
@@ -964,7 +963,7 @@ Positioned last in the roadmap (v3.17.169) because it's the largest single under
 | 39 — Compliance Evidence Packs | M | 2-3 weeks | extends Phase 9 + vault + monitoring + psa |
 | 40 — Public / Client-Facing Status Page | M | 2-3 weeks | extends monitoring + psa Tickets |
 | 41 — Compliance Frameworks & Recertification | M | shipped v3.17.435–444 | extends accounts + audit + reports.pdf_export (Phase 19); built atop Phase 39 evidence-pack infra |
-| 42 — Docker / Containerized deployment | S | shipped v3.17.490 | none — packaging only; classic `bash install.sh` path unchanged |
+| 42 — Docker / Containerized deployment | S | shipped v3.17.498 | none — packaging only; VPS path in `docs/deployment-vps.md` |
 | 43 — Multi-Organization REST API Access | S | shipped v3.17.496 | extends Phase 18 hierarchy; backward-compatible (default key scope unchanged) |
 | 8 — Mobile apps + GPS auto-time + Timeclock | L | **shipped v3.17.354–417 (extends Phase 2 + 18 + 21)** | Phase 2 (WorkingHours); positioned last as the largest single undertaking |
 

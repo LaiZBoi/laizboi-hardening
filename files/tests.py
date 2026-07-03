@@ -19,9 +19,12 @@ Coverage areas:
 from __future__ import annotations
 
 import os
+import tempfile
 
+from django.conf import settings as django_settings
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.core.files.base import ContentFile
+from django.test import Client, TestCase, override_settings
 
 from core.models import Organization
 from files.models import Attachment, attachment_upload_path
@@ -152,3 +155,81 @@ class AttachmentModelTests(TestCase):
             organization=self.org, entity_type='asset', entity_id=10,
         )
         self.assertEqual(rows.count(), 1)
+
+
+TEST_MIDDLEWARE = [
+    m for m in django_settings.MIDDLEWARE
+    if 'Enforce2FAMiddleware' not in m and 'AxesMiddleware' not in m
+]
+
+
+@override_settings(
+    DEBUG=False,
+    MIDDLEWARE=TEST_MIDDLEWARE,
+    SECURE_SSL_REDIRECT=False,
+)
+class ServeAttachmentProxyTests(TestCase):
+    """Production attachment serving uses reverse-proxy offload headers."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name='ServeCo', slug='serve-co')
+        cls.user = User.objects.create_user(
+            'serve-user', 'serve@example.com', 'pw', is_superuser=True,
+        )
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.upload_root = self._tmpdir.name
+        self._settings = override_settings(
+            UPLOAD_ROOT=self.upload_root,
+            MEDIA_ROOT=self.upload_root,
+        )
+        self._settings.enable()
+
+    def tearDown(self):
+        self._settings.disable()
+        self._tmpdir.cleanup()
+
+    def _login(self, client):
+        client.force_login(self.user)
+        session = client.session
+        session['current_organization_id'] = self.org.id
+        session['2fa_prompted'] = True
+        session.save()
+
+    def _attachment_with_file(self):
+        attachment = Attachment(
+            organization=self.org,
+            entity_type='asset',
+            entity_id=1,
+            original_filename='probe.txt',
+            file_size=5,
+            content_type='text/plain',
+            uploaded_by=self.user,
+        )
+        attachment.file.save('probe.txt', ContentFile(b'hello'), save=True)
+        attachment.save()
+        return attachment
+
+    @override_settings(PRIVATE_FILE_SERVER='nginx')
+    def test_nginx_mode_sets_x_accel_redirect(self):
+        attachment = self._attachment_with_file()
+        client = Client()
+        self._login(client)
+        response = client.get(f'/files/serve/{attachment.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('X-Accel-Redirect', response)
+        self.assertIn(attachment.file.name, response['X-Accel-Redirect'])
+        self.assertNotIn('X-Sendfile', response)
+
+    @override_settings(PRIVATE_FILE_SERVER='apache')
+    def test_apache_mode_sets_x_sendfile(self):
+        attachment = self._attachment_with_file()
+        client = Client()
+        self._login(client)
+        response = client.get(f'/files/serve/{attachment.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('X-Sendfile', response)
+        self.assertTrue(response['X-Sendfile'].startswith(self.upload_root))
+        self.assertNotIn('X-Accel-Redirect', response)

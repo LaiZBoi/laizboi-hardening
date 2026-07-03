@@ -410,7 +410,8 @@ If you're comparing documentation platforms for MSP workflows, Client St0r is de
 
 **🎉 New in v3.17 (latest: v3.17.490):**
 
-- **🛡️ VPS production deployment** *(this fork)* — [`docs/deployment-vps.md`](docs/deployment-vps.md): Ubuntu/Debian + Python venv + gunicorn on `127.0.0.1:8000` + Nginx + MariaDB + systemd + Certbot + UFW + fail2ban. Privacy-safe defaults (`AUTO_UPDATE_ENABLED=False`, blank beta forwarding, `HIBP_ENABLED=False`). `manage.py check_safe_deployment` for production audits.
+- **🛡️ VPS production deployment** — [`docs/deployment-vps.md`](docs/deployment-vps.md): Ubuntu/Debian + systemd + Apache or Nginx + MariaDB.
+- **🐳 Docker deployment** — [`docs/docker.md`](docs/docker.md): `docker compose up -d`; optional Nginx proxy profile for `psa.laizboi.com`.
 - **🛡️ Compliance Frameworks & Recertification** *(Phase 41 — v3.17.435→v3.17.444)* — per-organization PCI-DSS v4.0 (38 controls) and HIPAA Security Rule (33 controls). Color-coded attestation checklist with notes + evidence URLs, branded customer-facing PDF report, and monthly recertification reminder cron with 7-day dedup. Toggle reminders / interval / notify-email per enrollment; **Mark Recertified Now** button stamps the cycle. RBAC-gated: superuser / staff / org-owner / org-admin only.
 - **📱 Native mobile app** *(Phase 8 — v3.17.346→v3.17.444)* — Expo + React Native + TypeScript. Six top-level areas: **Dashboard / Assets / Vault / Docs / PSA / Operations**. Operations is a hub for Timeclock, Monitoring, Security alerts, and Settings. Backed by DRF `/api/mobile/v1/` with token auth + per-endpoint throttling. Play Console publishing infrastructure under `local_apps/play_publish/` (local-only, gitignored): keystore generation, AAB build with auto-derived versionCode, R8 minify + proguard `mapping.txt`, Android API 35 target, Google Play Developer API upload.
 - **📋 Compliance Evidence Packs** *(Phase 39)* — single-ZIP audit bundle per org for SOC2 / ISO27001 / due-diligence requests.
@@ -581,9 +582,27 @@ Click-to-connect interface for managing patch panel connections:
 
 ## 🚀 Quick Start
 
-### VPS production (recommended)
+### Docker (fastest)
 
-This fork deploys on a **Ubuntu/Debian VPS** with systemd, Nginx, and MariaDB.
+```bash
+git clone https://github.com/LaiZBoi/laizboi-hardening.git
+cd laizboi-hardening
+cp .env.example .env
+# Edit .env — SECRET_KEY, APP_MASTER_KEY, API_KEY_SECRET, DB_*_PASSWORD
+docker compose up -d --build
+```
+
+**Full guide:** [docs/docker.md](docs/docker.md)
+
+Production with Nginx on `psa.laizboi.com`:
+
+```bash
+make docker-up-proxy
+```
+
+### VPS production (bare metal)
+
+This fork also deploys on **Ubuntu/Debian VPS** with systemd, Apache or Nginx, and MariaDB.
 
 **Full guide:** [docs/deployment-vps.md](docs/deployment-vps.md)
 
@@ -824,7 +843,7 @@ Visit `http://localhost:8000` and log in with the credentials you created in ste
 - **[SECURITY.md](SECURITY.md)** - Security best practices and vulnerability disclosure
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development and contribution guidelines
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
-- **[deploy/](deploy/)** — VPS production configs (`clientst0r.service`, `nginx-clientst0r.conf`, systemd timers, fail2ban, logrotate)
+- **[deploy/](deploy/)** — VPS production configs (`clientst0r.service`, `apache-clientst0r.conf`, `nginx-clientst0r.conf`, systemd timers, fail2ban, logrotate)
 
 ## 🏗️ Architecture
 
@@ -832,14 +851,15 @@ Visit `http://localhost:8000` and log in with the credentials you created in ste
 - **Framework**: Django 6.0
 - **API**: Django REST Framework 3.15
 - **Database**: MariaDB 10.5+ (MySQL 8.0+ supported)
-- **Web Server**: Nginx + Gunicorn
+- **Web Server**: Apache or Nginx + Gunicorn
 - **Authentication**: django-two-factor-auth (TOTP)
 - **Encryption**: Python cryptography (AES-GCM)
 - **Password Hashing**: Argon2
 - **Frontend**: Bootstrap 5, vanilla JavaScript
 
 ### Design Philosophy
-- ✅ **VPS deployment** - systemd + Nginx + MariaDB on Ubuntu/Debian (see `docs/deployment-vps.md`)
+- ✅ **Docker deployment** — Compose stack with privacy-safe defaults (see `docs/docker.md`)
+- ✅ **VPS deployment** - systemd + Apache or Nginx + MariaDB on Ubuntu/Debian (see `docs/deployment-vps.md`)
 - ✅ **No Redis** - systemd timers for scheduling
 - ✅ **Minimal Dependencies** - Only essential packages
 - ✅ **Security First** - Built with security in mind
